@@ -209,13 +209,22 @@ export interface ClassroomLesson {
   title: string;
   chapter: string; // Chuyên đề / Chương bài học
   description: string;
-  theoryContent: string; // 1. Phần lý thuyết trọng tâm & công thức
-  exercisesContent?: string; // 2. Bài tập bài giảng & ví dụ rèn luyện
+  theoryContent: string; // 1. Ô Bài học: Nội dung lý thuyết & trọng tâm kiến thức
+  practiceContent?: string; // 2. Ô Luyện tập: Nội dung câu hỏi và bài tập rèn luyện (thay thế ô bài tập giao thêm)
+  exercisesContent?: string; // Tương thích ngược
   content?: string; // Tương thích ngược
   teacherName: string;
   createdAt: string;
+  updatedAt?: string; // Thời gian cập nhật / chỉnh sửa gần nhất
   externalLink?: string; // Gắn link tài liệu trực tuyến (Google Drive, Youtube...)
   pdfAttachment?: {
+    // File PDF gắn cho ô bài học (lý thuyết & bài giảng)
+    fileName: string;
+    fileSize: string; // Dung lượng (tối đa khoảng 5MB)
+    fileData?: string; // Dữ liệu file PDF Data URL
+  };
+  practicePdfAttachment?: {
+    // File PDF gắn cho ô luyện tập
     fileName: string;
     fileSize: string; // Dung lượng (tối đa khoảng 5MB)
     fileData?: string; // Dữ liệu file PDF Data URL
@@ -226,7 +235,7 @@ export interface ClassroomLesson {
     url: string;
     size?: string;
   }[];
-  exercisesCount?: number;
+  exercisesCount?: number; // Số câu luyện tập
   completedStudentIds?: string[];
 }
 

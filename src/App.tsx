@@ -187,10 +187,6 @@ export default function App() {
         <TeacherPortalView
           classrooms={classrooms}
           onPublishExam={handlePublishExam}
-          onPreviewExam={(newExam) => {
-            handlePublishExam(newExam);
-            setCurrentTab('exam');
-          }}
         />
       );
     }
@@ -341,15 +337,6 @@ export default function App() {
                     >
                       <FileText size={18} />
                       <span className="text-[10px]">Tạo Đề</span>
-                    </button>
-                    <button
-                      onClick={() => setCurrentTab('exam')}
-                      className={`flex flex-col items-center gap-0.5 ${
-                        currentTab === 'exam' ? 'text-blue-600 font-bold' : 'text-slate-400'
-                      }`}
-                    >
-                      <Award size={18} />
-                      <span className="text-[10px]">Phòng Thi</span>
                     </button>
                     <button
                       onClick={() => setCurrentTab('geometry')}

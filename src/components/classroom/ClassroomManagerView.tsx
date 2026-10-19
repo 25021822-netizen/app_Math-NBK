@@ -44,6 +44,10 @@ import {
   CheckCircle,
   ExternalLink,
   BookCheck,
+  Pencil,
+  Edit3,
+  Upload,
+  Save,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -100,21 +104,39 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     );
   };
 
-  // Form thêm chương / bài học mới (Chương -> Bài học -> Lý thuyết + Bài tập)
+  // Form thêm chương / bài học mới (Chương -> Bài học -> Ô Bài học & Ô Luyện tập)
   const [newLessonChapter, setNewLessonChapter] = useState('');
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonDesc, setNewLessonDesc] = useState('');
   const [newLessonTheory, setNewLessonTheory] = useState('');
-  const [newLessonExercises, setNewLessonExercises] = useState('');
+  const [newLessonPractice, setNewLessonPractice] = useState('');
   const [newLessonExercisesCount, setNewLessonExercisesCount] = useState<number>(10);
   const [newLessonExternalLink, setNewLessonExternalLink] = useState('');
   const [newLessonPdfFile, setNewLessonPdfFile] = useState<{ fileName: string; fileSize: string; fileData: string } | null>(null);
+  const [newLessonPracticePdfFile, setNewLessonPracticePdfFile] = useState<{ fileName: string; fileSize: string; fileData: string } | null>(null);
   const [newLessonAttachmentName, setNewLessonAttachmentName] = useState('');
   const [newLessonError, setNewLessonError] = useState<string | null>(null);
 
-  // Tab chuyển đổi trong modal xem bài học: 'theory' (Lý thuyết) hoặc 'exercises' (Bài tập bài giảng)
-  const [lessonDetailTab, setLessonDetailTab] = useState<'theory' | 'exercises'>('theory');
+  // Form chỉnh sửa bài học đã đăng (Giáo viên)
+  const [showEditLessonModal, setShowEditLessonModal] = useState<boolean>(false);
+  const [editingLessonId, setEditingLessonId] = useState<string>('');
+  const [editLessonChapter, setEditLessonChapter] = useState('');
+  const [editLessonTitle, setEditLessonTitle] = useState('');
+  const [editLessonDesc, setEditLessonDesc] = useState('');
+  const [editLessonTheory, setEditLessonTheory] = useState('');
+  const [editLessonPractice, setEditLessonPractice] = useState('');
+  const [editLessonExercisesCount, setEditLessonExercisesCount] = useState<number>(10);
+  const [editLessonExternalLink, setEditLessonExternalLink] = useState('');
+  const [editLessonPdfFile, setEditLessonPdfFile] = useState<{ fileName: string; fileSize: string; fileData: string } | null>(null);
+  const [editLessonPracticePdfFile, setEditLessonPracticePdfFile] = useState<{ fileName: string; fileSize: string; fileData: string } | null>(null);
+  const [editLessonError, setEditLessonError] = useState<string | null>(null);
+
+  // Tab chuyển đổi trong modal xem bài học: 'theory' (Ô Bài học) hoặc 'practice' (Ô Luyện tập)
+  const [lessonDetailTab, setLessonDetailTab] = useState<'theory' | 'practice'>('theory');
   const lessonPdfInputRef = useRef<HTMLInputElement>(null);
+  const practicePdfInputRef = useRef<HTMLInputElement>(null);
+  const editLessonPdfInputRef = useRef<HTMLInputElement>(null);
+  const editPracticePdfInputRef = useRef<HTMLInputElement>(null);
 
   const [showCreateClassModal, setShowCreateClassModal] = useState<boolean>(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState<boolean>(false);
@@ -331,39 +353,101 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setExamToRemoveFromClass(null);
   };
 
-  // Xử lý chọn file PDF (giới hạn dung lượng ~5MB)
-  const handlePdfFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Tải hoặc mở file PDF an toàn
+  const handleDownloadPdf = (fileName: string, fileData?: string) => {
+    if (fileData && fileData.startsWith('data:application/pdf')) {
+      const link = document.createElement('a');
+      link.href = fileData;
+      link.download = fileName;
+      link.click();
+    } else {
+      // Giả lập tài liệu PDF toán học để học sinh / giáo viên luôn tải được file hợp lệ
+      const dummyPdf = `%PDF-1.4\n%Math&NBK Education Platform - ${fileName}\n1 0 obj\n<< /Title (${fileName}) /Author (Math&NBK) >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF`;
+      const blob = new Blob([dummyPdf], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
 
+  // Hàm xử lý đọc file PDF tổng quát (giới hạn dung lượng ~5MB)
+  const processPdfFile = (
+    file: File,
+    onSuccess: (data: { fileName: string; fileSize: string; fileData: string }) => void,
+    onError: (msg: string | null) => void
+  ) => {
     const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
     if (file.size > MAX_SIZE) {
-      setNewLessonError(`Dung lượng file vượt quá giới hạn 5MB (hiện tại: ${(file.size / (1024 * 1024)).toFixed(2)} MB). Vui lòng chọn file PDF nhỏ hơn 5MB!`);
-      e.target.value = '';
+      onError(`Dung lượng file vượt quá giới hạn 5MB (hiện tại: ${(file.size / (1024 * 1024)).toFixed(2)} MB). Vui lòng chọn file PDF nhỏ hơn 5MB!`);
       return;
     }
 
     if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-      setNewLessonError('Vui lòng chọn file có định dạng PDF!');
-      e.target.value = '';
+      onError('Vui lòng chọn file có định dạng PDF!');
       return;
     }
 
-    setNewLessonError(null);
+    onError(null);
     const sizeStr = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
     const reader = new FileReader();
     reader.onload = () => {
-      setNewLessonPdfFile({
+      onSuccess({
         fileName: file.name,
         fileSize: sizeStr,
         fileData: reader.result as string,
       });
-      setNewLessonAttachmentName(file.name);
     };
     reader.readAsDataURL(file);
   };
 
-  // 3c. Giáo viên tạo / upload Chương học và Bài học mới cho học sinh (Chương -> Bài học -> Lý thuyết + Bài tập)
+  // Chọn PDF cho Ô Bài học (Tạo mới)
+  const handleLessonPdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processPdfFile(
+      file,
+      (data) => setNewLessonPdfFile(data),
+      (err) => setNewLessonError(err)
+    );
+  };
+
+  // Chọn PDF cho Ô Luyện tập (Tạo mới)
+  const handlePracticePdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processPdfFile(
+      file,
+      (data) => setNewLessonPracticePdfFile(data),
+      (err) => setNewLessonError(err)
+    );
+  };
+
+  // Chọn PDF cho Ô Bài học (Chỉnh sửa)
+  const handleEditLessonPdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processPdfFile(
+      file,
+      (data) => setEditLessonPdfFile(data),
+      (err) => setEditLessonError(err)
+    );
+  };
+
+  // Chọn PDF cho Ô Luyện tập (Chỉnh sửa)
+  const handleEditPracticePdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processPdfFile(
+      file,
+      (data) => setEditLessonPracticePdfFile(data),
+      (err) => setEditLessonError(err)
+    );
+  };
+
+  // 3c. Giáo viên tạo / upload Chương học và Bài học mới cho học sinh (Chương -> Bài học -> Ô Bài học & Ô Luyện tập)
   const handleCreateLessonSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentClass) return;
@@ -373,7 +457,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       return;
     }
 
-    const attachmentsList = [];
+    const attachmentsList: { name: string; type: 'pdf' | 'image' | 'link'; url: string; size?: string }[] = [];
     if (newLessonPdfFile) {
       attachmentsList.push({
         name: newLessonPdfFile.fileName,
@@ -381,12 +465,13 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         url: newLessonPdfFile.fileData,
         size: newLessonPdfFile.fileSize,
       });
-    } else if (newLessonAttachmentName.trim()) {
+    }
+    if (newLessonPracticePdfFile) {
       attachmentsList.push({
-        name: newLessonAttachmentName.trim(),
+        name: newLessonPracticePdfFile.fileName,
         type: 'pdf' as const,
-        url: '#',
-        size: '1.8 MB',
+        url: newLessonPracticePdfFile.fileData,
+        size: newLessonPracticePdfFile.fileSize,
       });
     }
 
@@ -404,12 +489,15 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       classId: currentClass.id,
       chapter: newLessonChapter.trim(),
       title: newLessonTitle.trim(),
-      description: newLessonDesc.trim() || 'Tài liệu lý thuyết và bài tập theo chuẩn chương trình GDPT 2018.',
+      description: newLessonDesc.trim() || 'Tài liệu lý thuyết và bài tập luyện tập theo chuẩn chương trình GDPT 2018.',
       theoryContent:
         newLessonTheory.trim() ||
         'Nội dung tóm tắt kiến thức trọng tâm, định lý, công thức và phương pháp giải bài tập.',
+      practiceContent:
+        newLessonPractice.trim() ||
+        'Hệ thống ví dụ mẫu minh họa và câu hỏi bài tập rèn luyện cho học sinh.',
       exercisesContent:
-        newLessonExercises.trim() ||
+        newLessonPractice.trim() ||
         'Hệ thống ví dụ mẫu minh họa và câu hỏi bài tập rèn luyện cho học sinh.',
       content: newLessonTheory.trim() || newLessonDesc.trim(),
       teacherName: currentUserName || 'ThS. Trần Văn Minh',
@@ -418,6 +506,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       completedStudentIds: [],
       externalLink: newLessonExternalLink.trim() || undefined,
       pdfAttachment: newLessonPdfFile || undefined,
+      practicePdfAttachment: newLessonPracticePdfFile || undefined,
       attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
     };
 
@@ -430,6 +519,151 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setShowAddLessonModal(false);
     setLessonActionSuccess(`Đã đăng tải bài học "${newLessonTitle.trim()}" thành công!`);
     setTimeout(() => setLessonActionSuccess(null), 3500);
+  };
+
+  // 3c-2. Giáo viên MỞ modal chỉnh sửa bài học đã đăng
+  const handleOpenEditLesson = (lesson: ClassroomLesson) => {
+    setEditingLessonId(lesson.id);
+    setEditLessonChapter(lesson.chapter || '');
+    setEditLessonTitle(lesson.title || '');
+    setEditLessonDesc(lesson.description || '');
+    setEditLessonTheory(lesson.theoryContent || lesson.content || '');
+    setEditLessonPractice(lesson.practiceContent || lesson.exercisesContent || '');
+    setEditLessonExercisesCount(lesson.exercisesCount || 10);
+    setEditLessonExternalLink(lesson.externalLink || '');
+    setEditLessonPdfFile(
+      lesson.pdfAttachment
+        ? { ...lesson.pdfAttachment, fileData: lesson.pdfAttachment.fileData || '#' }
+        : null
+    );
+    setEditLessonPracticePdfFile(
+      lesson.practicePdfAttachment
+        ? { ...lesson.practicePdfAttachment, fileData: lesson.practicePdfAttachment.fileData || '#' }
+        : null
+    );
+    setEditLessonError(null);
+    setShowEditLessonModal(true);
+  };
+
+  // 3c-3. Giáo viên LƯU chỉnh sửa bài học
+  const handleEditLessonSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editLessonTitle.trim() || !editLessonChapter.trim()) {
+      setEditLessonError('Vui lòng nhập đầy đủ tên Chương học và tên Bài học!');
+      return;
+    }
+
+    const attachmentsList: { name: string; type: 'pdf' | 'image' | 'link'; url: string; size?: string }[] = [];
+    if (editLessonPdfFile) {
+      attachmentsList.push({
+        name: editLessonPdfFile.fileName,
+        type: 'pdf' as const,
+        url: editLessonPdfFile.fileData,
+        size: editLessonPdfFile.fileSize,
+      });
+    }
+    if (editLessonPracticePdfFile) {
+      attachmentsList.push({
+        name: editLessonPracticePdfFile.fileName,
+        type: 'pdf' as const,
+        url: editLessonPracticePdfFile.fileData,
+        size: editLessonPracticePdfFile.fileSize,
+      });
+    }
+    if (editLessonExternalLink.trim()) {
+      attachmentsList.push({
+        name: 'Link tài liệu trực tuyến',
+        type: 'link' as const,
+        url: editLessonExternalLink.trim(),
+        size: 'Web',
+      });
+    }
+
+    const updated = localLessons.map((l) => {
+      if (l.id === editingLessonId) {
+        const updatedLesson: ClassroomLesson = {
+          ...l,
+          chapter: editLessonChapter.trim(),
+          title: editLessonTitle.trim(),
+          description: editLessonDesc.trim(),
+          theoryContent: editLessonTheory.trim(),
+          practiceContent: editLessonPractice.trim(),
+          exercisesContent: editLessonPractice.trim(),
+          content: editLessonTheory.trim(),
+          updatedAt: new Date().toISOString().split('T')[0],
+          exercisesCount: Number(editLessonExercisesCount) || 10,
+          externalLink: editLessonExternalLink.trim() || undefined,
+          pdfAttachment: editLessonPdfFile || undefined,
+          practicePdfAttachment: editLessonPracticePdfFile || undefined,
+          attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
+        };
+
+        if (selectedLessonDetail?.id === editingLessonId) {
+          setSelectedLessonDetail(updatedLesson);
+        }
+        return updatedLesson;
+      }
+      return l;
+    });
+
+    setLocalLessons(updated);
+    if (onUpdateLessons) {
+      onUpdateLessons(updated);
+    }
+
+    setShowEditLessonModal(false);
+    setLessonActionSuccess(`Đã cập nhật bài học "${editLessonTitle.trim()}" thành công!`);
+    setTimeout(() => setLessonActionSuccess(null), 3500);
+  };
+
+  // Helper hiển thị văn bản có công thức Toán KaTeX
+  const renderFormattedMathText = (content: string) => {
+    if (!content) return null;
+    const paragraphs = content.split('\n');
+    return (
+      <div className="space-y-2.5 leading-relaxed text-xs text-slate-800">
+        {paragraphs.map((p, pIdx) => {
+          const trimmed = p.trim();
+          if (!trimmed) return <div key={pIdx} className="h-1.5" />;
+
+          if (trimmed.startsWith('### ')) {
+            return (
+              <h5 key={pIdx} className="font-extrabold text-sm text-blue-900 mt-3 mb-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-3.5 bg-blue-600 rounded-full inline-block"></span>
+                <span>{trimmed.replace('### ', '')}</span>
+              </h5>
+            );
+          }
+
+          if (trimmed.startsWith('$$') && trimmed.endsWith('$$')) {
+            const formula = trimmed.slice(2, -2).trim();
+            return (
+              <div key={pIdx} className="my-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-center overflow-x-auto shadow-2xs">
+                <MathView latex={formula} block={true} />
+              </div>
+            );
+          }
+
+          const parts = trimmed.split(/(\$[^\$]+\$)/g);
+          return (
+            <p key={pIdx} className={trimmed.startsWith('- ') ? 'pl-3 relative before:content-["•"] before:absolute before:left-0 before:text-blue-500' : ''}>
+              {parts.map((part, partIdx) => {
+                if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+                  return <MathView key={partIdx} latex={part.slice(1, -1)} className="mx-0.5 text-blue-700 font-semibold" />;
+                }
+                const boldParts = part.split(/(\*\*[^\*]+\*\*)/g);
+                return boldParts.map((bPart, bIdx) => {
+                  if (bPart.startsWith('**') && bPart.endsWith('**')) {
+                    return <strong key={bIdx} className="font-bold text-slate-900">{bPart.slice(2, -2)}</strong>;
+                  }
+                  return <span key={bIdx}>{bPart}</span>;
+                });
+              })}
+            </p>
+          );
+        })}
+      </div>
+    );
   };
 
   // 3d. Giáo viên xóa bài học khỏi mục lục lớp
@@ -1006,10 +1240,11 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       setNewLessonTitle('');
                       setNewLessonDesc('');
                       setNewLessonTheory('');
-                      setNewLessonExercises('');
+                      setNewLessonPractice('');
                       setNewLessonExercisesCount(10);
                       setNewLessonExternalLink('');
                       setNewLessonPdfFile(null);
+                      setNewLessonPracticePdfFile(null);
                       setNewLessonAttachmentName('');
                       setNewLessonError(null);
                       setShowAddLessonModal(true);
@@ -1092,10 +1327,11 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                           setNewLessonTitle('');
                           setNewLessonDesc('');
                           setNewLessonTheory('');
-                          setNewLessonExercises('');
+                          setNewLessonPractice('');
                           setNewLessonExercisesCount(10);
                           setNewLessonExternalLink('');
                           setNewLessonPdfFile(null);
+                          setNewLessonPracticePdfFile(null);
                           setNewLessonAttachmentName('');
                           setNewLessonError(null);
                           setShowAddLessonModal(true);
@@ -1160,7 +1396,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                             <div className="p-3 sm:p-4 space-y-3 bg-slate-50/40 animate-in fade-in duration-150">
                               {lessons.map((lesson) => {
                                 const isCompleted = lesson.completedStudentIds?.includes(currentUserId);
-                                const hasPdf = !!lesson.pdfAttachment || lesson.attachments?.some((a) => a.type === 'pdf');
+                                const hasLessonPdf = !!lesson.pdfAttachment || lesson.attachments?.some((a) => a.type === 'pdf');
+                                const hasPracticePdf = !!lesson.practicePdfAttachment;
                                 const hasLink = !!lesson.externalLink || lesson.attachments?.some((a) => a.type === 'link');
 
                                 return (
@@ -1170,12 +1407,17 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                   >
                                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                                       <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                           <h6 className="font-extrabold text-sm text-slate-900">{lesson.title}</h6>
                                           {isCompleted && (
                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
                                               <CheckCircle size={11} />
                                               <span>Đã học</span>
+                                            </span>
+                                          )}
+                                          {lesson.updatedAt && (
+                                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium text-[10px]">
+                                              Đã sửa: {lesson.updatedAt}
                                             </span>
                                           )}
                                         </div>
@@ -1184,7 +1426,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                         </p>
                                       </div>
 
-                                      {/* Nút Xem bài & Xóa bài học */}
+                                      {/* Nút Xem bài, Sửa & Xóa bài học */}
                                       <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
                                         <button
                                           type="button"
@@ -1199,39 +1441,58 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                         </button>
 
                                         {userRole === 'teacher' && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
-                                            className="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors"
-                                            title="Xóa bài học này khỏi mục lục lớp"
-                                          >
-                                            <Trash2 size={15} />
-                                          </button>
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOpenEditLesson(lesson)}
+                                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-xs border border-amber-200 flex items-center gap-1 shadow-2xs transition-colors"
+                                              title="Chỉnh sửa nội dung bài học, ô luyện tập và file PDF"
+                                            >
+                                              <Pencil size={13} className="text-amber-600" />
+                                              <span>Sửa</span>
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
+                                              className="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors"
+                                              title="Xóa bài học này khỏi mục lục lớp"
+                                            >
+                                              <Trash2 size={15} />
+                                            </button>
+                                          </>
                                         )}
                                       </div>
                                     </div>
 
-                                    {/* Nhãn chi tiết: Lý thuyết + Bài tập + Tài liệu PDF/Link */}
+                                    {/* Nhãn chi tiết: Ô Bài học + PDF Bài học + Ô Luyện tập + PDF Luyện tập */}
                                     <div className="flex flex-wrap items-center gap-2 text-[11px] pt-1 border-t border-slate-100">
                                       <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 font-semibold border border-blue-200 flex items-center gap-1">
                                         <BookOpen size={11} />
-                                        <span>Lý thuyết</span>
+                                        <span>Ô Bài học</span>
                                       </span>
+
+                                      {hasLessonPdf && (
+                                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200 flex items-center gap-1">
+                                          <Paperclip size={11} />
+                                          <span>PDF Bài học</span>
+                                        </span>
+                                      )}
 
                                       <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-semibold border border-amber-200 flex items-center gap-1">
-                                        <FileText size={11} />
-                                        <span>{lesson.exercisesCount || 10} Bài tập bài giảng</span>
+                                        <ListChecks size={11} />
+                                        <span>Ô Luyện tập ({lesson.exercisesCount || 10} câu)</span>
                                       </span>
 
-                                      {hasPdf && (
-                                        <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 font-semibold border border-rose-200 flex items-center gap-1">
+                                      {hasPracticePdf && (
+                                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 flex items-center gap-1">
                                           <Paperclip size={11} />
-                                          <span>File PDF (~5MB)</span>
+                                          <span>PDF Luyện tập</span>
                                         </span>
                                       )}
 
                                       {hasLink && (
-                                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 flex items-center gap-1">
+                                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200 flex items-center gap-1">
                                           <ExternalLink size={11} />
                                           <span>Link trực tuyến</span>
                                         </span>
@@ -1908,32 +2169,32 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       {/* ========================================================================= */}
       {showAddLessonModal && currentClass && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-2xs">
                   <FolderPlus size={20} />
                 </div>
                 <div>
                   <h4 className="text-base font-extrabold text-slate-900">
-                    Thêm Chương Học & Bài Học Mới
+                    Đăng Tải Chương Học & Bài Học Mới
                   </h4>
                   <span className="text-[11px] text-slate-500">
-                    Nhóm lớp: <strong className="text-blue-600">{currentClass.name}</strong> (Khối {currentClass.grade})
+                    Lớp: <strong className="text-blue-600">{currentClass.name}</strong> (Khối {currentClass.grade})
                   </span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddLessonModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
             {newLessonError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2">
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2">
                 <AlertTriangle size={15} />
                 <span>{newLessonError}</span>
               </div>
@@ -1980,7 +2241,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
               {/* Mô tả ngắn */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Mô tả tóm tắt nội dung bài học</label>
+                <label className="font-bold text-slate-700">Mô tả tóm tắt mục tiêu bài học</label>
                 <input
                   type="text"
                   value={newLessonDesc}
@@ -1990,45 +2251,166 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 />
               </div>
 
-              {/* Nội dung lý thuyết & công thức */}
-              <div className="space-y-1">
+              {/* KHUNG 1: Ô BÀI HỌC (LÝ THUYẾT & GẮN FILE PDF BÀI HỌC) */}
+              <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-200/90 space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">Nội dung lý thuyết & công thức Toán (LaTeX)</label>
-                  <span className="text-[10px] text-slate-400">Hỗ trợ $công thức$</span>
+                  <div className="flex items-center gap-1.5 font-extrabold text-blue-900 text-xs">
+                    <BookOpen size={16} className="text-blue-600" />
+                    <span>Ô BÀI HỌC (Lý thuyết & Trọng tâm kiến thức)</span>
+                  </div>
+                  <span className="text-[10px] text-blue-600 font-semibold">Hỗ trợ $công thức$ KaTeX</span>
                 </div>
+
                 <textarea
                   rows={4}
                   value={newLessonTheory}
                   onChange={(e) => setNewLessonTheory(e.target.value)}
                   placeholder="Nhập kiến thức trọng tâm, định lý, công thức (VD: Cho hàm số y = f(x) có đạo hàm f'(x)...)"
-                  className="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs focus:border-blue-600 focus:outline-none"
+                  className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs focus:border-blue-600 focus:outline-none"
                 />
+
+                {/* Gắn file PDF cho Ô Bài Học */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="font-bold text-slate-700 flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-slate-800">
+                      <Paperclip size={13} className="text-blue-600" />
+                      <span>Gắn file PDF cho Ô Bài học:</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">File PDF tối đa ~5MB</span>
+                  </label>
+
+                  <input
+                    type="file"
+                    ref={lessonPdfInputRef}
+                    accept=".pdf,application/pdf"
+                    onChange={handleLessonPdfSelect}
+                    className="hidden"
+                  />
+
+                  {newLessonPdfFile ? (
+                    <div className="p-2.5 rounded-xl bg-white border border-blue-300 flex items-center justify-between gap-3 text-xs shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">
+                          PDF
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900 block truncate max-w-xs">{newLessonPdfFile.fileName}</span>
+                          <span className="text-[10px] text-blue-600 font-semibold">{newLessonPdfFile.fileSize} · File PDF bài học đã sẵn sàng</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNewLessonPdfFile(null)}
+                        className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors"
+                        title="Xóa file PDF bài học này"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => lessonPdfInputRef.current?.click()}
+                      className="w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-blue-300 hover:border-blue-500 bg-white hover:bg-blue-50/50 text-blue-700 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                    >
+                      <Upload size={14} />
+                      <span>+ Chọn & Gắn File PDF Bài Học Từ Máy</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Số bài tập rèn luyện & Tài liệu đính kèm */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Số câu bài tập rèn luyện</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={newLessonExercisesCount}
-                    onChange={(e) => setNewLessonExercisesCount(parseInt(e.target.value) || 0)}
-                    className="w-full h-10 px-3 rounded-xl border border-slate-300 font-bold focus:border-blue-600 focus:outline-none"
-                  />
+              {/* KHUNG 2: Ô LUYỆN TẬP (BÀI TẬP RÈN LUYỆN & GẮN FILE PDF LUYỆN TẬP) */}
+              <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-extrabold text-amber-900 text-xs">
+                    <ListChecks size={16} className="text-amber-600" />
+                    <span>Ô LUYỆN TẬP (Hệ thống câu hỏi bài tập rèn luyện)</span>
+                  </div>
+                  <span className="text-[10px] text-amber-700 font-semibold">Thay thế bài tập giao thêm</span>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Tên file tài liệu / PDF bài giảng</label>
-                  <input
-                    type="text"
-                    value={newLessonAttachmentName}
-                    onChange={(e) => setNewLessonAttachmentName(e.target.value)}
-                    placeholder="Ví dụ: TaiLieu_DaoHam_12A1.pdf"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-300 focus:border-blue-600 focus:outline-none"
-                  />
+                <textarea
+                  rows={4}
+                  value={newLessonPractice}
+                  onChange={(e) => setNewLessonPractice(e.target.value)}
+                  placeholder="Nhập hệ thống bài tập luyện tập, ví dụ mẫu hoặc câu hỏi rèn luyện cho học sinh..."
+                  className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs focus:border-amber-600 focus:outline-none"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Số câu bài tập luyện tập */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Số câu bài tập luyện tập</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={newLessonExercisesCount}
+                      onChange={(e) => setNewLessonExercisesCount(parseInt(e.target.value) || 0)}
+                      className="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white font-bold focus:border-amber-600 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Gắn file PDF cho Ô Luyện Tập */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700 flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-slate-800">
+                        <Paperclip size={13} className="text-amber-600" />
+                        <span>Gắn file PDF Luyện tập:</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">PDF ~5MB</span>
+                    </label>
+
+                    <input
+                      type="file"
+                      ref={practicePdfInputRef}
+                      accept=".pdf,application/pdf"
+                      onChange={handlePracticePdfSelect}
+                      className="hidden"
+                    />
+
+                    {newLessonPracticePdfFile ? (
+                      <div className="p-2 rounded-xl bg-white border border-amber-300 flex items-center justify-between gap-2 text-xs shadow-2xs">
+                        <div className="flex items-center gap-1.5 overflow-hidden">
+                          <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-[9px] shrink-0">
+                            PDF
+                          </div>
+                          <span className="font-bold text-slate-900 truncate text-[11px]">{newLessonPracticePdfFile.fileName}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewLessonPracticePdfFile(null)}
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 shrink-0"
+                          title="Xóa file PDF luyện tập"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => practicePdfInputRef.current?.click()}
+                        className="w-full h-10 px-2 rounded-xl border-2 border-dashed border-amber-300 hover:border-amber-500 bg-white hover:bg-amber-50/50 text-amber-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                      >
+                        <Upload size={13} />
+                        <span>+ Gắn PDF Luyện Tập</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Link tài liệu trực tuyến */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Link tài liệu trực tuyến (Tùy chọn)</label>
+                <input
+                  type="url"
+                  value={newLessonExternalLink}
+                  onChange={(e) => setNewLessonExternalLink(e.target.value)}
+                  placeholder="https://drive.google.com/... hoặc link video bài giảng"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 focus:border-blue-600 focus:outline-none"
+                />
               </div>
 
               <div className="flex gap-2 pt-3 border-t border-slate-100">
@@ -2053,89 +2435,542 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 6: XEM CHI TIẾT BÀI HỌC & TÀI LIỆU ÔN TẬP (HỌC SINH & GIÁO VIÊN)    */}
+      {/* MODAL 5B: GIÁO VIÊN CHỈNH SỬA BÀI HỌC ĐÃ ĐĂNG                              */}
+      {/* ========================================================================= */}
+      {showEditLessonModal && currentClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shadow-2xs">
+                  <Pencil size={20} />
+                </div>
+                <div>
+                  <h4 className="text-base font-extrabold text-slate-900">
+                    Chỉnh Sửa Bài Học Đã Đăng
+                  </h4>
+                  <span className="text-[11px] text-slate-500">
+                    Lớp: <strong className="text-blue-600">{currentClass.name}</strong> · Giáo viên có quyền cập nhật lý thuyết, ô luyện tập và file PDF
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditLessonModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {editLessonError && (
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2">
+                <AlertTriangle size={15} />
+                <span>{editLessonError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEditLessonSubmit} className="space-y-4 text-xs">
+              {/* Sửa Chương học */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Tên Chương học / Chuyên đề *</label>
+                <input
+                  type="text"
+                  list="suggested-chapters"
+                  value={editLessonChapter}
+                  onChange={(e) => setEditLessonChapter(e.target.value)}
+                  placeholder="Ví dụ: Chương 1: Ứng dụng đạo hàm để khảo sát hàm số"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold focus:border-amber-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              {/* Sửa Tên bài học */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Tên Bài học *</label>
+                <input
+                  type="text"
+                  value={editLessonTitle}
+                  onChange={(e) => setEditLessonTitle(e.target.value)}
+                  placeholder="Ví dụ: Bài 1: Tính đơn điệu và cực trị của hàm số"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold focus:border-amber-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              {/* Sửa Mô tả */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Mô tả tóm tắt mục tiêu bài học</label>
+                <input
+                  type="text"
+                  value={editLessonDesc}
+                  onChange={(e) => setEditLessonDesc(e.target.value)}
+                  placeholder="Tóm tắt trọng tâm kiến thức và mục tiêu rèn luyện..."
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 focus:border-amber-600 focus:outline-none"
+                />
+              </div>
+
+              {/* KHUNG SỬA 1: Ô BÀI HỌC (LÝ THUYẾT & GẮN FILE PDF BÀI HỌC) */}
+              <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-extrabold text-blue-900 text-xs">
+                    <BookOpen size={16} className="text-blue-600" />
+                    <span>Ô BÀI HỌC (Lý thuyết & Trọng tâm kiến thức)</span>
+                  </div>
+                  <span className="text-[10px] text-blue-600 font-semibold">KaTeX $công thức$</span>
+                </div>
+
+                <textarea
+                  rows={4}
+                  value={editLessonTheory}
+                  onChange={(e) => setEditLessonTheory(e.target.value)}
+                  placeholder="Nhập kiến thức trọng tâm, định lý, công thức..."
+                  className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs focus:border-blue-600 focus:outline-none"
+                />
+
+                {/* Quản lý file PDF cho Ô Bài Học */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="font-bold text-slate-700 flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-slate-800">
+                      <Paperclip size={13} className="text-blue-600" />
+                      <span>File PDF cho Ô Bài học:</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">PDF tối đa ~5MB</span>
+                  </label>
+
+                  <input
+                    type="file"
+                    ref={editLessonPdfInputRef}
+                    accept=".pdf,application/pdf"
+                    onChange={handleEditLessonPdfSelect}
+                    className="hidden"
+                  />
+
+                  {editLessonPdfFile ? (
+                    <div className="p-2.5 rounded-xl bg-white border border-blue-300 flex items-center justify-between gap-3 text-xs shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">
+                          PDF
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900 block truncate max-w-xs">{editLessonPdfFile.fileName}</span>
+                          <span className="text-[10px] text-blue-600 font-semibold">{editLessonPdfFile.fileSize} · File PDF bài học hiện tại</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => editLessonPdfInputRef.current?.click()}
+                          className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-[11px] transition-colors"
+                        >
+                          Đổi File PDF
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditLessonPdfFile(null)}
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors"
+                          title="Xóa file PDF này"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => editLessonPdfInputRef.current?.click()}
+                      className="w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-blue-300 hover:border-blue-500 bg-white hover:bg-blue-50/50 text-blue-700 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                    >
+                      <Upload size={14} />
+                      <span>+ Gắn File PDF Bài Học Mới</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* KHUNG SỬA 2: Ô LUYỆN TẬP (BÀI TẬP RÈN LUYỆN & GẮN FILE PDF LUYỆN TẬP) */}
+              <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-extrabold text-amber-900 text-xs">
+                    <ListChecks size={16} className="text-amber-600" />
+                    <span>Ô LUYỆN TẬP (Bài tập rèn luyện & Hệ thống ví dụ)</span>
+                  </div>
+                  <span className="text-[10px] text-amber-700 font-semibold">Thay thế bài tập giao thêm</span>
+                </div>
+
+                <textarea
+                  rows={4}
+                  value={editLessonPractice}
+                  onChange={(e) => setEditLessonPractice(e.target.value)}
+                  placeholder="Nhập hệ thống bài tập luyện tập, ví dụ mẫu hoặc câu hỏi rèn luyện cho học sinh..."
+                  className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs focus:border-amber-600 focus:outline-none"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Sửa Số câu luyện tập */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Số câu bài tập luyện tập</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={editLessonExercisesCount}
+                      onChange={(e) => setEditLessonExercisesCount(parseInt(e.target.value) || 0)}
+                      className="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white font-bold focus:border-amber-600 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Quản lý file PDF cho Ô Luyện Tập */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700 flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-slate-800">
+                        <Paperclip size={13} className="text-amber-600" />
+                        <span>File PDF Luyện tập:</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">PDF ~5MB</span>
+                    </label>
+
+                    <input
+                      type="file"
+                      ref={editPracticePdfInputRef}
+                      accept=".pdf,application/pdf"
+                      onChange={handleEditPracticePdfSelect}
+                      className="hidden"
+                    />
+
+                    {editLessonPracticePdfFile ? (
+                      <div className="p-2 rounded-xl bg-white border border-amber-300 flex items-center justify-between gap-2 text-xs shadow-2xs">
+                        <div className="flex items-center gap-1.5 overflow-hidden">
+                          <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-[9px] shrink-0">
+                            PDF
+                          </div>
+                          <span className="font-bold text-slate-900 truncate text-[11px]">{editLessonPracticePdfFile.fileName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => editPracticePdfInputRef.current?.click()}
+                            className="px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-[10px]"
+                          >
+                            Đổi PDF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditLessonPracticePdfFile(null)}
+                            className="p-1 rounded-lg text-rose-500 hover:bg-rose-50"
+                            title="Xóa file PDF luyện tập"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => editPracticePdfInputRef.current?.click()}
+                        className="w-full h-10 px-2 rounded-xl border-2 border-dashed border-amber-300 hover:border-amber-500 bg-white hover:bg-amber-50/50 text-amber-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                      >
+                        <Upload size={13} />
+                        <span>+ Gắn PDF Luyện Tập Mới</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Link tài liệu trực tuyến */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Link tài liệu trực tuyến (Tùy chọn)</label>
+                <input
+                  type="url"
+                  value={editLessonExternalLink}
+                  onChange={(e) => setEditLessonExternalLink(e.target.value)}
+                  placeholder="https://drive.google.com/..."
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 focus:border-amber-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditLessonModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Hủy Bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Save size={15} />
+                  <span>Lưu Thay Đổi Bài Học</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: XEM CHI TIẾT BÀI HỌC & LUYỆN TẬP (HỌC SINH & GIÁO VIÊN)           */}
       {/* ========================================================================= */}
       {selectedLessonDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="space-y-1">
+              <div className="space-y-1 min-w-0">
                 <span className="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[11px] uppercase tracking-wider inline-block">
                   {selectedLessonDetail.chapter}
                 </span>
-                <h3 className="text-lg font-black text-slate-900">{selectedLessonDetail.title}</h3>
-                <div className="flex items-center gap-3 text-xs text-slate-400">
-                  <span>Giáo viên: {selectedLessonDetail.teacherName}</span>
+                <h3 className="text-lg font-black text-slate-900 leading-snug">{selectedLessonDetail.title}</h3>
+                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                  <span>Giáo viên: <strong className="text-slate-700 font-semibold">{selectedLessonDetail.teacherName}</strong></span>
                   <span>·</span>
                   <span>Ngày đăng: {selectedLessonDetail.createdAt}</span>
+                  {selectedLessonDetail.updatedAt && (
+                    <>
+                      <span>·</span>
+                      <span className="text-amber-700 font-semibold bg-amber-50 px-2 py-0.2 rounded-md border border-amber-200">
+                        Cập nhật: {selectedLessonDetail.updatedAt}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {userRole === 'teacher' && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditLesson(selectedLessonDetail)}
+                    className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+                    title="Chỉnh sửa bài học này"
+                  >
+                    <Pencil size={13} />
+                    <span>Sửa Bài Học</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedLessonDetail(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Mục tiêu bài học */}
+            {selectedLessonDetail.description && (
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed">
+                <span className="font-bold text-slate-900 block mb-0.5">Mục tiêu bài học:</span>
+                {selectedLessonDetail.description}
+              </div>
+            )}
+
+            {/* Tabs chuyển đổi: Ô Bài Học vs Ô Luyện Tập */}
+            <div className="flex items-center gap-2 p-1 rounded-2xl bg-slate-100 border border-slate-200">
               <button
                 type="button"
-                onClick={() => setSelectedLessonDetail(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                onClick={() => setLessonDetailTab('theory')}
+                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                  lessonDetailTab === 'theory'
+                    ? 'bg-white text-blue-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <X size={20} />
+                <BookOpen size={15} />
+                <span>Ô Bài Học (Lý Thuyết)</span>
+                {selectedLessonDetail.pdfAttachment && (
+                  <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" title="Có file PDF đính kèm" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLessonDetailTab('practice')}
+                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                  lessonDetailTab === 'practice'
+                    ? 'bg-white text-amber-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ListChecks size={15} />
+                <span>Ô Luyện Tập ({selectedLessonDetail.exercisesCount || 10} câu)</span>
+                {selectedLessonDetail.practicePdfAttachment && (
+                  <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" title="Có file PDF luyện tập" />
+                )}
               </button>
             </div>
 
-            {/* Mô tả */}
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed">
-              <span className="font-bold text-slate-900 block mb-1">Mục tiêu bài học:</span>
-              {selectedLessonDetail.description}
-            </div>
-
-            {/* Nội dung lý thuyết & công thức */}
-            <div className="space-y-2">
-              <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wide">
-                Nội Dung Lý Thuyết & Công Thức Trọng Tâm:
-              </h4>
-              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3 text-xs text-slate-800 leading-relaxed font-sans whitespace-pre-wrap">
-                {selectedLessonDetail.content}
-              </div>
-            </div>
-
-            {/* Tài liệu đính kèm */}
-            {selectedLessonDetail.attachments && selectedLessonDetail.attachments.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wide">
-                  Tài Liệu & Sơ Đồ Đính Kèm:
-                </h4>
+            {/* TAB 1: Ô BÀI HỌC (LÝ THUYẾT & PDF BÀI HỌC) */}
+            {lessonDetailTab === 'theory' && (
+              <div className="space-y-4 animate-in fade-in duration-150">
                 <div className="space-y-2">
-                  {selectedLessonDetail.attachments.map((att, attIdx) => (
-                    <div
-                      key={attIdx}
-                      className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
-                          <Paperclip size={15} />
+                  <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <BookOpen size={14} className="text-blue-600" />
+                    <span>Nội Dung Trọng Tâm & Công Thức Bài Học:</span>
+                  </h4>
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
+                    {renderFormattedMathText(selectedLessonDetail.theoryContent || selectedLessonDetail.content || 'Nội dung lý thuyết chưa được cập nhật.')}
+                  </div>
+                </div>
+
+                {/* File PDF Bài Học Gắn Kèm */}
+                <div className="space-y-2">
+                  <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <Paperclip size={14} className="text-blue-600" />
+                    <span>File PDF Gắn Cho Ô Bài Học:</span>
+                  </h4>
+
+                  {selectedLessonDetail.pdfAttachment ? (
+                    <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">
+                          PDF
                         </div>
                         <div>
-                          <span className="font-bold text-blue-900 block">{att.name}</span>
-                          <span className="text-[11px] text-blue-600">
-                            {att.type.toUpperCase()} · Dung lượng {att.size || '1.8 MB'}
+                          <span className="font-bold text-blue-900 block text-sm">
+                            {selectedLessonDetail.pdfAttachment.fileName}
+                          </span>
+                          <span className="text-[11px] text-blue-700 font-medium">
+                            Tài liệu bài học · Dung lượng {selectedLessonDetail.pdfAttachment.fileSize}
                           </span>
                         </div>
                       </div>
-                      <a
-                        href={att.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3 py-1.5 rounded-xl bg-white text-blue-700 font-bold text-xs border border-blue-200 hover:bg-blue-100 flex items-center gap-1.5 transition-colors shadow-2xs"
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDownloadPdf(
+                            selectedLessonDetail.pdfAttachment!.fileName,
+                            selectedLessonDetail.pdfAttachment!.fileData
+                          )
+                        }
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors whitespace-nowrap self-end sm:self-auto"
                       >
-                        <Download size={13} />
-                        <span>Tải Tài Liệu</span>
-                      </a>
+                        <Download size={14} />
+                        <span>Tải PDF Bài Học</span>
+                      </button>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="p-4 rounded-2xl border-2 border-dashed border-slate-200 text-center text-slate-400 text-xs">
+                      <p>Chưa có file PDF nào được gắn cho ô bài học này.</p>
+                      {userRole === 'teacher' && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditLesson(selectedLessonDetail)}
+                          className="mt-1.5 text-blue-600 font-bold hover:underline inline-block"
+                        >
+                          + Bấm vào đây để gắn file PDF bài học
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
+            {/* TAB 2: Ô LUYỆN TẬP (BÀI TẬP RÈN LUYỆN & PDF LUYỆN TẬP) */}
+            {lessonDetailTab === 'practice' && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <ListChecks size={14} className="text-amber-600" />
+                      <span>Hệ Thống Bài Tập Luyện Tập:</span>
+                    </h4>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                      {selectedLessonDetail.exercisesCount || 10} câu rèn luyện
+                    </span>
+                  </div>
+
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
+                    {renderFormattedMathText(
+                      selectedLessonDetail.practiceContent ||
+                        selectedLessonDetail.exercisesContent ||
+                        'Hệ thống bài tập luyện tập đang được cập nhật.'
+                    )}
+                  </div>
+                </div>
+
+                {/* File PDF Luyện Tập Gắn Kèm */}
+                <div className="space-y-2">
+                  <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <Paperclip size={14} className="text-amber-600" />
+                    <span>File PDF Gắn Cho Ô Luyện Tập:</span>
+                  </h4>
+
+                  {selectedLessonDetail.practicePdfAttachment ? (
+                    <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">
+                          PDF
+                        </div>
+                        <div>
+                          <span className="font-bold text-amber-950 block text-sm">
+                            {selectedLessonDetail.practicePdfAttachment.fileName}
+                          </span>
+                          <span className="text-[11px] text-amber-800 font-medium">
+                            Phiếu bài tập luyện tập · Dung lượng {selectedLessonDetail.practicePdfAttachment.fileSize}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDownloadPdf(
+                            selectedLessonDetail.practicePdfAttachment!.fileName,
+                            selectedLessonDetail.practicePdfAttachment!.fileData
+                          )
+                        }
+                        className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors whitespace-nowrap self-end sm:self-auto"
+                      >
+                        <Download size={14} />
+                        <span>Tải Phiếu Luyện Tập (PDF)</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-2xl border-2 border-dashed border-slate-200 text-center text-slate-400 text-xs">
+                      <p>Chưa có file PDF nào được gắn cho ô luyện tập này.</p>
+                      {userRole === 'teacher' && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditLesson(selectedLessonDetail)}
+                          className="mt-1.5 text-amber-600 font-bold hover:underline inline-block"
+                        >
+                          + Bấm vào đây để gắn file PDF luyện tập
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Link tài liệu trực tuyến nếu có */}
+            {selectedLessonDetail.externalLink && (
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 text-slate-700 truncate">
+                  <ExternalLink size={14} className="text-blue-600 shrink-0" />
+                  <span className="font-bold">Link tham khảo trực tuyến:</span>
+                  <span className="text-slate-500 font-mono truncate">{selectedLessonDetail.externalLink}</span>
+                </div>
+                <a
+                  href={selectedLessonDetail.externalLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-white text-blue-700 font-bold border border-slate-200 hover:bg-slate-100 shrink-0 transition-colors"
+                >
+                  Mở Link
+                </a>
+              </div>
+            )}
+
             {/* Footer action */}
-            <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 flex-wrap">
               {userRole === 'student' ? (
                 <button
                   type="button"
@@ -2166,15 +3001,25 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   </span>
                 </button>
               ) : (
-                <span className="text-xs text-slate-500 font-semibold">
-                  {selectedLessonDetail.completedStudentIds?.length || 0} học sinh đã học bài này
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 font-semibold">
+                    {selectedLessonDetail.completedStudentIds?.length || 0} học sinh đã học bài này
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditLesson(selectedLessonDetail)}
+                    className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-xs flex items-center gap-1 transition-colors"
+                  >
+                    <Pencil size={13} />
+                    <span>Chỉnh Sửa</span>
+                  </button>
+                </div>
               )}
 
               <button
                 type="button"
                 onClick={() => setSelectedLessonDetail(null)}
-                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors ml-auto"
               >
                 Đóng
               </button>

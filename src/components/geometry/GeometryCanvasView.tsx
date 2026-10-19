@@ -80,13 +80,19 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
   const [draggedPoint, setDraggedPoint] = useState<string | null>(null);
 
   // ==========================================
-  // CÔNG CỤ TỰ VẼ TƯƠNG TÁC 2D (ĐOẠN THẲNG, TRUNG ĐIỂM, ĐƯỜNG CAO)
+  // CÔNG CỤ TỰ VẼ TƯƠNG TÁC 2D (ĐOẠN THẲNG, TRUNG ĐIỂM, ĐƯỜNG CAO, TRUNG TUYẾN)
   // ==========================================
-  const [tool2D, setTool2D] = useState<'pointer' | 'segment' | 'midpoint' | 'altitude' | 'add_point'>('pointer');
+  const [tool2D, setTool2D] = useState<'pointer' | 'segment' | 'midpoint' | 'altitude' | 'median' | 'add_point'>('pointer');
   const [selectedPointsForTool, setSelectedPointsForTool] = useState<string[]>([]);
   const [customSegments2D, setCustomSegments2D] = useState<{ id: string; p1: string; p2: string; style?: 'solid' | 'dashed'; color?: string }[]>([]);
   const [customMidpoints2D, setCustomMidpoints2D] = useState<{ id: string; label: string; p1: string; p2: string }[]>([]);
   const [toolStatusMessage, setToolStatusMessage] = useState<string | null>(null);
+
+  // Form thao tác nhanh 2D
+  const [quick2DPointA, setQuick2DPointA] = useState<string>('A');
+  const [quick2DPointB, setQuick2DPointB] = useState<string>('B');
+  const [quick2DPointC, setQuick2DPointC] = useState<string>('C');
+  const [quickTab2D, setQuickTab2D] = useState<'segment' | 'midpoint' | 'altitude' | 'median'>('segment');
 
   // Bảo vệ an toàn kiểu mảng: chống crash khi React Fast Refresh / state deserialization
   const safeCustomSegments2D = Array.isArray(customSegments2D) ? customSegments2D : [];

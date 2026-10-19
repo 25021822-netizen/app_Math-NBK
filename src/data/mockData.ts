@@ -955,21 +955,41 @@ export const SAMPLE_CLASSROOM_LESSONS: ClassroomLesson[] = [
 - Bài 1: Cho hàm số $f(x) = x^4 - 4x^2 + 3$. Đếm số cực trị của hàm số $y = |f(x)|$.
 - Bài 2: Tìm $m$ để hàm số $y = |x^3 - 3x + m|$ có đúng 3 điểm cực trị.
 - Bài 3: Cho hàm số $f(x)$ có đồ thị như hình vẽ. Xác định số điểm cực trị của $g(x) = f(|x| + 1)$.`,
-    content: 'Xem chi tiết ở tab Lý thuyết và Bài tập bài giảng.',
+    practiceContent: `### Hệ Thống Bài Tập Luyện Tập Trọng Tâm:
+**Bài 1 (Nhận biết):** Cho hàm số $y = f(x)$ có đạo hàm $f'(x) = (x-1)^2(x+2)(x-3)$. Số điểm cực trị của hàm số $y = f(x)$ là bao nhiêu?
+*Đáp án:* 2 điểm cực trị (tại $x = -2$ và $x = 3$).
+
+**Bài 2 (Thông hiểu):** Tìm giá trị tham số $m$ để hàm số $y = x^3 - 3mx^2 + 3(m^2 - 1)x + 1$ đạt cực tiểu tại $x = 2$.
+
+**Bài 3 (Vận dụng):** Cho hàm số $y = f(x)$ có đồ thị như hình vẽ. Tìm tất cả giá trị thực của tham số $m$ để phương trình $|f(x)| = m$ có đúng 4 nghiệm thực phân biệt.
+
+**Bài 4 (Vận dụng cao):** Có bao nhiêu giá trị nguyên của $m \\in [-10; 10]$ để hàm số $g(x) = |x^4 - 4x^2 + m|$ có đúng 7 điểm cực trị?`,
+    content: 'Xem chi tiết ở tab Bài học và Luyện tập.',
     teacherName: 'ThS. Trần Văn Minh',
     createdAt: '2026-10-10',
     externalLink: 'https://drive.google.com/file/d/1A_xY9SampleMathDriveLink12A1/view',
     pdfAttachment: {
-      fileName: 'ChuyenDe1_CucTri_TriTuyetDoi_12A1.pdf',
+      fileName: 'ChuyenDe1_BaiHoc_CucTri_12A1.pdf',
       fileSize: '3.4 MB',
+      fileData: '#',
+    },
+    practicePdfAttachment: {
+      fileName: 'Phieu_LuyenTap_CucTri_12A1.pdf',
+      fileSize: '2.1 MB',
       fileData: '#',
     },
     attachments: [
       {
-        name: 'ChuyenDe1_CucTri_TriTuyetDoi_12A1.pdf',
+        name: 'ChuyenDe1_BaiHoc_CucTri_12A1.pdf',
         type: 'pdf',
         url: '#',
         size: '3.4 MB',
+      },
+      {
+        name: 'Phieu_LuyenTap_CucTri_12A1.pdf',
+        type: 'pdf',
+        url: '#',
+        size: '2.1 MB',
       },
     ],
     exercisesCount: 15,
@@ -1005,7 +1025,15 @@ export const SAMPLE_CLASSROOM_LESSONS: ClassroomLesson[] = [
 ### 2. Bài tập tự luyện:
 - Bài 1: Cho hình lập phương $ABCD.A'B'C'D'$ cạnh $a$. Tính góc giữa $AC'$ và mặt phẳng $(A'BD)$.
 - Bài 2: Cho lăng trụ đứng $ABC.A'B'C'$ có đáy là tam giác đều cạnh $a$, $AA' = a\\sqrt{2}$. Tính khoảng cách giữa hai đường thẳng chéo nhau $AB'$ và $BC'$.`,
-    content: 'Xem chi tiết ở tab Lý thuyết và Bài tập bài giảng.',
+    practiceContent: `### Bài Tập Luyện Tập Tọa Độ Hóa Không Gian Oxyz:
+**Bài 1:** Cho khối lăng trụ đứng $ABC.A'B'C'$ có đáy là tam giác vuông cân tại $A, AB = AC = a$, chiều cao $AA' = a\\sqrt{2}$. Gọi $M$ là trung điểm cạnh $B'C'$.
+a) Gắn hệ tọa độ $Oxyz$ thích hợp và xác định tọa độ các đỉnh.
+b) Tính khoảng cách giữa hai đường thẳng chéo nhau $AM$ và $B'C$.
+
+**Bài 2:** Cho hình chóp tứ giác đều $S.ABCD$ có đáy là hình vuông cạnh $2a$, góc giữa mặt bên và mặt đáy bằng $60^\\circ$.
+a) Tìm tọa độ chân đường cao hạ từ $S$ xuống đáy.
+b) Lập phương trình mặt phẳng $(SAB)$ và tính sin góc giữa $SD$ với $(SAB)$.`,
+    content: 'Xem chi tiết ở tab Bài học và Luyện tập.',
     teacherName: 'ThS. Trần Văn Minh',
     createdAt: '2026-10-12',
     externalLink: 'https://youtu.be/sampleMathVideoOxyzLecture12',
@@ -1014,12 +1042,23 @@ export const SAMPLE_CLASSROOM_LESSONS: ClassroomLesson[] = [
       fileSize: '4.1 MB',
       fileData: '#',
     },
+    practicePdfAttachment: {
+      fileName: 'Phieu_LuyenTap_Oxyz_12A1.pdf',
+      fileSize: '1.9 MB',
+      fileData: '#',
+    },
     attachments: [
       {
         name: 'KyThuat_ToaDoHoa_Oxyz_12A1.pdf',
         type: 'pdf',
         url: '#',
         size: '4.1 MB',
+      },
+      {
+        name: 'Phieu_LuyenTap_Oxyz_12A1.pdf',
+        type: 'pdf',
+        url: '#',
+        size: '1.9 MB',
       },
     ],
     exercisesCount: 12,
@@ -1049,7 +1088,11 @@ export const SAMPLE_CLASSROOM_LESSONS: ClassroomLesson[] = [
 ### 2. Bài tập tự luyện:
 - Bài 1: Giải phương trình $2(\\sin x - \\cos x) + 3\\sin 2x = 2$.
 - Bài 2: Tìm $m$ để phương trình $\\sin 2x - 2\\sqrt{2}(\\sin x + \\cos x) + 2m - 1 = 0$ có nghiệm.`,
-    content: 'Xem chi tiết ở tab Lý thuyết và Bài tập bài giảng.',
+    practiceContent: `### Phiếu Luyện Tập Phương Trình Lượng Giác Bậc Hai:
+**Bài 1:** Giải phương trình $2\\sin^2 x - 5\\sin x\\cos x - \\cos^2 x = -2$.
+**Bài 2:** Tìm tập nghiệm của phương trình $\\sin x + \\cos x = \\sqrt{2}\\sin 5x$.
+**Bài 3:** Tìm tất cả các giá trị của tham số $m$ để phương trình $3\\cos 2x - (2m+1)\\cos x + m - 1 = 0$ có đúng 3 nghiệm thuộc khoảng $(-\\frac{\\pi}{2}; \\pi)$.`,
+    content: 'Xem chi tiết ở tab Bài học và Luyện tập.',
     teacherName: 'ThS. Trần Văn Minh',
     createdAt: '2026-10-11',
     externalLink: 'https://drive.google.com/drive/folders/sampleLuongGiac11',
@@ -1058,12 +1101,23 @@ export const SAMPLE_CLASSROOM_LESSONS: ClassroomLesson[] = [
       fileSize: '2.8 MB',
       fileData: '#',
     },
+    practicePdfAttachment: {
+      fileName: 'Phieu_LuyenTap_LuongGiac_11B2.pdf',
+      fileSize: '1.6 MB',
+      fileData: '#',
+    },
     attachments: [
       {
         name: 'LuongGiac_11B2_ChuyenDe.pdf',
         type: 'pdf',
         url: '#',
         size: '2.8 MB',
+      },
+      {
+        name: 'Phieu_LuyenTap_LuongGiac_11B2.pdf',
+        type: 'pdf',
+        url: '#',
+        size: '1.6 MB',
       },
     ],
     exercisesCount: 10,
