@@ -1,0 +1,8 @@
+{
+  "name": "Remix Math\u0026NBK",
+  "description": "Hệ thống học Toán THPT thông minh, máy quét OCR giải toán LaTeX, gia sư Socratic và luyện thi chuẩn Bộ Giáo dục \u0026 Đào tạo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
