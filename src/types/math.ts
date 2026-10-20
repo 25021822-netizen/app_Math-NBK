@@ -18,6 +18,7 @@ export interface UserProfile {
   phone?: string;
   bio?: string;
   subject?: string;
+  password?: string; // Mật khẩu đăng nhập tối thiểu 8 ký tự
 }
 
 export type MathTopic = 
@@ -126,6 +127,7 @@ export interface Exam {
   closeTime?: string; // Thời gian đóng đề thi (YYYY-MM-DDTHH:mm)
   distributionType?: 'classroom' | 'repository' | 'both'; // Giao cho nhóm lớp hoặc đưa vào kho tổng hợp
   targetClassIds?: string[]; // Danh sách nhóm lớp được giao đề
+  allowViewAnswersAfterSubmit?: boolean; // Bật/tắt cho phép xem đáp án & lời giải chi tiết khi làm xong
 }
 
 export interface ExamAttempt {
@@ -198,6 +200,8 @@ export interface Classroom {
   teacherId: string;
   teacherName: string;
   studentIds: string[];
+  pendingStudentIds?: string[]; // Học sinh đang chờ giáo viên duyệt vào lớp
+  requiresApproval?: boolean; // Chế độ duyệt thành viên
   assignedExamIds: string[];
   createdAt: string;
   description?: string;
@@ -269,6 +273,12 @@ export interface ChatMention {
   userName: string;
 }
 
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  userIds: string[];
+}
+
 export interface ClassroomChatMessage {
   id: string;
   classId: string;
@@ -279,6 +289,7 @@ export interface ClassroomChatMessage {
   content: string;
   imageUrl?: string;
   mentions?: ChatMention[];
+  reactions?: ChatReaction[];
   timestamp: string;
 }
 

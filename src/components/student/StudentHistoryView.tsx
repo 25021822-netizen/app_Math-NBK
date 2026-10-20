@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   RotateCcw,
   Eye,
+  EyeOff,
   Filter,
   Search,
   BookOpen,
@@ -42,6 +43,7 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [scoreFilter, setScoreFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [selectedSubmission, setSelectedSubmission] = useState<StudentExamSubmission | null>(null);
+  const [showAnswersInHistory, setShowAnswersInHistory] = useState<boolean>(true);
 
   // Lọc danh sách bài đã làm của riêng học sinh hiện tại
   const studentSubmissions = useMemo(() => {
@@ -354,6 +356,20 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
               </div>
 
               <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAnswersInHistory(!showAnswersInHistory)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-2xs ${
+                    showAnswersInHistory
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                  title="Bật/Tắt hiển thị đáp án đúng để học sinh có thể tự suy ngẫm giải lại"
+                >
+                  {showAnswersInHistory ? <EyeOff size={14} /> : <Eye size={14} />}
+                  <span>{showAnswersInHistory ? 'Tắt Xem Đáp Án' : 'Bật Xem Đáp Án'}</span>
+                </button>
+
                 <div className="text-right">
                   <span className="text-xs text-slate-400 font-semibold block">Điểm số:</span>
                   <span className="text-2xl font-black font-mono text-blue-600">
@@ -440,13 +456,19 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                         <span className="block text-[10px] font-sans font-bold opacity-75">Bạn đã chọn:</span>
                         <strong>{studentDisplayAns}</strong>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900">
-                        <span className="block text-[10px] font-sans font-bold text-blue-700">Đáp án chính xác:</span>
-                        <strong>{correctDisplayAns}</strong>
-                      </div>
+                      {showAnswersInHistory ? (
+                        <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900">
+                          <span className="block text-[10px] font-sans font-bold text-blue-700">Đáp án chính xác:</span>
+                          <strong>{correctDisplayAns}</strong>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 italic flex items-center justify-center">
+                          <span>Đáp án đúng đã được ẩn</span>
+                        </div>
+                      )}
                     </div>
 
-                    {q.explanation && (
+                    {showAnswersInHistory && q.explanation && (
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-[11px] space-y-1">
                         <span className="font-bold text-slate-900 block">Lời giải chi tiết:</span>
                         <p>{q.explanation}</p>

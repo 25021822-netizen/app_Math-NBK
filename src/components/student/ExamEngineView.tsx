@@ -26,6 +26,8 @@ import {
   Maximize,
   Minimize,
   ArrowLeft,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface ExamEngineViewProps {
@@ -64,6 +66,8 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
   const [scoreReport, setScoreReport] = useState<any | null>(null);
   const [lastAutoSaved, setLastAutoSaved] = useState<string>('');
+  // Bật / tắt xem đáp án chi tiết khi nộp bài xong
+  const [showDetailedAnswers, setShowDetailedAnswers] = useState<boolean>(true);
 
   // Trạng thái chế độ toàn màn hình
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
@@ -628,6 +632,45 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
             </div>
           </div>
 
+          {/* Toggle Bật/Tắt Xem Đáp Án & Lời Giải Chi Tiết */}
+          {exam.allowViewAnswersAfterSubmit !== false ? (
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shrink-0">
+                  <Eye size={18} />
+                </div>
+                <div>
+                  <span className="text-xs font-extrabold text-blue-900 block">
+                    Chế Độ Xem Đáp Án & Lời Giải Chi Tiết
+                  </span>
+                  <span className="text-[11px] text-blue-700">
+                    {showDetailedAnswers
+                      ? 'Đang bật: Hiển thị phương án đúng, tô màu kết quả và bài giải từng câu'
+                      : 'Đang tắt: Đang ẩn đáp án đúng để học sinh có thể tự suy ngẫm giải lại'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDetailedAnswers(!showDetailedAnswers)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs whitespace-nowrap ${
+                  showDetailedAnswers
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                }`}
+              >
+                {showDetailedAnswers ? <EyeOff size={14} /> : <Eye size={14} />}
+                <span>{showDetailedAnswers ? 'Tắt Xem Đáp Án' : 'Bật Xem Đáp Án'}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+              <Lock size={16} className="text-amber-600 shrink-0" />
+              <span>Thầy cô đã tắt tính năng xem đáp án cho đề thi này để bảo mật phòng thi.</span>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
             {!isMaxAttemptsReached && (
               <button
@@ -747,12 +790,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       {q.options.map((opt) => {
                         const isSelected = answers[q.id] === opt.key;
                         const isCorrect = q.correctAnswer === opt.key;
+                        const canViewAnswer = isSubmitted && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers;
 
                         let borderClass = 'border-slate-200 hover:border-slate-300';
                         if (isSelected) borderClass = 'border-blue-600 bg-blue-50/60 font-bold';
 
-                        if (isSubmitted) {
-                          if (isCorrect) borderClass = 'border-emerald-500 bg-emerald-50 font-bold';
+                        if (canViewAnswer) {
+                          if (isCorrect) borderClass = 'border-emerald-500 bg-emerald-50 font-bold ring-2 ring-emerald-300';
                           else if (isSelected) borderClass = 'border-rose-400 bg-rose-50';
                         }
 
@@ -766,7 +810,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                           >
                             <span
                               className={`w-6 h-6 rounded-lg font-bold text-xs flex items-center justify-center shrink-0 ${
-                                isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                                canViewAnswer && isCorrect
+                                  ? 'bg-emerald-600 text-white'
+                                  : isSelected
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-slate-100 text-slate-700'
                               }`}
                             >
                               {opt.key}
@@ -780,9 +828,12 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       })}
                     </div>
 
-                    {isSubmitted && q.explanation && (
+                    {isSubmitted && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers && q.explanation && (
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
-                        <span className="font-bold text-slate-900 block">Lời giải chi tiết:</span>
+                        <span className="font-bold text-slate-900 block flex items-center gap-1.5">
+                          <BookOpen size={14} className="text-blue-600" />
+                          <span>Lời giải chi tiết:</span>
+                        </span>
                         <p>{q.explanation}</p>
                       </div>
                     )}

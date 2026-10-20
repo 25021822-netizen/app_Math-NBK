@@ -70,6 +70,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [manualDistributionType, setManualDistributionType] = useState<'classroom' | 'repository' | 'both'>('classroom');
   const [manualTargetClassIds, setManualTargetClassIds] = useState<string[]>(['cls_12a1']);
 
+  // 4. Cho phép học sinh xem đáp án & lời giải chi tiết khi làm xong
+  const [manualAllowViewAnswers, setManualAllowViewAnswers] = useState<boolean>(true);
+
   // Danh sách câu hỏi trong đề thi (Chỉ 3 phần trắc nghiệm chuẩn BGD)
   const [manualQuestions, setManualQuestions] = useState<Question[]>(SAMPLE_EXAM_BGD.questions);
 
@@ -152,6 +155,29 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
 
     setShowQuestionModal(true);
+  };
+
+  // Xóa hết toàn bộ ô nhập trong modal câu hỏi
+  const handleClearQuestionModalFields = () => {
+    setModalPrompt('');
+    setModalLatex('');
+    setModalExplanation('');
+    setModalImageAttachment(null);
+    setModalPdfName(null);
+    if (modalPart === 'part_1_mcq') {
+      setModalOptA('');
+      setModalOptB('');
+      setModalOptC('');
+      setModalOptD('');
+      setModalCorrectMcq('A');
+    } else if (modalPart === 'part_2_true_false') {
+      setModalTfA({ text: '', isCorrect: true });
+      setModalTfB({ text: '', isCorrect: false });
+      setModalTfC({ text: '', isCorrect: true });
+      setModalTfD({ text: '', isCorrect: false });
+    } else {
+      setModalShortAnswer('');
+    }
   };
 
   // Mở modal để chỉnh sửa câu hỏi
@@ -376,6 +402,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       closeTime: manualHasTimeWindow && manualCloseTime ? manualCloseTime : undefined,
       distributionType: manualDistributionType,
       targetClassIds: manualDistributionType !== 'repository' ? manualTargetClassIds : undefined,
+      allowViewAnswersAfterSubmit: manualAllowViewAnswers,
     };
 
     if (onPublishExam) {
@@ -659,6 +686,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Hàng 4: 4. BẬT/TẮT XEM ĐÁP ÁN KHI LÀM XONG */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
+              <label className="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={manualAllowViewAnswers}
+                  onChange={(e) => setManualAllowViewAnswers(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <Eye size={16} className="text-blue-600" />
+                <span>Cho phép học sinh xem đáp án & lời giải chi tiết sau khi nộp bài</span>
+              </label>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${manualAllowViewAnswers ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
+                {manualAllowViewAnswers ? 'Đang Bật' : 'Đang Tắt'}
+              </span>
+            </div>
           </div>
 
           {/* Statistics Bar: Chỉ hiển thị 3 phần (Phần 4 tự luận đã xóa) */}
@@ -726,6 +770,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowClearAllModal(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition-colors flex items-center gap-1.5"
+                title="Xóa toàn bộ câu hỏi để làm lại từ đầu"
+              >
+                <Trash2 size={14} />
+                <span>Xóa Hết Câu Hỏi</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleAutoNormalizePoints}
@@ -930,9 +984,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <h3 className="font-extrabold text-base text-slate-900">
                 {editingQuestionId ? 'Chỉnh Sửa Câu Hỏi' : 'Thêm Câu Hỏi Mới Vào Đề Thi'}
               </h3>
-              <button onClick={() => setShowQuestionModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleClearQuestionModalFields}
+                  className="px-2.5 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                  title="Xóa hết toàn bộ nội dung ô nhập để làm lại"
+                >
+                  <Trash2 size={13} />
+                  <span>Xóa Hết Ô Nhập</span>
+                </button>
+                <button
+                  onClick={() => setShowQuestionModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Chọn Loại Câu Hỏi (ĐÃ LOẠI BỎ PHẦN 4 TỰ LUẬN) */}
@@ -1198,15 +1266,24 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
+                onClick={handleClearQuestionModalFields}
+                className="px-4 py-2.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                title="Xóa hết toàn bộ nội dung câu hỏi đang nhập để làm lại"
+              >
+                <Trash2 size={14} />
+                <span>Xóa Hết (Làm Mới)</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowQuestionModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 Hủy
               </button>
               <button
                 type="button"
                 onClick={handleSaveQuestion}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs"
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors"
               >
                 Lưu Câu Hỏi
               </button>
@@ -1215,7 +1292,41 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         </div>
       )}
 
-      {/* MODAL XÁC NHẬN XÓA CÂU HỎI */}
+      {/* MODAL XÁC NHẬN XÓA TẤT CẢ CÂU HỎI */}
+      {showClearAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 text-center animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 size={24} />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-base text-slate-900">Xóa Toàn Bộ Câu Hỏi?</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                Thao tác này sẽ xóa toàn bộ {manualQuestions.length} câu hỏi hiện có trong đề thi để bắt đầu lại từ đầu. Thao tác không thể hoàn tác.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowClearAllModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                onClick={() => {
+                  setManualQuestions([]);
+                  setShowClearAllModal(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs"
+              >
+                Xóa Hết ({manualQuestions.length} câu)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA 1 CÂU HỎI */}
       {questionToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 text-center animate-in zoom-in-95">

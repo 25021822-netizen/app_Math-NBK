@@ -30,6 +30,7 @@ export const INITIAL_USER_PROFILE: UserProfile = {
   phone: '0912 345 678',
   bio: 'Học sinh lớp 12 chuyên Toán, định hướng thi khối A00 và kỳ thi Đánh giá Năng lực.',
   subject: 'Toán Học THPT',
+  password: 'AnNguyen@2025',
 };
 
 export const SAMPLE_SKILL_TREES: Record<10 | 11 | 12, SkillNode[]> = {
@@ -509,6 +510,7 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
     maxDailyScans: 10,
     grade: 12,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AnNguyen',
+    password: 'AnNguyen@2025',
   },
   {
     id: 'usr_student_02',
@@ -523,6 +525,7 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
     maxDailyScans: 10,
     grade: 12,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=HoangLong',
+    password: 'HoangLong@2025',
   },
   {
     id: 'usr_student_03',
@@ -537,6 +540,7 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
     maxDailyScans: 9999,
     grade: 12,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ThuyDung',
+    password: 'ThuyDung@2025',
   },
   {
     id: 'usr_student_04',
@@ -551,6 +555,7 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
     maxDailyScans: 10,
     grade: 12,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=MinhDuc',
+    password: 'MinhDuc@2025',
   },
   {
     id: 'usr_student_05',
@@ -565,6 +570,7 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
     maxDailyScans: 9999,
     grade: 12,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=KhanhLinh',
+    password: 'KhanhLinh@2025',
   },
   {
     id: 'usr_student_06',
@@ -579,6 +585,7 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
     maxDailyScans: 10,
     grade: 11,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ThanhTung',
+    password: 'ThanhTung@2025',
   },
   {
     id: 'usr_student_07',
@@ -593,7 +600,55 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
     maxDailyScans: 10,
     grade: 10,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=PhuongThao',
+    password: 'PhuongThao@2025',
   },
+];
+
+export const SAMPLE_TEACHERS: UserProfile[] = [
+  {
+    id: 'usr_teacher_01',
+    name: 'ThS. Trần Văn Minh',
+    email: 'minh.tran@thpt-nbk.edu.vn',
+    role: 'teacher',
+    tier: 'premium',
+    xp: 8900,
+    streakDays: 45,
+    lastActiveDate: '2026-10-15',
+    dailyScanCount: 0,
+    maxDailyScans: 9999,
+    grade: 12,
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMinh',
+    schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+    phone: '0988 776 655',
+    bio: 'Giáo viên phụ trách bồi dưỡng chuyên đề Toán Giải tích và Hình học không gian THPT.',
+    subject: 'Tổ Toán - Tin THPT',
+    password: 'TeacherMinh@2025',
+  },
+];
+
+export const SAMPLE_ADMIN: UserProfile = {
+  id: 'usr_admin_01',
+  name: 'Ban Giám Hiệu & Quản Trị Hệ Thống',
+  email: 'admin.math@thpt-nbk.edu.vn',
+  role: 'admin',
+  tier: 'premium',
+  xp: 15000,
+  streakDays: 120,
+  lastActiveDate: '2026-10-15',
+  dailyScanCount: 0,
+  maxDailyScans: 9999,
+  grade: 12,
+  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK',
+  schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+  phone: '024 3858 1234',
+  bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
+  password: 'AdminMaster@2025',
+};
+
+export const ALL_INITIAL_USERS: UserProfile[] = [
+  ...SAMPLE_STUDENTS,
+  ...SAMPLE_TEACHERS,
+  SAMPLE_ADMIN,
 ];
 
 export const SAMPLE_CLASSROOMS: Classroom[] = [
@@ -605,6 +660,8 @@ export const SAMPLE_CLASSROOMS: Classroom[] = [
     teacherId: 'usr_teacher_01',
     teacherName: 'ThS. Trần Văn Minh',
     studentIds: ['usr_student_01', 'usr_student_02', 'usr_student_03', 'usr_student_04', 'usr_student_05'],
+    pendingStudentIds: ['usr_student_06', 'usr_student_07'],
+    requiresApproval: true,
     assignedExamIds: ['exam_bgd_2025_01'],
     createdAt: '2026-09-05',
     description: 'Lớp chuyên Toán 12, luyện thi Tốt nghiệp THPT Quốc Gia và Đánh giá Năng lực ĐHQG.',
@@ -617,6 +674,8 @@ export const SAMPLE_CLASSROOMS: Classroom[] = [
     teacherId: 'usr_teacher_01',
     teacherName: 'ThS. Trần Văn Minh',
     studentIds: ['usr_student_06'],
+    pendingStudentIds: ['usr_student_07'],
+    requiresApproval: true,
     assignedExamIds: ['exam_bgd_2025_01'],
     createdAt: '2026-09-10',
     description: 'Bồi dưỡng chuyên sâu các chuyên đề Lượng giác, Hình học không gian và Giới hạn dãy số.',

@@ -48,6 +48,13 @@ import {
   Edit3,
   Upload,
   Save,
+  Smile,
+  CheckCheck,
+  ToggleLeft,
+  ToggleRight,
+  Heart,
+  ThumbsUp,
+  UserX,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -90,7 +97,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onUpdateLessons,
 }) => {
   const [selectedClassId, setSelectedClassId] = useState<string>(classrooms[0]?.id || '');
-  const [activeRightTab, setActiveRightTab] = useState<'curriculum' | 'chat' | 'students'>('curriculum');
+  const [activeRightTab, setActiveRightTab] = useState<'curriculum' | 'chat' | 'students' | 'approvals'>('curriculum');
+  const [approvalActionSuccess, setApprovalActionSuccess] = useState<string | null>(null);
   const [localLessons, setLocalLessons] = useState<ClassroomLesson[]>(classroomLessons || SAMPLE_CLASSROOM_LESSONS);
   const [showAddLessonModal, setShowAddLessonModal] = useState<boolean>(false);
   const [selectedLessonDetail, setSelectedLessonDetail] = useState<ClassroomLesson | null>(null);
@@ -162,19 +170,72 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [joinMessage, setJoinMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // ==========================================
-  // STATE CHO CHAT NHÓM LỚP (GỬI ẢNH, TAG TÊN)
+  // STATE CHO CHAT NHÓM LỚP (GỬI ẢNH, TAG TÊN, EMOJI, REACTIONS)
   // ==========================================
   const [chatMessageText, setChatMessageText] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [showMentionPicker, setShowMentionPicker] = useState<boolean>(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
+  const [emojiCategory, setEmojiCategory] = useState<'popular' | 'faces' | 'math' | 'symbols'>('popular');
+  const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tin nhắn lưu cục bộ của các nhóm lớp kèm phản ứng emoji
+  const [localMessages, setLocalMessages] = useState<Record<string, ClassroomChatMessage[]>>(() => {
+    return {
+      cls_12a1: [
+        {
+          id: 'msg_init_01',
+          classId: 'cls_12a1',
+          senderId: 'usr_teacher_01',
+          senderName: 'ThS. Trần Văn Minh',
+          senderRole: 'teacher',
+          senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMinh',
+          content: 'Chào cả lớp 12A1! Thầy đã cập nhật Chuyên đề Cực trị hàm số và giao Đề thi thử số 01. Các em vào làm bài nhé! 📚📐✨',
+          reactions: [
+            { emoji: '👍', count: 4, userIds: ['usr_student_01', 'usr_student_02', 'usr_student_03', 'usr_student_04'] },
+            { emoji: '🔥', count: 3, userIds: ['usr_student_01', 'usr_student_02', 'usr_student_05'] },
+          ],
+          timestamp: new Date(Date.now() - 3600 * 4 * 1000).toISOString(),
+        },
+        {
+          id: 'msg_init_02',
+          classId: 'cls_12a1',
+          senderId: 'usr_student_01',
+          senderName: 'Nguyễn Văn An',
+          senderRole: 'student',
+          senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=VanAn',
+          content: 'Dạ vâng ạ! @ThS. Trần Văn Minh cho em hỏi câu tích phân trong đề 1 dùng tích phân từng phần I = u.v - ∫ v du phải không thầy? 🤔💡',
+          reactions: [
+            { emoji: '💡', count: 2, userIds: ['usr_teacher_01', 'usr_student_02'] },
+          ],
+          timestamp: new Date(Date.now() - 3600 * 2 * 1000).toISOString(),
+        },
+        {
+          id: 'msg_init_03',
+          classId: 'cls_12a1',
+          senderId: 'usr_teacher_01',
+          senderName: 'ThS. Trần Văn Minh',
+          senderRole: 'teacher',
+          senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMinh',
+          content: 'Chính xác rồi em @Nguyễn Văn An nhé! Đặt u = x và dv = sin(x)dx là ra ngay kết quả = 1. 💯👏 Chúc cả lớp làm bài đạt điểm cao!',
+          reactions: [
+            { emoji: '❤️', count: 5, userIds: ['usr_student_01', 'usr_student_02', 'usr_student_03', 'usr_student_04', 'usr_student_05'] },
+            { emoji: '💯', count: 4, userIds: ['usr_student_01', 'usr_student_03', 'usr_student_04', 'usr_student_05'] },
+          ],
+          timestamp: new Date(Date.now() - 3600 * 1 * 1000).toISOString(),
+        },
+      ],
+      ...classroomMessages,
+    };
+  });
 
   // Lớp học đang chọn
   const currentClass = classrooms.find((c) => c.id === selectedClassId) || classrooms[0];
 
   // Danh sách tin nhắn lớp học hiện tại
-  const currentClassMessages = currentClass ? classroomMessages[currentClass.id] || [] : [];
+  const currentClassMessages = currentClass ? localMessages[currentClass.id] || [] : [];
 
   // Danh sách bài học và chương học thuộc lớp đang chọn (Mục lục lớp)
   const currentClassLessons = currentClass ? localLessons.filter((l) => l.classId === currentClass.id) : [];
@@ -190,6 +251,26 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   // Danh sách học sinh thuộc lớp đang chọn (tra từ allUsers)
   const registeredStudents = allUsers.filter((u) => u.role === 'student');
   const enrolledStudents = registeredStudents.filter((st) => currentClass?.studentIds.includes(st.id));
+
+  // Danh sách học sinh chờ giáo viên phê duyệt vào lớp
+  const pendingStudents = (currentClass?.pendingStudentIds || []).map((id) => {
+    const existing = allUsers.find((u) => u.id === id);
+    if (existing) return existing;
+    return {
+      id,
+      name: `Học sinh (${id})`,
+      email: `${id}@thpt-nbk.edu.vn`,
+      role: 'student' as UserRole,
+      tier: 'free' as const,
+      xp: 450,
+      streakDays: 1,
+      lastActiveDate: new Date().toISOString().split('T')[0],
+      dailyScanCount: 0,
+      maxDailyScans: 10,
+      grade: currentClass.grade || 12,
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${id}`,
+    };
+  });
 
   // Tất cả thành viên trong lớp (giáo viên + học sinh) để tag tên (@mention)
   const classTeacherUser = allUsers.find((u) => u.id === currentClass?.teacherId) || {
@@ -718,7 +799,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
     if (foundClass.studentIds.includes(currentUserId)) {
       setJoinMessage({
-        text: `Bạn đã là thành viên của lớp "${foundClass.name}" rồi!`,
+        text: `Bạn đã là thành viên chính thức của lớp "${foundClass.name}" rồi!`,
         type: 'error',
       });
       setTimeout(() => setJoinMessage(null), 4000);
@@ -726,6 +807,38 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       return;
     }
 
+    // Nếu học sinh đã gửi yêu cầu và đang nằm trong danh sách chờ duyệt
+    if (foundClass.pendingStudentIds?.includes(currentUserId)) {
+      setJoinMessage({
+        text: `Bạn đã gửi yêu cầu gia nhập "${foundClass.name}" rồi. Vui lòng chờ thầy cô phê duyệt nhé!`,
+        type: 'error',
+      });
+      setTimeout(() => setJoinMessage(null), 4000);
+      return;
+    }
+
+    // Nếu lớp bật chế độ duyệt thành viên (mặc định requiresApproval !== false)
+    if (foundClass.requiresApproval !== false) {
+      const updated = classrooms.map((c) => {
+        if (c.id === foundClass.id) {
+          const nextPending = Array.from(new Set([...(c.pendingStudentIds || []), currentUserId]));
+          return { ...c, pendingStudentIds: nextPending };
+        }
+        return c;
+      });
+
+      onUpdateClassrooms(updated);
+      setSelectedClassId(foundClass.id);
+      setJoinMessage({
+        text: `Đã gửi yêu cầu tham gia "${foundClass.name}" thành công! Vui lòng chờ giáo viên duyệt.`,
+        type: 'success',
+      });
+      setJoinCodeInput('');
+      setTimeout(() => setJoinMessage(null), 4500);
+      return;
+    }
+
+    // Nếu lớp không yêu cầu duyệt -> vào thẳng lớp
     const updated = classrooms.map((c) => {
       if (c.id === foundClass.id) {
         return { ...c, studentIds: [...c.studentIds, currentUserId] };
@@ -741,6 +854,101 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     });
     setJoinCodeInput('');
     setTimeout(() => setJoinMessage(null), 4000);
+  };
+
+  // 4b. Giáo viên duyệt học sinh vào lớp (Phê duyệt đơn lẻ)
+  const handleApproveStudent = (studentId: string) => {
+    if (!currentClass) return;
+    const studentObj = allUsers.find((u) => u.id === studentId);
+    const studentName = studentObj?.name || studentId;
+
+    const updatedClassrooms = classrooms.map((cls) => {
+      if (cls.id === currentClass.id) {
+        const nextPending = (cls.pendingStudentIds || []).filter((id) => id !== studentId);
+        const nextStudents = cls.studentIds.includes(studentId)
+          ? cls.studentIds
+          : [...cls.studentIds, studentId];
+        return {
+          ...cls,
+          pendingStudentIds: nextPending,
+          studentIds: nextStudents,
+        };
+      }
+      return cls;
+    });
+
+    onUpdateClassrooms(updatedClassrooms);
+    setApprovalActionSuccess(`Đã duyệt thành công học sinh ${studentName} vào lớp ${currentClass.name}!`);
+    setTimeout(() => setApprovalActionSuccess(null), 3500);
+  };
+
+  // 4c. Giáo viên từ chối học sinh xin vào lớp
+  const handleRejectStudent = (studentId: string) => {
+    if (!currentClass) return;
+    const studentObj = allUsers.find((u) => u.id === studentId);
+    const studentName = studentObj?.name || studentId;
+
+    const updatedClassrooms = classrooms.map((cls) => {
+      if (cls.id === currentClass.id) {
+        const nextPending = (cls.pendingStudentIds || []).filter((id) => id !== studentId);
+        return {
+          ...cls,
+          pendingStudentIds: nextPending,
+        };
+      }
+      return cls;
+    });
+
+    onUpdateClassrooms(updatedClassrooms);
+    setApprovalActionSuccess(`Đã từ chối yêu cầu gia nhập của học sinh ${studentName}.`);
+    setTimeout(() => setApprovalActionSuccess(null), 3500);
+  };
+
+  // 4d. Giáo viên duyệt TẤT CẢ học sinh đang chờ
+  const handleApproveAllPending = () => {
+    if (!currentClass || !currentClass.pendingStudentIds || currentClass.pendingStudentIds.length === 0) return;
+    const count = currentClass.pendingStudentIds.length;
+
+    const updatedClassrooms = classrooms.map((cls) => {
+      if (cls.id === currentClass.id) {
+        const nextStudents = Array.from(new Set([...cls.studentIds, ...(cls.pendingStudentIds || [])]));
+        return {
+          ...cls,
+          pendingStudentIds: [],
+          studentIds: nextStudents,
+        };
+      }
+      return cls;
+    });
+
+    onUpdateClassrooms(updatedClassrooms);
+    setApprovalActionSuccess(`Đã duyệt đồng loạt ${count} học sinh vào lớp ${currentClass.name}!`);
+    setTimeout(() => setApprovalActionSuccess(null), 3500);
+  };
+
+  // 4e. Giáo viên bật/tắt chế độ duyệt thành viên (requiresApproval)
+  const handleToggleRequiresApproval = () => {
+    if (!currentClass) return;
+    const currentVal = currentClass.requiresApproval !== false;
+    const nextVal = !currentVal;
+
+    const updatedClassrooms = classrooms.map((cls) => {
+      if (cls.id === currentClass.id) {
+        return {
+          ...cls,
+          requiresApproval: nextVal,
+        };
+      }
+      return cls;
+    });
+
+    onUpdateClassrooms(updatedClassrooms);
+    setApprovalActionSuccess(
+      nextVal
+        ? 'Đã BẬT chế độ duyệt thành viên: Học sinh nhập mã cần giáo viên phê duyệt mới được vào lớp!'
+        : 'Đã TẮT chế độ duyệt thành viên: Học sinh nhập đúng mã sẽ vào lớp ngay lập tức!'
+    );
+    setTimeout(() => setApprovalActionSuccess(null), 4000);
   };
 
   // 5. Giao đề thi cho cả lớp
@@ -760,7 +968,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   };
 
   // ==========================================
-  // XỬ LÝ CHAT TRONG NHÓM LỚP (GỬI ẢNH, TAG TÊN)
+  // XỬ LÝ CHAT TRONG NHÓM LỚP (GỬI ẢNH, TAG TÊN, EMOJI)
   // ==========================================
   const handleSendChatMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -785,8 +993,14 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       content: chatMessageText.trim(),
       imageUrl: attachedImage || undefined,
       mentions: mentions.length > 0 ? mentions : undefined,
+      reactions: [],
       timestamp: new Date().toISOString(),
     };
+
+    setLocalMessages((prev) => ({
+      ...prev,
+      [currentClass.id]: [...(prev[currentClass.id] || []), newMsg],
+    }));
 
     if (onSendChatMessage) {
       onSendChatMessage(newMsg);
@@ -795,6 +1009,49 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setChatMessageText('');
     setAttachedImage(null);
     setShowMentionPicker(false);
+    setShowEmojiPicker(false);
+  };
+
+  // Xử lý thả / hủy phản ứng Emoji trên từng tin nhắn
+  const handleToggleReaction = (msgId: string, emoji: string) => {
+    if (!currentClass) return;
+    setLocalMessages((prev) => {
+      const list = prev[currentClass.id] || [];
+      const updated = list.map((msg) => {
+        if (msg.id === msgId) {
+          const reactions = msg.reactions || [];
+          const existing = reactions.find((r) => r.emoji === emoji);
+          let nextReactions: any[];
+          if (existing) {
+            if (existing.userIds.includes(currentUserId)) {
+              const nextUsers = existing.userIds.filter((uid: string) => uid !== currentUserId);
+              if (nextUsers.length === 0) {
+                nextReactions = reactions.filter((r) => r.emoji !== emoji);
+              } else {
+                nextReactions = reactions.map((r) =>
+                  r.emoji === emoji ? { ...r, count: nextUsers.length, userIds: nextUsers } : r
+                );
+              }
+            } else {
+              nextReactions = reactions.map((r) =>
+                r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, currentUserId] } : r
+              );
+            }
+          } else {
+            nextReactions = [...reactions, { emoji, count: 1, userIds: [currentUserId] }];
+          }
+          return { ...msg, reactions: nextReactions };
+        }
+        return msg;
+      });
+      return { ...prev, [currentClass.id]: updated };
+    });
+    setActiveReactionMessageId(null);
+  };
+
+  // Chèn emoji vào ô soạn tin nhắn
+  const handleInsertEmoji = (emoji: string) => {
+    setChatMessageText((prev) => prev + emoji);
   };
 
   // Xử lý upload ảnh từ máy tính / điện thoại
@@ -1224,6 +1481,32 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   <Users size={15} />
                   <span>Học Sinh ({enrolledStudents.length})</span>
                 </button>
+
+                {userRole === 'teacher' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab('approvals')}
+                    className={`px-3 sm:px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                      activeRightTab === 'approvals'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                    }`}
+                  >
+                    <UserCheck size={15} />
+                    <span>Duyệt Thành Viên</span>
+                    {pendingStudents.length > 0 && (
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                          activeRightTab === 'approvals'
+                            ? 'bg-white text-amber-800'
+                            : 'bg-rose-500 text-white animate-pulse'
+                        }`}
+                      >
+                        {pendingStudents.length}
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Action buttons on the right based on active tab and role */}
@@ -1253,6 +1536,17 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   >
                     <FolderPlus size={14} />
                     <span>+ Thêm Bài Học</span>
+                  </button>
+                )}
+
+                {userRole === 'teacher' && activeRightTab === 'approvals' && pendingStudents.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleApproveAllPending}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+                  >
+                    <CheckCheck size={14} />
+                    <span>Duyệt Tất Cả ({pendingStudents.length})</span>
                   </button>
                 )}
 
@@ -1534,7 +1828,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               </div>
             )}
 
-            {/* TAB 1: CHAT TRONG NHÓM LỚP (GỬI ẢNH, TAG TÊN) */}
+            {/* TAB 1: CHAT TRONG NHÓM LỚP (GỬI ẢNH, TAG TÊN, EMOJI & PHẢN ỨNG) */}
             {activeRightTab === 'chat' && (
               <div className="flex-1 flex flex-col p-4 sm:p-6 space-y-4">
                 {/* Chat Message Stream */}
@@ -1547,10 +1841,10 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       return (
                         <div
                           key={msg.id}
-                          className={`flex gap-3 text-xs ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                          className={`flex gap-3 text-xs group relative ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
                         >
                           {/* Avatar */}
-                          <div className="w-8 h-8 rounded-xl overflow-hidden shrink-0 bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs">
+                          <div className="w-8 h-8 rounded-xl overflow-hidden shrink-0 bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs shadow-2xs">
                             {msg.senderAvatar ? (
                               <img src={msg.senderAvatar} alt={msg.senderName} className="w-full h-full object-cover" />
                             ) : (
@@ -1558,8 +1852,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                             )}
                           </div>
 
-                          {/* Bubble */}
-                          <div className={`max-w-[82%] space-y-1.5 ${isMe ? 'items-end' : 'items-start'}`}>
+                          {/* Bubble and Reactions */}
+                          <div className={`max-w-[85%] space-y-1.5 ${isMe ? 'items-end' : 'items-start'}`}>
                             <div className={`flex items-center gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
                               <span className="font-extrabold text-[11px] text-slate-800">{msg.senderName}</span>
                               <span
@@ -1575,10 +1869,25 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                   minute: '2-digit',
                                 })}
                               </span>
+
+                              {/* Quick reaction hover toolbar */}
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-white/90 shadow-xs border border-slate-200 rounded-full px-1.5 py-0.5 ml-1">
+                                {['👍', '❤️', '😂', '💡', '🔥'].map((em) => (
+                                  <button
+                                    key={em}
+                                    type="button"
+                                    onClick={() => handleToggleReaction(msg.id, em)}
+                                    className="hover:scale-125 transition-transform text-xs p-0.5"
+                                    title={`Thả cảm xúc ${em}`}
+                                  >
+                                    {em}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
 
                             <div
-                              className={`p-3.5 rounded-2xl leading-relaxed text-xs ${
+                              className={`p-3.5 rounded-2xl leading-relaxed text-xs shadow-2xs ${
                                 isMe
                                   ? 'bg-blue-600 text-white rounded-tr-xs'
                                   : isTeacher
@@ -1609,6 +1918,31 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                 </div>
                               )}
                             </div>
+
+                            {/* Message Reaction Pills */}
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <div className={`flex flex-wrap items-center gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                {msg.reactions.map((r, rIdx) => {
+                                  const hasReacted = r.userIds.includes(currentUserId);
+                                  return (
+                                    <button
+                                      key={rIdx}
+                                      type="button"
+                                      onClick={() => handleToggleReaction(msg.id, r.emoji)}
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
+                                        hasReacted
+                                          ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-2xs'
+                                      }`}
+                                      title={`${r.count} người đã thả ${r.emoji}`}
+                                    >
+                                      <span>{r.emoji}</span>
+                                      <span className="font-mono text-[10px]">{r.count}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -1618,7 +1952,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <MessageSquare size={36} className="mx-auto text-slate-300 mb-2" />
                       <p className="font-bold text-sm text-slate-600">Chưa có tin nhắn nào trong nhóm lớp</p>
                       <p className="text-xs text-slate-400 mt-1">
-                        Hãy gửi lời chào, đặt câu hỏi toán học, tag tên thành viên hoặc đính kèm ảnh bài tập!
+                        Hãy gửi lời chào, đặt câu hỏi toán học, thả emoji hoặc đính kèm ảnh bài tập!
                       </p>
                     </div>
                   )}
@@ -1658,6 +1992,106 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   </div>
                 )}
 
+                {/* Full Emoji Picker Popover */}
+                {showEmojiPicker && (
+                  <div className="p-3 bg-white rounded-2xl border border-slate-300 shadow-xl space-y-2.5 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
+                      <div className="flex items-center gap-1 overflow-x-auto">
+                        <button
+                          type="button"
+                          onClick={() => setEmojiCategory('popular')}
+                          className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                            emojiCategory === 'popular' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          Phổ Biến
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmojiCategory('faces')}
+                          className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                            emojiCategory === 'faces' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          Biểu Cảm
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmojiCategory('math')}
+                          className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                            emojiCategory === 'math' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          Học Tập
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmojiCategory('symbols')}
+                          className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                            emojiCategory === 'symbols' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          Ký Hiệu Toán
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowEmojiPicker(false)}
+                        className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+
+                    <div className="max-h-44 overflow-y-auto grid grid-cols-8 sm:grid-cols-10 gap-1.5 p-1">
+                      {emojiCategory === 'popular' &&
+                        ['👍', '❤️', '😂', '🔥', '💡', '💯', '👏', '🙌', '🎉', '✨', '💪', '🙏', '📚', '📐', '✍️', '🎓', '🎯', '🏆'].map((em, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handleInsertEmoji(em)}
+                            className="w-8 h-8 rounded-xl hover:bg-blue-50 hover:scale-125 transition-all text-base flex items-center justify-center"
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      {emojiCategory === 'faces' &&
+                        ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😊', '😇', '😍', '🥰', '😘', '😋', '😜', '🤔', '🤫', '🥳', '😎', '🥺', '😢', '😭', '🤯', '🤩', '😴'].map((em, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handleInsertEmoji(em)}
+                            className="w-8 h-8 rounded-xl hover:bg-blue-50 hover:scale-125 transition-all text-base flex items-center justify-center"
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      {emojiCategory === 'math' &&
+                        ['📚', '📖', '📝', '✏️', '✍️', '📐', '📏', '🎒', '🎓', '🏫', '🧠', '💻', '🔍', '🔬', '🏆', '🥇', '🥈', '🥉', '🎯', '⏰', '⏳'].map((em, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handleInsertEmoji(em)}
+                            className="w-8 h-8 rounded-xl hover:bg-blue-50 hover:scale-125 transition-all text-base flex items-center justify-center"
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      {emojiCategory === 'symbols' &&
+                        ['∑', '∫', '√', 'π', '∞', '±', '≠', '≤', '≥', '≈', '⊥', '∥', '∠', '△', '∘', '∈', '∉', '⊂', '∩', '∪', '∅', '∀', '∃', '⇒', '⇔', 'ℝ', 'ℤ', 'ℕ', 'x²', 'y²'].map((em, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handleInsertEmoji(em)}
+                            className="w-8 h-8 rounded-xl hover:bg-blue-50 font-bold text-xs text-blue-800 border border-slate-200 flex items-center justify-center font-mono hover:scale-110 transition-all"
+                          >
+                            {em}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Attached Image Preview bar before sending */}
                 {attachedImage && (
                   <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between gap-3 animate-in fade-in">
@@ -1677,83 +2111,33 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     </button>
                   </div>
                 )}
-
-                {/* Chat Input Form */}
-                <form onSubmit={handleSendChatMessage} className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center gap-2">
-                    {/* Tag Name button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowMentionPicker(!showMentionPicker)}
-                      className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 border border-slate-200 transition-colors"
-                      title="Tag tên thành viên"
-                    >
-                      <AtSign size={14} className="text-blue-600" />
-                      <span>Tag tên</span>
-                    </button>
-
-                    {/* Image Attachment Button */}
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleImageFileChange}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 border border-slate-200 transition-colors"
-                      title="Tải ảnh lên từ thiết bị"
-                    >
-                      <ImageIcon size={14} className="text-emerald-600" />
-                      <span>Gửi ảnh</span>
-                    </button>
-
-                    {/* Quick Preset Math Diagram Button */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAttachedImage(
-                          'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600&auto=format&fit=crop&q=80'
-                        )
-                      }
-                      className="hidden sm:flex px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs items-center gap-1 border border-slate-200 transition-colors"
-                    >
-                      <Sparkles size={13} className="text-amber-500" />
-                      <span>Mẫu hình vẽ Oxyz</span>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={chatMessageText}
-                      onChange={(e) => {
-                        setChatMessageText(e.target.value);
-                        if (e.target.value.endsWith('@')) {
-                          setShowMentionPicker(true);
-                        }
-                      }}
-                      placeholder="Nhập nội dung tin nhắn... Gõ @ để nhắc tên bạn bè, thầy cô"
-                      className="flex-1 h-11 px-4 rounded-xl border border-slate-300 text-xs focus:border-blue-600 focus:outline-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!chatMessageText.trim() && !attachedImage}
-                      className="h-11 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
-                    >
-                      <Send size={15} />
-                      <span className="hidden sm:inline">Gửi</span>
-                    </button>
-                  </div>
-                </form>
               </div>
             )}
 
             {/* TAB 2: DANH SÁCH HỌC SINH & QUẢN TRỊ THÀNH VIÊN */}
             {activeRightTab === 'students' && (
               <div className="p-6 space-y-4 flex-1">
+                {/* Banner thông báo nếu có học sinh đang chờ duyệt */}
+                {userRole === 'teacher' && pendingStudents.length > 0 && (
+                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3 text-xs animate-in fade-in">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                        {pendingStudents.length}
+                      </div>
+                      <span className="font-bold text-amber-950">
+                        Có {pendingStudents.length} học sinh đang gửi yêu cầu xin gia nhập lớp học này.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRightTab('approvals')}
+                      className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs whitespace-nowrap transition-colors"
+                    >
+                      Duyệt ngay →
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div>
                     <h3 className="font-extrabold text-sm text-slate-900">
@@ -1853,6 +2237,133 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     <p className="text-xs text-slate-400 mt-1">
                       Hãy bấm "+ Thêm Học Sinh" hoặc gửi mã lớp <strong className="font-mono text-slate-700">{currentClass.code}</strong> cho học sinh.
                     </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: DUYỆT THÀNH VIÊN VÀO NHÓM LỚP (GIÁO VIÊN) */}
+            {activeRightTab === 'approvals' && userRole === 'teacher' && (
+              <div className="p-6 space-y-6 flex-1 animate-in fade-in duration-150">
+                {/* Header & Chế độ kiểm duyệt */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                      <UserCheck size={20} className="text-amber-600" />
+                      <span>Xét Duyệt Thành Viên Xin Vào Lớp</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Phê duyệt học sinh nhập mã lớp <strong className="font-mono text-blue-600">{currentClass.code}</strong> để chính thức vào lớp.
+                    </p>
+                  </div>
+
+                  {/* Toggle Mode Bắt Buộc Duyệt */}
+                  <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 shrink-0">
+                    <div className="text-right">
+                      <span className="text-[11px] font-bold text-slate-800 block">Chế độ duyệt thành viên</span>
+                      <span className="text-[10px] text-slate-500">
+                        {currentClass.requiresApproval !== false ? 'Bắt buộc phê duyệt' : 'Tự do vào lớp'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleRequiresApproval}
+                      className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                        currentClass.requiresApproval !== false ? 'bg-amber-600 justify-end' : 'bg-slate-300 justify-start'
+                      }`}
+                      title="Bật/Tắt chế độ kiểm duyệt học sinh khi nhập mã vào lớp"
+                    >
+                      <span className="w-4 h-4 rounded-full bg-white shadow-md transform transition-transform" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Thông báo thao tác duyệt */}
+                {approvalActionSuccess && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle2 size={16} />
+                    <span>{approvalActionSuccess}</span>
+                  </div>
+                )}
+
+                {/* Danh sách học sinh chờ duyệt */}
+                {pendingStudents.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400 space-y-3">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-200 shadow-2xs">
+                      <UserCheck size={28} />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-800">Không Có Học Sinh Chờ Duyệt</h4>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                        Tất cả các yêu cầu gia nhập lớp <strong>{currentClass.name}</strong> đã được xử lý hoàn tất!
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700">
+                        Danh sách đang chờ phê duyệt ({pendingStudents.length} học sinh):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleApproveAllPending}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+                      >
+                        <CheckCheck size={14} />
+                        <span>Duyệt Tất Cả</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      {pendingStudents.map((st) => (
+                        <div
+                          key={st.id}
+                          className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-amber-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200 overflow-hidden flex items-center justify-center font-bold text-amber-700 shrink-0">
+                              {st.avatar ? (
+                                <img src={st.avatar} alt={st.name} className="w-full h-full object-cover" />
+                              ) : (
+                                st.name.charAt(0)
+                              )}
+                            </div>
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <h5 className="font-extrabold text-sm text-slate-900">{st.name}</h5>
+                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
+                                  Chờ phê duyệt
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 font-mono">
+                                ID: <strong className="text-slate-700">{st.id}</strong> · {st.email}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleRejectStudent(st.id)}
+                              className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 flex items-center gap-1.5 transition-colors"
+                            >
+                              <UserX size={14} />
+                              <span>Từ Chối</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleApproveStudent(st.id)}
+                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                            >
+                              <CheckCircle size={14} />
+                              <span>Chấp Nhận</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
