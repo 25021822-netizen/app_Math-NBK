@@ -2111,6 +2111,113 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     </button>
                   </div>
                 )}
+
+                {/* ======================================================== */}
+                {/* THANH CÔNG CỤ CHAT & Ô NHẬP TIN NHẮN (KHÔNG GIAN TRÒ CHUYỆN) */}
+                {/* ======================================================== */}
+                <div className="pt-2 border-t border-slate-200 space-y-2.5 bg-white">
+                  {/* Quick Emoji Bar: bấm nhanh các emoji thông dụng & ký hiệu toán */}
+                  <div className="flex items-center justify-between gap-1 overflow-x-auto pb-1 text-xs">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 hidden sm:inline">
+                        Emoji nhanh:
+                      </span>
+                      {['👍', '❤️', '😂', '🔥', '💡', '💯', '👏', '📚', '📐', '✍️', '∑', '√', 'π', '∞'].map((em, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleInsertEmoji(em)}
+                          className="w-7 h-7 rounded-lg hover:bg-blue-50 hover:scale-115 transition-all text-sm flex items-center justify-center shrink-0 border border-transparent hover:border-blue-200"
+                          title={`Chèn ${em}`}
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowEmojiPicker((prev) => !prev)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border shrink-0 transition-colors ${
+                        showEmojiPicker
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
+                      }`}
+                    >
+                      <Smile size={13} />
+                      <span>{showEmojiPicker ? 'Đóng' : 'Thêm Emoji'}</span>
+                    </button>
+                  </div>
+
+                  {/* Form Soạn & Gửi Tin Nhắn */}
+                  <form onSubmit={handleSendChatMessage} className="space-y-2">
+                    {/* Hidden File Input for Image Attachment */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept="image/*"
+                      onChange={handleImageFileChange}
+                      className="hidden"
+                    />
+
+                    {/* Action Bar & Message Input */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-300 focus-within:border-blue-600 focus-within:bg-white transition-all shadow-inner">
+                      {/* Text Input / Textarea */}
+                      <textarea
+                        rows={2}
+                        value={chatMessageText}
+                        onChange={(e) => setChatMessageText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendChatMessage(e);
+                          }
+                        }}
+                        placeholder={`Nhắn tin thảo luận trong ${currentClass?.name || 'nhóm lớp'} (Nhấn Enter để gửi, Shift+Enter xuống dòng)...`}
+                        className="flex-1 w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none resize-none min-h-[46px] max-h-32"
+                      />
+
+                      {/* Tool Buttons & Send Button */}
+                      <div className="flex items-center justify-between sm:justify-end gap-1.5 pt-1 sm:pt-0 shrink-0">
+                        {/* Attach Image button */}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          title="Đính kèm ảnh bài tập từ máy"
+                          className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors flex items-center gap-1 text-[11px] font-semibold"
+                        >
+                          <ImageIcon size={16} />
+                          <span className="hidden md:inline">Gửi ảnh</span>
+                        </button>
+
+                        {/* Tag Member button */}
+                        <button
+                          type="button"
+                          onClick={() => setShowMentionPicker((prev) => !prev)}
+                          title="Tag tên thành viên trong lớp (@tên)"
+                          className={`p-2 rounded-xl border transition-colors flex items-center gap-1 text-[11px] font-semibold ${
+                            showMentionPicker
+                              ? 'bg-blue-100 text-blue-700 border-blue-300'
+                              : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200'
+                          }`}
+                        >
+                          <AtSign size={16} />
+                          <span className="hidden md:inline">Tag tên</span>
+                        </button>
+
+                        {/* Send button */}
+                        <button
+                          type="submit"
+                          disabled={!chatMessageText.trim() && !attachedImage}
+                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <Send size={15} />
+                          <span>Gửi Tin</span>
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 

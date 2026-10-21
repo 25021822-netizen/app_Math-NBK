@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson } from './types/math';
+import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson } from './types/math';
 import {
   INITIAL_USER_PROFILE,
   SAMPLE_CHEAT_LOGS,
@@ -12,6 +12,7 @@ import {
   SAMPLE_CLASSROOMS,
   SAMPLE_SUBMISSIONS,
   SAMPLE_CLASSROOM_LESSONS,
+  ALL_INITIAL_USERS,
 } from './data/mockData';
 import { Navbar } from './components/Navbar';
 import { AIMathStudioView } from './components/student/AIMathStudioView';
@@ -41,6 +42,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('ask_ai');
   const [userRole, setUserRole] = useState<UserRole>('student');
   const [userProfile, setUserProfile] = useState(INITIAL_USER_PROFILE);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>(ALL_INITIAL_USERS);
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [cheatLogs, setCheatLogs] = useState<CheatLog[]>(SAMPLE_CHEAT_LOGS);
   const [examsList, setExamsList] = useState<Exam[]>([SAMPLE_EXAM_BGD]);
@@ -51,12 +53,39 @@ export default function App() {
   const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
   const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
 
+  // Cập nhật thông tin hồ sơ (ảnh đại diện, mật khẩu, thông tin cá nhân) đồng bộ vào allUsers (Admin quản lý)
+  const handleUpdateProfile = (updated: UserProfile) => {
+    setUserProfile(updated);
+    setAllUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
+  };
+
+  // Admin cấp mới tài khoản
+  const handleCreateUser = (newUser: UserProfile) => {
+    setAllUsers((prev) => [newUser, ...prev]);
+  };
+
+  // Admin cập nhật tài khoản / đổi mật khẩu người dùng
+  const handleUpdateUser = (updatedUser: UserProfile) => {
+    setAllUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)));
+    if (userProfile.id === updatedUser.id) {
+      setUserProfile(updatedUser);
+    }
+  };
+
+  // Admin xóa tài khoản người dùng
+  const handleDeleteUser = (userId: string) => {
+    setAllUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
   const handleToggleTier = () => {
-    setUserProfile((prev) => ({
-      ...prev,
-      tier: prev.tier === 'free' ? 'premium' : 'free',
-      maxDailyScans: prev.tier === 'free' ? 9999 : 10,
-    }));
+    const nextTier: AccountTier = userProfile.tier === 'free' ? 'premium' : 'free';
+    const nextMax = nextTier === 'premium' ? 9999 : 10;
+    const updated: UserProfile = {
+      ...userProfile,
+      tier: nextTier,
+      maxDailyScans: nextMax,
+    };
+    handleUpdateProfile(updated);
   };
 
   const handleIncrementScan = () => {
@@ -81,11 +110,15 @@ export default function App() {
   // Xử lý nộp bài thi của học sinh: tự động ghi nhận vào submissions & cộng XP
   const handleAddSubmission = (submission: StudentExamSubmission) => {
     setSubmissions((prev) => [submission, ...prev]);
-    setUserProfile((prev) => ({
-      ...prev,
-      xp: prev.xp + Math.round(submission.score * 15),
-      streakDays: prev.streakDays + 1,
-    }));
+    setUserProfile((prev) => {
+      const updated = {
+        ...prev,
+        xp: prev.xp + Math.round(submission.score * 15),
+        streakDays: prev.streakDays + 1,
+      };
+      setAllUsers((all) => all.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
+      return updated;
+    });
   };
 
   // Nội dung màn hình theo tab hiện tại và vai trò người dùng
@@ -95,7 +128,7 @@ export default function App() {
       return (
         <UserProfileView
           userProfile={userProfile}
-          onUpdateProfile={setUserProfile}
+          onUpdateProfile={handleUpdateProfile}
           classrooms={classrooms}
           submissions={submissions}
           onNavigateToClassroom={() => setCurrentTab('classroom')}
@@ -111,7 +144,15 @@ export default function App() {
 
     // 3. Quản trị viên (Super Admin)
     if (userRole === 'admin') {
-      return <AdminDashboardView cheatLogs={cheatLogs} />;
+      return (
+        <AdminDashboardView
+          cheatLogs={cheatLogs}
+          users={allUsers}
+          onCreateUser={handleCreateUser}
+          onUpdateUser={handleUpdateUser}
+          onDeleteUser={handleDeleteUser}
+        />
+      );
     }
 
     // 4. Giáo viên
@@ -270,6 +311,10 @@ export default function App() {
           userRole={userRole}
           onSelectRole={(newRole) => {
             setUserRole(newRole);
+            const foundUser = allUsers.find((u) => u.role === newRole);
+            if (foundUser) {
+              setUserProfile(foundUser);
+            }
             if (newRole === 'student') setCurrentTab('ask_ai');
             else if (newRole === 'teacher') setCurrentTab('classroom');
             else setCurrentTab('admin_dashboard');

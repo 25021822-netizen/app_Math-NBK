@@ -28,7 +28,9 @@ import {
   Trash2,
   Plus,
   CheckCircle2,
+  LineChart,
 } from 'lucide-react';
+import { FunctionGrapher } from '../FunctionGrapher';
 
 export interface CustomPoint3D {
   id: string;
@@ -64,6 +66,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
   onExportImageToExam,
 }) => {
   const [geometryMode, setGeometryMode] = useState<'2d' | '3d'>('3d');
+  const [subMode2D, setSubMode2D] = useState<'function' | 'shapes'>('function');
 
   // ==========================================
   // STATE HÌNH PHẲNG 2D
@@ -823,8 +826,54 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
         </div>
       </div>
 
+      {/* Thanh lựa chọn phân hệ cho Hình Học 2D */}
+      {geometryMode === '2d' && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-3xl border border-slate-200 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-1.5 hidden md:inline">
+              Chế Độ 2D:
+            </span>
+            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setSubMode2D('function')}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                  subMode2D === 'function'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LineChart size={15} />
+                <span>Vẽ Đồ Thị Hàm Số 2D (y = f(x))</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubMode2D('shapes')}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                  subMode2D === 'shapes'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Square size={15} />
+                <span>Hình Phẳng & Đa Giác (Dựng hình)</span>
+              </button>
+            </div>
+          </div>
+
+          <span className="text-[11px] text-blue-700 font-semibold pr-2 hidden sm:inline">
+            ✨ Tự động vẽ đồ thị, xác định tiệm cận đứng (TCĐ), tiệm cận ngang (TCN) và tiệm cận xiên (TCX)
+          </span>
+        </div>
+      )}
+
       {/* Main Studio Canvas Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {geometryMode === '2d' && subMode2D === 'function' ? (
+        <div className="w-full">
+          <FunctionGrapher initialFormula="y = 3x - 2" onExportImage={onExportImageToExam} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Cột trái: Bảng điều khiển công cụ hình học (4 cols) */}
         <div className="lg:col-span-4 space-y-5">
           {geometryMode === '3d' ? (
@@ -1646,6 +1695,29 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
                 >
                   <span className="block font-bold">Đường Tròn (O, R)</span>
                   <span className="text-[10px] text-slate-500 font-normal">Tâm O và bán kính</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSubMode2D('function')}
+                  className="col-span-2 p-3 rounded-2xl border-2 border-blue-400 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-900 font-bold text-left transition-all hover:border-blue-600 hover:shadow-xs flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                      <LineChart size={16} />
+                    </div>
+                    <div>
+                      <span className="block font-extrabold text-xs text-blue-900">
+                        Đồ Thị Hàm Số 2D (y = f(x))
+                      </span>
+                      <span className="text-[10px] text-blue-600 font-normal">
+                        Tự động vẽ đồ thị & tìm tiệm cận đứng, ngang, xiên
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-blue-600 bg-white px-2.5 py-1 rounded-lg border border-blue-200">
+                    Mở &rarr;
+                  </span>
                 </button>
               </div>
 
@@ -2936,6 +3008,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

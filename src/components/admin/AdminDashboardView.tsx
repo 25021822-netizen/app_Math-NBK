@@ -18,6 +18,14 @@ import {
   GraduationCap,
   Award,
   Filter,
+  Eye,
+  EyeOff,
+  Key,
+  Lock,
+  Copy,
+  RefreshCw,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
 
 interface AdminDashboardViewProps {
@@ -25,6 +33,8 @@ interface AdminDashboardViewProps {
   users?: UserProfile[];
   onCreateUser?: (newUser: UserProfile) => void;
   onToggleUserTier?: (userId: string) => void;
+  onUpdateUser?: (updatedUser: UserProfile) => void;
+  onDeleteUser?: (userId: string) => void;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
@@ -32,6 +42,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   users: propUsers,
   onCreateUser,
   onToggleUserTier,
+  onUpdateUser,
+  onDeleteUser,
 }) => {
   const [activeTab, setActiveTab] = useState<'tokens' | 'users' | 'cheat_logs'>('users');
 
@@ -72,7 +84,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [userSearchTerm, setUserSearchTerm] = useState('');
 
   // ==========================================
-  // STATE CẤP TÀI KHOẢN MỚI (CHỈ ADMIN MỚI CÓ QUYỀN)
+  // ==========================================
+  // STATE CẤP TÀI KHOẢN MỚI & MẬT KHẨU (CHỈ ADMIN MỚI CÓ QUYỀN)
   // ==========================================
   const [showCreateUserModal, setShowCreateUserModal] = useState<boolean>(false);
   const [newUserName, setNewUserName] = useState('');
@@ -81,8 +94,94 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [newUserId, setNewUserId] = useState('');
   const [newUserGrade, setNewUserGrade] = useState<10 | 11 | 12>(12);
   const [newUserTier, setNewUserTier] = useState<AccountTier>('free');
+  const [newUserPassword, setNewUserPassword] = useState('MatKhau@123');
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [createUserError, setCreateUserError] = useState<string | null>(null);
   const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
+
+  // Quản lý hiển thị và chỉnh sửa mật khẩu trong bảng tài khoản
+  const [revealedPasswordUserIds, setRevealedPasswordUserIds] = useState<string[]>([]);
+  const [copiedPasswordUserId, setCopiedPasswordUserId] = useState<string | null>(null);
+  const [editingPasswordUser, setEditingPasswordUser] = useState<UserProfile | null>(null);
+  const [editNewPassword, setEditNewPassword] = useState('');
+  const [showEditNewPassword, setShowEditNewPassword] = useState(false);
+  const [editPasswordError, setEditPasswordError] = useState<string | null>(null);
+  const [editPasswordSuccess, setEditPasswordSuccess] = useState<string | null>(null);
+
+  // Xóa tài khoản người dùng (Admin quyền cao nhất)
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [deleteUserSuccess, setDeleteUserSuccess] = useState<string | null>(null);
+
+  const handleConfirmDeleteUser = () => {
+    if (!userToDelete) return;
+    const deletedName = userToDelete.name;
+    const deletedId = userToDelete.id;
+
+    if (onDeleteUser) {
+      onDeleteUser(deletedId);
+    } else {
+      setInternalUsers((prev) => prev.filter((u) => u.id !== deletedId));
+    }
+
+    setDeleteUserSuccess(`Đã xóa tài khoản "${deletedName}" (${deletedId}) thành công!`);
+    setUserToDelete(null);
+    setTimeout(() => setDeleteUserSuccess(null), 3500);
+  };
+
+  // Sinh mật khẩu ngẫu nhiên tối thiểu 8 ký tự bất kỳ
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*';
+    let res = '';
+    for (let i = 0; i < 10; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return res;
+  };
+
+  const toggleRevealPassword = (userId: string) => {
+    setRevealedPasswordUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleCopyPassword = (userId: string, password?: string) => {
+    if (!password) return;
+    navigator.clipboard.writeText(password);
+    setCopiedPasswordUserId(userId);
+    setTimeout(() => setCopiedPasswordUserId(null), 2000);
+  };
+
+  const handleOpenEditPassword = (u: UserProfile) => {
+    setEditingPasswordUser(u);
+    setEditNewPassword(u.password || generateRandomPassword());
+    setShowEditNewPassword(false);
+    setEditPasswordError(null);
+    setEditPasswordSuccess(null);
+  };
+
+  const handleSaveEditPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditPasswordError(null);
+    if (!editNewPassword || editNewPassword.trim().length < 8) {
+      setEditPasswordError('Mật khẩu tối thiểu 8 ký tự bất kỳ!');
+      return;
+    }
+    if (!editingPasswordUser) return;
+    const updated = {
+      ...editingPasswordUser,
+      password: editNewPassword.trim(),
+    };
+    if (onUpdateUser) {
+      onUpdateUser(updated);
+    } else {
+      setInternalUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+    }
+    setEditPasswordSuccess(`Đã cập nhật mật khẩu cho "${editingPasswordUser.name}" thành công!`);
+    setTimeout(() => {
+      setEditingPasswordUser(null);
+      setEditPasswordSuccess(null);
+    }, 1800);
+  };
 
   // Lọc duy nhất theo id để tránh lỗi duplicate key cl_101, cl_102, cl_103
   const allLogs = useMemo(() => {
@@ -128,6 +227,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setNewUserId(generateRecommendedId('student'));
     setNewUserGrade(12);
     setNewUserTier('free');
+    setNewUserPassword(generateRandomPassword());
+    setShowCreatePassword(false);
     setCreateUserError(null);
     setCreateUserSuccess(null);
     setShowCreateUserModal(true);
@@ -140,6 +241,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
     if (!newUserName.trim()) {
       setCreateUserError('Vui lòng nhập họ và tên!');
+      return;
+    }
+
+    if (!newUserPassword || newUserPassword.trim().length < 8) {
+      setCreateUserError('Mật khẩu bắt buộc có tối thiểu 8 ký tự bất kỳ!');
       return;
     }
 
@@ -168,6 +274,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       maxDailyScans: newUserTier === 'premium' ? 9999 : 10,
       grade: newUserGrade,
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(newUserName.trim())}`,
+      password: newUserPassword.trim(),
     };
 
     if (onCreateUser) {
@@ -177,7 +284,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     }
 
     setCreateUserSuccess(
-      `Đã tạo thành công tài khoản cho ${newUserRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} "${newUser.name}" với ID: ${newUser.id}`
+      `Đã tạo thành công tài khoản cho ${newUserRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} "${newUser.name}" với ID: ${newUser.id} (Mật khẩu: ${newUser.password})`
     );
 
     setTimeout(() => {
@@ -271,6 +378,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </button>
           </div>
 
+          {deleteUserSuccess && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 size={16} />
+              <span>{deleteUserSuccess}</span>
+            </div>
+          )}
+
           {/* User Table Card */}
           <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
             {/* Filter and search bar */}
@@ -322,6 +436,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     <th className="px-6 py-3">Mã ID Hệ Thống</th>
                     <th className="px-6 py-3">Vai Trò / Khối</th>
                     <th className="px-6 py-3">Gói Cước</th>
+                    <th className="px-6 py-3">Mật Khẩu (Admin Quản Lý)</th>
                     <th className="px-6 py-3">Trạng Thái</th>
                     <th className="px-6 py-3 text-right">Thao Tác</th>
                   </tr>
@@ -364,18 +479,79 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         </span>
                       </td>
                       <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5 font-mono text-xs">
+                          {revealedPasswordUserIds.includes(u.id) ? (
+                            <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {u.password || '(Chưa đặt)'}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-black tracking-widest bg-slate-100 px-2 py-0.5 rounded">
+                              ••••••••
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleRevealPassword(u.id)}
+                            className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors"
+                            title={revealedPasswordUserIds.includes(u.id) ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                          >
+                            {revealedPasswordUserIds.includes(u.id) ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                          {u.password && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPassword(u.id, u.password)}
+                              className="p-1 rounded text-slate-400 hover:text-emerald-600 transition-colors"
+                              title="Sao chép mật khẩu"
+                            >
+                              {copiedPasswordUserId === u.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditPassword(u)}
+                            className="p-1 rounded text-slate-400 hover:text-purple-600 transition-colors ml-0.5"
+                            title="Đổi mật khẩu người dùng này"
+                          >
+                            <Key size={14} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           <CheckCircle2 size={12} className="text-emerald-600" />
                           <span>Hoạt động</span>
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => toggleTier(u.id)}
-                          className="px-3 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 font-semibold text-slate-700 transition-colors"
-                        >
-                          {u.tier === 'free' ? 'Nâng lên Pro' : 'Hạ xuống Free'}
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => toggleTier(u.id)}
+                            className="px-2.5 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 font-semibold text-slate-700 transition-colors text-[11px]"
+                            title={u.tier === 'free' ? 'Nâng cấp lên gói Premium Pro' : 'Chuyển về gói Miễn Phí'}
+                          >
+                            {u.tier === 'free' ? 'Nâng Pro' : 'Hạ Free'}
+                          </button>
+                          {u.role !== 'admin' ? (
+                            <button
+                              type="button"
+                              onClick={() => setUserToDelete(u)}
+                              className="px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold transition-colors flex items-center gap-1 text-[11px]"
+                              title={`Xóa vĩnh viễn tài khoản ${u.name} (${u.id})`}
+                            >
+                              <Trash2 size={13} />
+                              <span>Xóa</span>
+                            </button>
+                          ) : (
+                            <span
+                              className="px-2 py-1 rounded-lg text-slate-400 bg-slate-50 border border-slate-200 text-[10px] font-semibold cursor-not-allowed inline-flex items-center gap-1"
+                              title="Tài khoản Quản Trị Viên hệ thống không thể xóa"
+                            >
+                              <ShieldCheck size={12} className="text-rose-500" />
+                              <span>Cố định</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -623,6 +799,54 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 />
               </div>
 
+              {/* Mật khẩu khởi tạo tài khoản (Tối thiểu 8 ký tự bất kỳ) */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 flex items-center gap-1.5">
+                    <Key size={13} className="text-rose-600" />
+                    <span>Mật khẩu ban đầu * (Tối thiểu 8 ký tự bất kỳ)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setNewUserPassword(generateRandomPassword())}
+                    className="text-[11px] text-blue-600 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw size={11} />
+                    <span>Tạo ngẫu nhiên</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showCreatePassword ? 'text' : 'password'}
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu (tối thiểu 8 ký tự bất kỳ)..."
+                    className="w-full h-10 px-3 pr-10 rounded-xl border border-slate-300 font-mono text-xs font-bold text-slate-900 focus:border-blue-600 focus:outline-none"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCreatePassword((v) => !v)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+                    title={showCreatePassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  >
+                    {showCreatePassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-[10px]">
+                  {newUserPassword.length < 8 ? (
+                    <span className="text-rose-600 font-bold">
+                      ⚠️ Hiện có {newUserPassword.length}/8 ký tự (chưa đủ 8 ký tự)
+                    </span>
+                  ) : (
+                    <span className="text-emerald-600 font-bold">
+                      ✓ Đạt yêu cầu bảo mật ({newUserPassword.length} ký tự)
+                    </span>
+                  )}
+                  <span className="text-slate-400">Chấp nhận mọi loại ký tự</span>
+                </div>
+              </div>
+
               {/* Khối lớp (Nếu là Học sinh) */}
               {newUserRole === 'student' && (
                 <div className="space-y-1">
@@ -668,6 +892,160 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ĐỔI MẬT KHẨU TÀI KHOẢN (ADMIN QUẢN TRỊ VIÊN CẬP NHẬT TRỰC TIẾP) */}
+      {/* ========================================================================= */}
+      {editingPasswordUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <Key size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">
+                    Đổi Mật Khẩu Người Dùng
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Cập nhật mật khẩu cho {editingPasswordUser.name} ({editingPasswordUser.id})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingPasswordUser(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {editPasswordError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle size={15} />
+                <span>{editPasswordError}</span>
+              </div>
+            )}
+
+            {editPasswordSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 size={15} />
+                <span>{editPasswordSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditPassword} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700">Mật khẩu mới * (Tối thiểu 8 ký tự bất kỳ)</label>
+                  <button
+                    type="button"
+                    onClick={() => setEditNewPassword(generateRandomPassword())}
+                    className="text-[11px] text-blue-600 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw size={11} />
+                    <span>Tạo ngẫu nhiên</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showEditNewPassword ? 'text' : 'password'}
+                    value={editNewPassword}
+                    onChange={(e) => setEditNewPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới..."
+                    className="w-full h-10 px-3 pr-10 rounded-xl border border-slate-300 font-mono text-xs font-bold text-slate-900 focus:border-purple-600 focus:outline-none"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditNewPassword((v) => !v)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+                  >
+                    {showEditNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <p className="text-[10px]">
+                  {editNewPassword.length < 8 ? (
+                    <span className="text-rose-600 font-bold">⚠️ Tối thiểu 8 ký tự ({editNewPassword.length}/8)</span>
+                  ) : (
+                    <span className="text-emerald-600 font-bold">✓ Hợp lệ ({editNewPassword.length} ký tự)</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPasswordUser(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs"
+                >
+                  Lưu Mật Khẩu
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: XÁC NHẬN XÓA TÀI KHOẢN NGƯỜI DÙNG (ADMIN QUẢN TRỊ VIÊN) */}
+      {/* ========================================================================= */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 size={22} />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Xác Nhận Xóa Tài Khoản?
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Hành động này sẽ xóa vĩnh viễn tài khoản của{' '}
+                  <strong className="text-slate-800">{userToDelete.name}</strong> (Mã:{' '}
+                  <code className="text-rose-600 font-bold">{userToDelete.id}</code>, Vai trò:{' '}
+                  <span className="font-semibold">
+                    {userToDelete.role === 'teacher' ? 'Giáo viên' : userToDelete.role === 'student' ? 'Học sinh' : 'Quản trị viên'}
+                  </span>
+                  ). Dữ liệu cá nhân và quyền truy cập của tài khoản này sẽ bị thu hồi hoàn toàn.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50/70 border border-rose-200/80 rounded-2xl text-[11px] text-rose-800 flex items-center gap-2">
+              <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+              <span>Chỉ Quản trị viên cấp cao mới có quyền thực hiện thao tác xóa tài khoản này.</span>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteUser}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                <span>Xác Nhận Xóa</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

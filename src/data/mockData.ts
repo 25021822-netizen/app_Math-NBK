@@ -604,53 +604,6 @@ export const SAMPLE_STUDENTS: UserProfile[] = [
   },
 ];
 
-export const SAMPLE_TEACHERS: UserProfile[] = [
-  {
-    id: 'usr_teacher_01',
-    name: 'ThS. Trần Văn Minh',
-    email: 'minh.tran@thpt-nbk.edu.vn',
-    role: 'teacher',
-    tier: 'premium',
-    xp: 8900,
-    streakDays: 45,
-    lastActiveDate: '2026-10-15',
-    dailyScanCount: 0,
-    maxDailyScans: 9999,
-    grade: 12,
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMinh',
-    schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
-    phone: '0988 776 655',
-    bio: 'Giáo viên phụ trách bồi dưỡng chuyên đề Toán Giải tích và Hình học không gian THPT.',
-    subject: 'Tổ Toán - Tin THPT',
-    password: 'TeacherMinh@2025',
-  },
-];
-
-export const SAMPLE_ADMIN: UserProfile = {
-  id: 'usr_admin_01',
-  name: 'Ban Giám Hiệu & Quản Trị Hệ Thống',
-  email: 'admin.math@thpt-nbk.edu.vn',
-  role: 'admin',
-  tier: 'premium',
-  xp: 15000,
-  streakDays: 120,
-  lastActiveDate: '2026-10-15',
-  dailyScanCount: 0,
-  maxDailyScans: 9999,
-  grade: 12,
-  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK',
-  schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
-  phone: '024 3858 1234',
-  bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
-  password: 'AdminMaster@2025',
-};
-
-export const ALL_INITIAL_USERS: UserProfile[] = [
-  ...SAMPLE_STUDENTS,
-  ...SAMPLE_TEACHERS,
-  SAMPLE_ADMIN,
-];
-
 export const SAMPLE_CLASSROOMS: Classroom[] = [
   {
     id: 'cls_12a1',
@@ -782,6 +735,11 @@ export const SAMPLE_TEACHERS: UserProfile[] = [
     maxDailyScans: 9999,
     grade: 12,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMinh',
+    schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+    phone: '0988 776 655',
+    bio: 'Giáo viên phụ trách bồi dưỡng chuyên đề Toán Giải tích và Hình học không gian THPT.',
+    subject: 'Tổ Toán - Tin THPT',
+    password: 'TeacherMinh@2025',
   },
   {
     id: 'usr_teacher_02',
@@ -796,6 +754,11 @@ export const SAMPLE_TEACHERS: UserProfile[] = [
     maxDailyScans: 9999,
     grade: 11,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherHoa',
+    schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+    phone: '0977 123 456',
+    bio: 'Giáo viên Toán chuyên đề Lượng giác và Dãy số.',
+    subject: 'Tổ Toán - Tin THPT',
+    password: 'TeacherHoa@2025',
   },
   {
     id: 'usr_teacher_03',
@@ -810,6 +773,11 @@ export const SAMPLE_TEACHERS: UserProfile[] = [
     maxDailyScans: 9999,
     grade: 10,
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherDung',
+    schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+    phone: '0966 888 999',
+    bio: 'Giáo viên phụ trách Hình học không gian và Véc-tơ lớp 10.',
+    subject: 'Tổ Toán - Tin THPT',
+    password: 'TeacherDung@2025',
   },
 ];
 
@@ -826,6 +794,10 @@ export const SAMPLE_ADMIN: UserProfile = {
   maxDailyScans: 9999,
   grade: 12,
   avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK',
+  schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+  phone: '024 3858 1234',
+  bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
+  password: 'AdminNBK@2025',
 };
 
 // Tổng hợp người dùng hệ thống (chỉ admin có quyền tạo mới tài khoản cho giáo viên và học sinh)
@@ -834,6 +806,8 @@ export const INITIAL_ALL_USERS: UserProfile[] = [
   ...SAMPLE_TEACHERS,
   ...SAMPLE_STUDENTS,
 ];
+
+export const ALL_INITIAL_USERS: UserProfile[] = INITIAL_ALL_USERS;
 
 // ==========================================
 // MẪU TIN NHẮN CHAT TRONG NHÓM LỚP (GỬI ẢNH, TAG TÊN)

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { UserProfile, Classroom, StudentExamSubmission } from '../../types/math';
 import {
   User,
@@ -23,6 +23,12 @@ import {
   Camera,
   Share2,
   Lock,
+  Upload,
+  Key,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface UserProfileViewProps {
@@ -67,6 +73,21 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const [hasCopiedId, setHasCopiedId] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
+  // ==========================================
+  // STATE TẢI ẢNH TỪ MÁY & ĐỔI MẬT KHẨU
+  // ==========================================
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploadSuccess, setAvatarUploadSuccess] = useState<string | null>(null);
+
+  // Đổi mật khẩu
+  const [currentPasswordDisplay, setCurrentPasswordDisplay] = useState(userProfile.password || 'AnNguyen@2025');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
   // Thống kê cá nhân
   const mySubmissions = submissions.filter((s) => s.studentId === userProfile.id);
   const avgScore =
@@ -96,11 +117,68 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       subject: subject.trim(),
       bio: bio.trim(),
       avatar: avatarUrl.trim(),
+      password: userProfile.password,
     };
 
     onUpdateProfile(updated);
     setSaveSuccessMessage('Thông tin hồ sơ đã được lưu và cập nhật thành công!');
     setTimeout(() => setSaveSuccessMessage(null), 3000);
+  };
+
+  // 1. Tải ảnh từ máy tính / thiết bị làm ảnh đại diện
+  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Dung lượng ảnh vượt quá 5MB. Vui lòng chọn ảnh nhỏ hơn!');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const dataUrl = event.target.result as string;
+          setAvatarUrl(dataUrl);
+          setAvatarUploadSuccess('Đã tải ảnh từ máy thành công! Nhấn "Lưu Thay Đổi Hồ Sơ" để lưu lại.');
+          setTimeout(() => setAvatarUploadSuccess(null), 4000);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // 2. Tự đổi mật khẩu cá nhân (Đồng bộ trực tiếp lên tài khoản Admin)
+  const handleChangePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
+    const trimmedNew = newPassword.trim();
+    const trimmedConfirm = confirmPassword.trim();
+
+    if (trimmedNew.length < 8) {
+      setPasswordError('Mật khẩu mới bắt buộc phải có tối thiểu 8 ký tự bất kỳ!');
+      return;
+    }
+
+    if (trimmedNew !== trimmedConfirm) {
+      setPasswordError('Xác nhận mật khẩu không khớp. Vui lòng kiểm tra lại!');
+      return;
+    }
+
+    const updatedUser: UserProfile = {
+      ...userProfile,
+      avatar: avatarUrl.trim(),
+      password: trimmedNew,
+    };
+
+    onUpdateProfile(updatedUser);
+    setCurrentPasswordDisplay(trimmedNew);
+    setPasswordSuccess(
+      'Đổi mật khẩu thành công! Mật khẩu mới đã được cập nhật đồng bộ lên hệ thống Quản Trị Viên (Admin).'
+    );
+    setNewPassword('');
+    setConfirmPassword('');
+    setTimeout(() => setPasswordSuccess(null), 4500);
   };
 
   const PRESET_AVATARS = [
@@ -277,22 +355,65 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           <span className="text-xs text-slate-400">Cập nhật hồ sơ phục vụ thi cử & nhóm lớp</span>
         </div>
 
-        {/* Preset Avatar Picker */}
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-slate-700 block">Chọn ảnh đại diện Avatar:</label>
-          <div className="flex flex-wrap items-center gap-3">
-            {PRESET_AVATARS.map((p, idx) => (
+        {/* Avatar Picker & Tải ảnh từ máy làm ảnh đại diện */}
+        <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <label className="text-xs font-bold text-slate-800 block">
+                Ảnh Đại Diện Tài Khoản (Avatar)
+              </label>
+              <span className="text-[11px] text-slate-500">
+                Tải ảnh trực tiếp từ máy tính/điện thoại hoặc chọn mẫu avatar có sẵn
+              </span>
+            </div>
+
+            {/* Nút bấm tải ảnh từ thiết bị */}
+            <div>
+              <input
+                type="file"
+                ref={avatarFileInputRef}
+                accept="image/*"
+                onChange={handleAvatarFileUpload}
+                className="hidden"
+              />
               <button
-                key={idx}
                 type="button"
-                onClick={() => setAvatarUrl(p)}
-                className={`w-12 h-12 rounded-2xl p-0.5 border-2 transition-transform ${
-                  avatarUrl === p ? 'border-blue-600 scale-105' : 'border-slate-200 hover:border-slate-400'
-                }`}
+                onClick={() => avatarFileInputRef.current?.click()}
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all cursor-pointer"
               >
-                <img src={p} alt="Preset avatar" className="w-full h-full object-cover rounded-xl bg-slate-50" />
+                <Upload size={15} />
+                <span>Tải ảnh từ máy làm ảnh đại diện</span>
               </button>
-            ))}
+            </div>
+          </div>
+
+          {avatarUploadSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 size={16} />
+              <span>{avatarUploadSuccess}</span>
+            </div>
+          )}
+
+          {/* Preset Avatars & Current Avatar Indicator */}
+          <div className="pt-2 border-t border-slate-200/60">
+            <span className="text-[11px] font-bold text-slate-600 block mb-2">Hoặc chọn nhanh từ kho Avatar có sẵn:</span>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {PRESET_AVATARS.map((p, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setAvatarUrl(p)}
+                  className={`w-11 h-11 rounded-2xl p-0.5 border-2 transition-all ${
+                    avatarUrl === p
+                      ? 'border-blue-600 scale-105 shadow-xs ring-2 ring-blue-200'
+                      : 'border-slate-200 hover:border-slate-400 opacity-80 hover:opacity-100'
+                  }`}
+                  title="Chọn avatar mẫu này"
+                >
+                  <img src={p} alt="Preset avatar" className="w-full h-full object-cover rounded-xl bg-slate-100" />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -465,13 +586,148 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
         <div className="pt-3 border-t border-slate-100 flex justify-end">
           <button
             type="submit"
-            className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all"
+            className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all cursor-pointer"
           >
             <Save size={16} />
             <span>Lưu Thay Đổi Hồ Sơ</span>
           </button>
         </div>
       </form>
+
+      {/* ========================================================================= */}
+      {/* KHỐI BẢO MẬT & ĐỔI MẬT KHẨU (ĐỒNG BỘ CẬP NHẬT LÊN TÀI KHOẢN ADMIN) */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
+              <Key size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-900">Bảo Mật & Đổi Mật Khẩu</h2>
+              <p className="text-xs text-purple-700 font-semibold flex items-center gap-1 mt-0.5">
+                <ShieldCheck size={14} />
+                <span>Mật khẩu đổi tại đây được cập nhật đồng bộ trực tiếp lên tài khoản Quản Trị Viên (Admin)</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+              ID: {userProfile.id}
+            </span>
+          </div>
+        </div>
+
+        {passwordError && (
+          <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+            <AlertTriangle size={16} />
+            <span>{passwordError}</span>
+          </div>
+        )}
+
+        {passwordSuccess && (
+          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 size={16} />
+            <span>{passwordSuccess}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleChangePasswordSubmit} className="space-y-4 text-xs">
+          {/* Mật khẩu hiện tại (trạng thái) */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="text-slate-500 font-bold block text-[11px]">Trạng Thái Mật Khẩu Hiện Tại:</span>
+              <span className="font-mono font-bold text-slate-800 text-xs">
+                {currentPasswordDisplay ? `•••••••• (${currentPasswordDisplay.length} ký tự)` : 'Đang hoạt động'}
+              </span>
+            </div>
+            <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold self-start sm:self-auto">
+              ✓ Đã kích hoạt bảo mật
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Mật khẩu mới */}
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 flex items-center justify-between">
+                <span>Mật khẩu mới *</span>
+                <span className="text-[10px] text-slate-400 font-normal">Tối thiểu 8 ký tự bất kỳ</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Nhập tối thiểu 8 ký tự bất kỳ..."
+                  className="w-full h-11 px-3.5 pr-10 rounded-xl border border-slate-300 font-mono text-xs font-bold text-slate-900 focus:border-purple-600 focus:outline-none"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((v) => !v)}
+                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 p-0.5"
+                  title={showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <p className="text-[10px]">
+                {newPassword.length > 0 && newPassword.length < 8 && (
+                  <span className="text-rose-600 font-bold">⚠️ Chưa đủ 8 ký tự ({newPassword.length}/8)</span>
+                )}
+                {newPassword.length >= 8 && (
+                  <span className="text-emerald-600 font-bold">✓ Độ dài đạt chuẩn ({newPassword.length} ký tự)</span>
+                )}
+              </p>
+            </div>
+
+            {/* Nhập lại mật khẩu mới */}
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700">Xác nhận mật khẩu mới *</label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Nhập lại mật khẩu mới..."
+                  className="w-full h-11 px-3.5 pr-10 rounded-xl border border-slate-300 font-mono text-xs font-bold text-slate-900 focus:border-purple-600 focus:outline-none"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 p-0.5"
+                  title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <p className="text-[10px]">
+                {confirmPassword.length > 0 && confirmPassword !== newPassword && (
+                  <span className="text-rose-600 font-bold">⚠️ Mật khẩu xác nhận chưa khớp</span>
+                )}
+                {confirmPassword.length > 0 && confirmPassword === newPassword && (
+                  <span className="text-emerald-600 font-bold">✓ Mật khẩu xác nhận trùng khớp</span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
+            <span className="text-[11px] text-slate-500">
+              Mật khẩu mới sẽ được bảo mật và tự động đồng bộ sang cơ sở dữ liệu Quản Trị Viên (Admin).
+            </span>
+            <button
+              type="submit"
+              disabled={newPassword.length < 8 || newPassword !== confirmPassword}
+              className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-xs flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer"
+            >
+              <Key size={15} />
+              <span>Cập Nhật Mật Khẩu Lên Hệ Thống</span>
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
