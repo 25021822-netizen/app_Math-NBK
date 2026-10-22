@@ -235,10 +235,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   };
 
-  // Xử lý tải ảnh từ máy tính
+  // Xử lý tải ảnh từ máy tính (Tối đa 10MB)
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Dung lượng ảnh vượt quá 10MB. Vui lòng chọn ảnh nhỏ hơn 10MB!');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
@@ -249,10 +253,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   };
 
-  // Xử lý tải file PDF đính kèm
+  // Xử lý tải file PDF đính kèm (Tối đa 10MB)
   const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Dung lượng file PDF vượt quá 10MB. Vui lòng chọn file PDF nhỏ hơn 10MB!');
+        return;
+      }
       setModalPdfName(file.name);
     }
   };

@@ -129,8 +129,8 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Dung lượng ảnh vượt quá 5MB. Vui lòng chọn ảnh nhỏ hơn!');
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Dung lượng ảnh vượt quá 10MB. Vui lòng chọn ảnh nhỏ hơn!');
         return;
       }
       const reader = new FileReader();

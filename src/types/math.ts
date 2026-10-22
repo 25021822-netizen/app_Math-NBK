@@ -224,13 +224,13 @@ export interface ClassroomLesson {
   pdfAttachment?: {
     // File PDF gắn cho ô bài học (lý thuyết & bài giảng)
     fileName: string;
-    fileSize: string; // Dung lượng (tối đa khoảng 5MB)
+    fileSize: string; // Dung lượng (tối đa khoảng 10MB)
     fileData?: string; // Dữ liệu file PDF Data URL
   };
   practicePdfAttachment?: {
     // File PDF gắn cho ô luyện tập
     fileName: string;
-    fileSize: string; // Dung lượng (tối đa khoảng 5MB)
+    fileSize: string; // Dung lượng (tối đa khoảng 10MB)
     fileData?: string; // Dữ liệu file PDF Data URL
   };
   attachments?: {

@@ -68,6 +68,10 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Dung lượng ảnh bài tập vượt quá 10MB. Vui lòng chọn ảnh có dung lượng nhỏ hơn 10MB!');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         setUploadedImagePreview(reader.result as string);

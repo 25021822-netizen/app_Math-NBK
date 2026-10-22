@@ -55,6 +55,13 @@ import {
   Heart,
   ThumbsUp,
   UserX,
+  Bell,
+  BellRing,
+  Volume2,
+  VolumeX,
+  Minimize2,
+  Maximize2,
+  MessageCircle,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -454,15 +461,15 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     }
   };
 
-  // Hàm xử lý đọc file PDF tổng quát (giới hạn dung lượng ~5MB)
+  // Hàm xử lý đọc file PDF tổng quát (giới hạn dung lượng ~10MB)
   const processPdfFile = (
     file: File,
     onSuccess: (data: { fileName: string; fileSize: string; fileData: string }) => void,
     onError: (msg: string | null) => void
   ) => {
-    const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+    const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
     if (file.size > MAX_SIZE) {
-      onError(`Dung lượng file vượt quá giới hạn 5MB (hiện tại: ${(file.size / (1024 * 1024)).toFixed(2)} MB). Vui lòng chọn file PDF nhỏ hơn 5MB!`);
+      onError(`Dung lượng file vượt quá giới hạn 10MB (hiện tại: ${(file.size / (1024 * 1024)).toFixed(2)} MB). Vui lòng chọn file PDF nhỏ hơn 10MB!`);
       return;
     }
 
@@ -1054,10 +1061,14 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setChatMessageText((prev) => prev + emoji);
   };
 
-  // Xử lý upload ảnh từ máy tính / điện thoại
+  // Xử lý upload ảnh từ máy tính / điện thoại (Tối đa 10MB)
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Dung lượng ảnh đính kèm vượt quá giới hạn 10MB. Vui lòng chọn ảnh nhỏ hơn!');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
@@ -2894,7 +2905,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <Paperclip size={13} className="text-blue-600" />
                       <span>Gắn file PDF cho Ô Bài học:</span>
                     </span>
-                    <span className="text-[10px] text-slate-400">File PDF tối đa ~5MB</span>
+                    <span className="text-[10px] text-slate-400">File PDF tối đa ~10MB</span>
                   </label>
 
                   <input
@@ -2977,7 +2988,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                         <Paperclip size={13} className="text-amber-600" />
                         <span>Gắn file PDF Luyện tập:</span>
                       </span>
-                      <span className="text-[10px] text-slate-400">PDF ~5MB</span>
+                      <span className="text-[10px] text-slate-400">PDF ~10MB</span>
                     </label>
 
                     <input
@@ -3153,7 +3164,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <Paperclip size={13} className="text-blue-600" />
                       <span>File PDF cho Ô Bài học:</span>
                     </span>
-                    <span className="text-[10px] text-slate-400">PDF tối đa ~5MB</span>
+                    <span className="text-[10px] text-slate-400">PDF tối đa ~10MB</span>
                   </label>
 
                   <input
@@ -3245,7 +3256,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                         <Paperclip size={13} className="text-amber-600" />
                         <span>File PDF Luyện tập:</span>
                       </span>
-                      <span className="text-[10px] text-slate-400">PDF ~5MB</span>
+                      <span className="text-[10px] text-slate-400">PDF ~10MB</span>
                     </label>
 
                     <input

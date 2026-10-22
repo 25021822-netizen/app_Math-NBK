@@ -31,6 +31,7 @@ import {
   LineChart,
 } from 'lucide-react';
 import { FunctionGrapher } from '../FunctionGrapher';
+import { Geometry3DStudio } from './Geometry3DStudio';
 
 export interface CustomPoint3D {
   id: string;
@@ -868,7 +869,9 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
       )}
 
       {/* Main Studio Canvas Layout */}
-      {geometryMode === '2d' && subMode2D === 'function' ? (
+      {geometryMode === '3d' ? (
+        <Geometry3DStudio onExportImage={onExportImageToExam} />
+      ) : geometryMode === '2d' && subMode2D === 'function' ? (
         <div className="w-full">
           <FunctionGrapher initialFormula="y = 3x - 2" onExportImage={onExportImageToExam} />
         </div>
@@ -876,7 +879,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Cột trái: Bảng điều khiển công cụ hình học (4 cols) */}
         <div className="lg:col-span-4 space-y-5">
-          {geometryMode === '3d' ? (
+          {(geometryMode as string) === '3d' ? (
             /* ================= BẢNG ĐIỀU KHIỂN 3D ================= */
             <div className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4 shadow-xs text-xs">
               <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2 pb-2 border-b border-slate-100">
@@ -1978,7 +1981,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
           </div>
 
           {/* BANNER HƯỚNG DẪN THAO TÁC TAY 3D THỜI GIAN THỰC */}
-          {geometryMode === '3d' && toolStatusMessage3D && (
+          {(geometryMode as string) === '3d' && toolStatusMessage3D && (
             <div className="w-full max-w-[500px] mb-3 px-3.5 py-2.5 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-semibold flex items-center justify-between shadow-2xs animate-in fade-in duration-150">
               <div className="flex items-center gap-2">
                 <Sparkles size={15} className="text-amber-500 shrink-0" />
@@ -2001,7 +2004,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
 
           {/* Canvas SVG Export Wrapper */}
           <div className="w-full max-w-[500px] aspect-5/4 relative flex items-center justify-center select-none overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/50">
-            {geometryMode === '3d' ? (
+            {(geometryMode as string) === '3d' ? (
               /* ================= CANVAS RENDER 3D ================= */
               <svg
                 id="geometry-svg-export"
@@ -3001,9 +3004,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
           <div className="flex items-center gap-2 mt-4 text-xs text-slate-500">
             <Info size={15} className="text-blue-600" />
             <span>
-              {geometryMode === '3d'
-                ? 'Nhấp chuột và kéo trên khung hình để xoay mô hình 3D tự do quanh các trục.'
-                : 'Nhấp giữ và kéo các chấm tròn đỏ để thay đổi độ dài cạnh và góc của hình phẳng.'}
+              Nhấp giữ và kéo các chấm tròn để thay đổi độ dài cạnh và góc của hình phẳng.
             </span>
           </div>
         </div>

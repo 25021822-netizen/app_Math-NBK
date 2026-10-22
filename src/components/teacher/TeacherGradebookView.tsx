@@ -22,7 +22,10 @@ import {
   ArrowUpDown,
   BookOpen,
   X,
+  FileText,
+  Printer,
 } from 'lucide-react';
+import { GradebookPdfReportModal } from './GradebookPdfReportModal';
 
 interface TeacherGradebookViewProps {
   classrooms: Classroom[];
@@ -52,6 +55,10 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
 
   // Thông báo xuất file
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+
+  // Modal xuất báo cáo PDF (Cả lớp hoặc từng học sinh)
+  const [showPdfExportModal, setShowPdfExportModal] = useState<boolean>(false);
+  const [pdfPreselectedStudent, setPdfPreselectedStudent] = useState<StudentExamSubmission | null>(null);
 
   // Lọc danh sách bài nộp theo bộ lọc
   const filteredSubmissions = useMemo(() => {
@@ -180,14 +187,28 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          disabled={filteredSubmissions.length === 0}
-          className="px-5 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all shrink-0"
-        >
-          <Download size={16} />
-          <span>Xuất Bảng Điểm CSV</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => {
+              setPdfPreselectedStudent(null);
+              setShowPdfExportModal(true);
+            }}
+            disabled={filteredSubmissions.length === 0}
+            className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold text-xs shadow-md flex items-center gap-2 transition-all shrink-0"
+          >
+            <FileText size={16} />
+            <span>Xuất Báo Cáo (PDF / Excel / Word)</span>
+          </button>
+
+          <button
+            onClick={handleExportCSV}
+            disabled={filteredSubmissions.length === 0}
+            className="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all shrink-0"
+          >
+            <Download size={16} />
+            <span>Xuất CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* Export notification */}
@@ -576,15 +597,28 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                         )}
                       </td>
 
-                      {/* View Action */}
+                      {/* View & PDF Actions */}
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => setViewingSubmission(sub)}
-                          className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs inline-flex items-center gap-1 transition-colors"
-                        >
-                          <Eye size={13} />
-                          <span>Xem Bài</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPdfPreselectedStudent(sub);
+                              setShowPdfExportModal(true);
+                            }}
+                            title="Xuất phiếu điểm PDF / Excel / Word cho học sinh này"
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition-colors"
+                          >
+                            <FileText size={14} />
+                          </button>
+                          <button
+                            onClick={() => setViewingSubmission(sub)}
+                            className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs inline-flex items-center gap-1 transition-colors"
+                          >
+                            <Eye size={13} />
+                            <span>Xem Bài</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -622,7 +656,19 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfPreselectedStudent(viewingSubmission);
+                    setShowPdfExportModal(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
+                  title="Xuất phiếu kết quả học sinh dạng PDF / Excel / Word"
+                >
+                  <FileText size={14} />
+                  <span>Xuất Phiếu Điểm (PDF / Word / Excel)</span>
+                </button>
                 <div className="text-right">
                   <span className="text-xs text-slate-400 font-semibold block">Tổng Điểm:</span>
                   <span className="text-2xl font-black font-mono text-blue-600">
@@ -756,11 +802,23 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
               })}
             </div>
 
-            {/* Footer close button */}
-            <div className="pt-2">
+            {/* Footer action buttons */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
               <button
+                type="button"
+                onClick={() => {
+                  setPdfPreselectedStudent(viewingSubmission);
+                  setShowPdfExportModal(true);
+                }}
+                className="w-full sm:flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
+              >
+                <FileText size={16} />
+                <span>Xuất Phiếu Điểm (PDF / Word / Excel)</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setViewingSubmission(null)}
-                className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs"
+                className="w-full sm:flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
               >
                 Đóng Cửa Sổ Chi Tiết
               </button>
@@ -768,6 +826,24 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: XUẤT BÁO CÁO KẾT QUẢ / PHIẾU ĐIỂM DẠNG PDF                         */}
+      {/* ========================================================================= */}
+      <GradebookPdfReportModal
+        isOpen={showPdfExportModal}
+        onClose={() => {
+          setShowPdfExportModal(false);
+          setPdfPreselectedStudent(null);
+        }}
+        classrooms={classrooms}
+        selectedClassId={selectedClassId}
+        selectedExamId={selectedExamId}
+        examsList={examsList}
+        submissions={filteredSubmissions}
+        analytics={analytics}
+        initialStudentSubmission={pdfPreselectedStudent}
+      />
     </div>
   );
 };

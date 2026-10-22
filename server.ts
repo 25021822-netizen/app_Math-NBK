@@ -11,6 +11,7 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ limit: '20mb', extended: true }));
 
 // Khởi tạo Gemini AI Client phía Server
 const apiKey = process.env.GEMINI_API_KEY || '';
