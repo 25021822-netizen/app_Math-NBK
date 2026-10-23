@@ -3,7 +3,7 @@
  * Bản Quyền: Math&NBK Education Platform
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson } from './types/math';
 import {
   INITIAL_USER_PROFILE,
@@ -24,6 +24,12 @@ import { TeacherPortalView } from './components/teacher/TeacherPortalView';
 import { TeacherGradebookView } from './components/teacher/TeacherGradebookView';
 import { GeometryCanvasView } from './components/geometry/GeometryCanvasView';
 import { AdminDashboardView } from './components/admin/AdminDashboardView';
+import { AuthLoginView } from './components/auth/AuthLoginView';
+import {
+  triggerPushNotification,
+  requestNotificationPermission,
+  PushNotificationItem,
+} from './utils/notificationService';
 import {
   BookOpen,
   Camera,
@@ -36,9 +42,20 @@ import {
   Sparkles,
   Compass,
   User,
+  Bell,
+  X,
+  ShieldAlert,
+  LogOut,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const saved = localStorage.getItem('math_nbk_auth_user');
+    return !!saved;
+  });
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
   const [currentTab, setCurrentTab] = useState<string>('ask_ai');
   const [userRole, setUserRole] = useState<UserRole>('student');
   const [userProfile, setUserProfile] = useState(INITIAL_USER_PROFILE);
@@ -53,10 +70,124 @@ export default function App() {
   const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
   const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
 
+  // Quản lý thông báo đẩy (Push Notifications)
+  const [notifications, setNotifications] = useState<PushNotificationItem[]>([
+    {
+      id: 'notif_welcome',
+      title: 'Chào mừng bạn đến với Math&NBK',
+      message: 'Hệ thống học Toán THPT thông minh GDPT 2018 tích hợp AI và phòng thi chuẩn Bộ GD&ĐT.',
+      type: 'system',
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      targetTab: 'classroom',
+    },
+  ]);
+  const [activeToast, setActiveToast] = useState<PushNotificationItem | null>(null);
+
+  // Tự động khôi phục tài khoản đã lưu
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('math_nbk_auth_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) {
+          setUserProfile(parsed);
+          setUserRole(parsed.role);
+          setIsAuthenticated(true);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  // Lắng nghe sự kiện thông báo đẩy trong hệ thống
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<PushNotificationItem>;
+      if (customEvent.detail) {
+        setNotifications((prev) => [customEvent.detail, ...prev]);
+        setActiveToast(customEvent.detail);
+        const timer = setTimeout(() => {
+          setActiveToast((curr) => (curr?.id === customEvent.detail.id ? null : curr));
+        }, 6000);
+        return () => clearTimeout(timer);
+      }
+    };
+    window.addEventListener('math_nbk_push_notification', handler);
+    return () => window.removeEventListener('math_nbk_push_notification', handler);
+  }, []);
+
+  // Phân quyền bảo mật tuyệt đối: Tự động điều hướng nếu tab không thuộc vai trò đang đăng nhập
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (userRole === 'admin') {
+      if (currentTab !== 'admin_dashboard' && currentTab !== 'profile') {
+        setCurrentTab('admin_dashboard');
+      }
+    } else if (userRole === 'teacher') {
+      const allowedTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'geometry', 'ask_ai', 'profile', 'exam'];
+      if (!allowedTeacherTabs.includes(currentTab)) {
+        setCurrentTab('classroom');
+      }
+    } else if (userRole === 'student') {
+      const allowedStudentTabs = ['ask_ai', 'classroom', 'student_history', 'geometry', 'profile', 'exam'];
+      if (!allowedStudentTabs.includes(currentTab)) {
+        setCurrentTab('ask_ai');
+      }
+    }
+  }, [userRole, currentTab, isAuthenticated]);
+
+  // Đăng nhập thành công
+  const handleLoginSuccess = (user: UserProfile) => {
+    setUserProfile(user);
+    setUserRole(user.role);
+    setIsAuthenticated(true);
+    localStorage.setItem('math_nbk_auth_user', JSON.stringify(user));
+    if (user.role === 'teacher') setCurrentTab('classroom');
+    else if (user.role === 'admin') setCurrentTab('admin_dashboard');
+    else setCurrentTab('ask_ai');
+  };
+
+  // Yêu cầu đăng xuất (Hiện modal xác nhận)
+  const handleLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  // Xác nhận đăng xuất
+  const handleConfirmLogout = () => {
+    setShowLogoutConfirm(false);
+    setIsAuthenticated(false);
+    localStorage.removeItem('math_nbk_auth_user');
+  };
+
+  // Admin phê duyệt kích hoạt tài khoản
+  const handleApproveUser = (userId: string) => {
+    setAllUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, status: 'active' } : u))
+    );
+    const approvedUser = allUsers.find((u) => u.id === userId);
+    triggerPushNotification('Phê duyệt tài khoản thành công', {
+      message: `Tài khoản của ${approvedUser ? approvedUser.name : userId} đã được kích hoạt thành công!`,
+      type: 'system',
+      targetTab: 'admin_dashboard',
+    });
+  };
+
+  // Admin từ chối yêu cầu đăng ký
+  const handleRejectUser = (userId: string, reason?: string) => {
+    setAllUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId ? { ...u, status: 'rejected', rejectionReason: reason || 'Thông tin không hợp lệ' } : u
+      )
+    );
+  };
+
   // Cập nhật thông tin hồ sơ (ảnh đại diện, mật khẩu, thông tin cá nhân) đồng bộ vào allUsers (Admin quản lý)
   const handleUpdateProfile = (updated: UserProfile) => {
     setUserProfile(updated);
     setAllUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
+    localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
   };
 
   // Admin cấp mới tài khoản
@@ -69,6 +200,7 @@ export default function App() {
     setAllUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)));
     if (userProfile.id === updatedUser.id) {
       setUserProfile(updatedUser);
+      localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
     }
   };
 
@@ -99,15 +231,24 @@ export default function App() {
     setCheatLogs((prev) => [log, ...prev]);
   };
 
+  // Giáo viên đăng tải đề thi mới: Tự động phát thông báo đẩy cho học sinh
   const handlePublishExam = (newExam: Exam) => {
     setExamsList((prev) => {
       const filtered = prev.filter((e) => e.id !== newExam.id);
       return [newExam, ...filtered];
     });
     setActiveExamId(newExam.id);
+
+    // Kích hoạt thông báo đẩy cho học sinh
+    triggerPushNotification(`Đề thi mới: ${newExam.title}`, {
+      message: `Thầy cô vừa đăng tải đề thi mới (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Nhấn để vào phòng luyện thi ngay!`,
+      type: 'exam_published',
+      targetTab: 'classroom',
+      examId: newExam.id,
+    });
   };
 
-  // Xử lý nộp bài thi của học sinh: tự động ghi nhận vào submissions & cộng XP
+  // Xử lý nộp bài thi của học sinh: tự động ghi nhận vào submissions & cộng XP & phát thông báo kết quả
   const handleAddSubmission = (submission: StudentExamSubmission) => {
     setSubmissions((prev) => [submission, ...prev]);
     setUserProfile((prev) => {
@@ -117,7 +258,19 @@ export default function App() {
         streakDays: prev.streakDays + 1,
       };
       setAllUsers((all) => all.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
+      localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
       return updated;
+    });
+
+    // Kích hoạt thông báo đẩy điểm thi và kết quả chấm bài
+    const formattedScore = submission.score.toFixed(1);
+    const answersCount = Object.keys(submission.answers || {}).length;
+    triggerPushNotification(`Kết quả chấm bài: ${submission.examTitle}`, {
+      message: `Điểm số của bạn: ${formattedScore}/10 (${answersCount} câu đã làm). ${submission.score >= 8 ? 'Thành tích xuất sắc! 🎉' : 'Đã lưu học bạ. Nhấn để xem chi tiết lời giải.'}`,
+      type: 'exam_graded',
+      targetTab: 'student_history',
+      examId: submission.examId,
+      score: submission.score,
     });
   };
 
@@ -133,6 +286,7 @@ export default function App() {
           submissions={submissions}
           onNavigateToClassroom={() => setCurrentTab('classroom')}
           onToggleTier={handleToggleTier}
+          onLogout={handleLogout}
         />
       );
     }
@@ -151,6 +305,8 @@ export default function App() {
           onCreateUser={handleCreateUser}
           onUpdateUser={handleUpdateUser}
           onDeleteUser={handleDeleteUser}
+          onApproveUser={handleApproveUser}
+          onRejectUser={handleRejectUser}
         />
       );
     }
@@ -161,8 +317,8 @@ export default function App() {
         return (
           <ClassroomManagerView
             userRole={userRole}
-            currentUserId="usr_teacher_01"
-            currentUserName="ThS. Trần Văn Minh"
+            currentUserId={userProfile.id}
+            currentUserName={userProfile.name}
             classrooms={classrooms}
             onUpdateClassrooms={setClassrooms}
             examsList={examsList}
@@ -299,6 +455,17 @@ export default function App() {
     }
   };
 
+  // Nếu chưa đăng nhập, hiển thị Giao diện Đăng nhập / Đăng ký
+  if (!isAuthenticated) {
+    return (
+      <AuthLoginView
+        allUsers={allUsers}
+        onLoginSuccess={handleLoginSuccess}
+        onRegisterUser={handleCreateUser}
+      />
+    );
+  }
+
   const isExamMode = currentTab === 'exam';
 
   return (
@@ -309,22 +476,18 @@ export default function App() {
           currentTab={currentTab}
           onSelectTab={setCurrentTab}
           userRole={userRole}
-          onSelectRole={(newRole) => {
-            setUserRole(newRole);
-            const foundUser = allUsers.find((u) => u.role === newRole);
-            if (foundUser) {
-              setUserProfile(foundUser);
-            }
-            if (newRole === 'student') setCurrentTab('ask_ai');
-            else if (newRole === 'teacher') setCurrentTab('classroom');
-            else setCurrentTab('admin_dashboard');
-          }}
           tier={userProfile.tier}
           onToggleTier={handleToggleTier}
           streakDays={userProfile.streakDays}
           xp={userProfile.xp}
           deviceMode={deviceMode}
           onSelectDeviceMode={setDeviceMode}
+          userName={userProfile.name}
+          userAvatar={userProfile.avatar}
+          onLogout={handleLogout}
+          notifications={notifications}
+          onClearNotifications={() => setNotifications([])}
+          onRequestPushPermission={requestNotificationPermission}
         />
       )}
 
@@ -351,10 +514,33 @@ export default function App() {
             {/* Scrollable Screen Content */}
             <div className="flex-1 overflow-y-auto pb-16">{renderCurrentView()}</div>
 
-            {/* Mobile Bottom Tab Bar (Ẩn khi đang trong phòng thi để chống bấm nhầm) */}
+            {/* Mobile Bottom Tab Bar (Phân quyền giao diện độc lập tuyệt đối theo 3 vai trò) */}
             {currentTab !== 'exam' && (
               <div className="h-16 bg-white/95 border-t border-slate-200 flex items-center justify-around px-2 relative z-20">
-                {userRole === 'teacher' ? (
+                {userRole === 'admin' ? (
+                  // 1. Thanh điều hướng cho Quản Trị Viên
+                  <>
+                    <button
+                      onClick={() => setCurrentTab('admin_dashboard')}
+                      className={`flex flex-col items-center gap-0.5 ${
+                        currentTab === 'admin_dashboard' ? 'text-blue-600 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      <ShieldAlert size={18} />
+                      <span className="text-[10px]">Quản Trị</span>
+                    </button>
+                    <button
+                      onClick={() => setCurrentTab('profile')}
+                      className={`flex flex-col items-center gap-0.5 ${
+                        currentTab === 'profile' ? 'text-blue-600 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      <User size={18} />
+                      <span className="text-[10px]">Hồ Sơ</span>
+                    </button>
+                  </>
+                ) : userRole === 'teacher' ? (
+                  // 2. Thanh điều hướng cho Giáo Viên
                   <>
                     <button
                       onClick={() => setCurrentTab('classroom')}
@@ -392,8 +578,18 @@ export default function App() {
                       <Compass size={18} />
                       <span className="text-[10px]">Vẽ Hình</span>
                     </button>
+                    <button
+                      onClick={() => setCurrentTab('profile')}
+                      className={`flex flex-col items-center gap-0.5 ${
+                        currentTab === 'profile' ? 'text-blue-600 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      <User size={18} />
+                      <span className="text-[10px]">Hồ Sơ</span>
+                    </button>
                   </>
                 ) : (
+                  // 3. Thanh điều hướng cho Học Sinh
                   <>
                     <button
                       onClick={() => setCurrentTab('ask_ai')}
@@ -462,6 +658,102 @@ export default function App() {
             </div>
           </div>
         </footer>
+      )}
+
+      {/* Floating Push Notification Toast */}
+      {activeToast && (
+        <div
+          role="alert"
+          onClick={() => {
+            if (activeToast.targetTab) {
+              setCurrentTab(activeToast.targetTab);
+            }
+            if (activeToast.examId) {
+              setActiveExamId(activeToast.examId);
+            }
+            setActiveToast(null);
+          }}
+          className="fixed bottom-5 right-5 z-50 max-w-sm w-full bg-slate-900/95 text-white p-4 rounded-2xl shadow-2xl border border-blue-500/30 backdrop-blur-md cursor-pointer animate-in slide-in-from-bottom-5 duration-300 hover:scale-[1.02] transition-transform flex items-start gap-3"
+        >
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shrink-0 shadow-xs">
+            {activeToast.type === 'exam_graded' ? (
+              <FileCheck size={20} className="text-emerald-300" />
+            ) : (
+              <Sparkles size={20} className="text-amber-300" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0 pr-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">
+                {activeToast.type === 'exam_graded' ? 'Kết quả chấm thi' : 'Thông báo mới'}
+              </span>
+              <span className="text-[10px] text-slate-400">Vừa xong</span>
+            </div>
+            <h4 className="text-xs font-bold text-white truncate mt-0.5">{activeToast.title}</h4>
+            <p className="text-[11px] text-slate-300 line-clamp-2 mt-0.5 leading-snug">
+              {activeToast.message}
+            </p>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveToast(null);
+            }}
+            aria-label="Đóng thông báo"
+            className="text-slate-400 hover:text-white transition-colors p-1"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Modal Xác Nhận Đăng Xuất */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <LogOut size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Xác Nhận Đăng Xuất</h3>
+                <p className="text-xs text-slate-500">Hệ thống học toán Math&NBK</p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2">
+              <p>
+                Bạn có chắc chắn muốn đăng xuất khỏi tài khoản{' '}
+                <strong className="text-slate-900 font-bold">{userProfile.name}</strong> (
+                <span className="font-semibold text-blue-600">
+                  {userRole === 'admin' ? 'Quản Trị Viên' : userRole === 'teacher' ? 'Giáo Viên' : 'Học Sinh'}
+                </span>
+                ) không?
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Sau khi đăng xuất, phiên làm việc sẽ kết thúc và bạn sẽ được chuyển về màn hình Đăng nhập.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Hủy Bỏ / Ở Lại
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLogout}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <LogOut size={15} />
+                <span>Xác Nhận Đăng Xuất</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

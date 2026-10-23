@@ -800,11 +800,52 @@ export const SAMPLE_ADMIN: UserProfile = {
   password: 'AdminNBK@2025',
 };
 
+// Danh sách người dùng đang chờ Admin duyệt phê duyệt tài khoản
+export const SAMPLE_PENDING_REGISTRATIONS: UserProfile[] = [
+  {
+    id: 'usr_req_01',
+    name: 'Đặng Quốc Anh',
+    email: 'quocanh.dang@thpt-nbk.edu.vn',
+    role: 'student',
+    tier: 'free',
+    xp: 0,
+    streakDays: 0,
+    lastActiveDate: '2026-10-23',
+    dailyScanCount: 0,
+    maxDailyScans: 10,
+    grade: 12,
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=QuocAnh',
+    schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+    status: 'pending_approval',
+    requestedAt: '2026-10-23T08:30:00Z',
+    password: 'QuocAnh@2025',
+  },
+  {
+    id: 'usr_req_02',
+    name: 'Cô Nguyễn Hà Linh',
+    email: 'halinh.nguyen@thpt-nbk.edu.vn',
+    role: 'teacher',
+    tier: 'premium',
+    xp: 0,
+    streakDays: 0,
+    lastActiveDate: '2026-10-23',
+    dailyScanCount: 0,
+    maxDailyScans: 9999,
+    grade: 11,
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=HaLinh',
+    schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+    status: 'pending_approval',
+    requestedAt: '2026-10-23T08:45:00Z',
+    password: 'TeacherHaLinh@2025',
+  },
+];
+
 // Tổng hợp người dùng hệ thống (chỉ admin có quyền tạo mới tài khoản cho giáo viên và học sinh)
 export const INITIAL_ALL_USERS: UserProfile[] = [
-  SAMPLE_ADMIN,
-  ...SAMPLE_TEACHERS,
-  ...SAMPLE_STUDENTS,
+  { ...SAMPLE_ADMIN, status: 'active' },
+  ...SAMPLE_TEACHERS.map((t) => ({ ...t, status: 'active' as const })),
+  ...SAMPLE_STUDENTS.map((s) => ({ ...s, status: 'active' as const })),
+  ...SAMPLE_PENDING_REGISTRATIONS,
 ];
 
 export const ALL_INITIAL_USERS: UserProfile[] = INITIAL_ALL_USERS;

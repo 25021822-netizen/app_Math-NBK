@@ -2190,40 +2190,38 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
                       {/* Tool Buttons & Send Button */}
                       <div className="flex items-center justify-between sm:justify-end gap-1.5 pt-1 sm:pt-0 shrink-0">
-                        {/* Attach Image button */}
+                        {/* Attach Image button (chỉ để icon theo yêu cầu) */}
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          title="Đính kèm ảnh bài tập từ máy"
-                          className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors flex items-center gap-1 text-[11px] font-semibold"
+                          title="Gửi ảnh bài tập từ máy"
+                          className="p-2.5 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors flex items-center justify-center"
                         >
-                          <ImageIcon size={16} />
-                          <span className="hidden md:inline">Gửi ảnh</span>
+                          <ImageIcon size={17} />
                         </button>
 
-                        {/* Tag Member button */}
+                        {/* Tag Member button (chỉ để icon theo yêu cầu) */}
                         <button
                           type="button"
                           onClick={() => setShowMentionPicker((prev) => !prev)}
-                          title="Tag tên thành viên trong lớp (@tên)"
-                          className={`p-2 rounded-xl border transition-colors flex items-center gap-1 text-[11px] font-semibold ${
+                          title="Tag tên thành viên (@tên)"
+                          className={`p-2.5 rounded-xl border transition-colors flex items-center justify-center ${
                             showMentionPicker
                               ? 'bg-blue-100 text-blue-700 border-blue-300'
                               : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200'
                           }`}
                         >
-                          <AtSign size={16} />
-                          <span className="hidden md:inline">Tag tên</span>
+                          <AtSign size={17} />
                         </button>
 
-                        {/* Send button */}
+                        {/* Send button (chỉ để icon theo yêu cầu) */}
                         <button
                           type="submit"
                           disabled={!chatMessageText.trim() && !attachedImage}
-                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all"
+                          title="Gửi tin nhắn (Enter)"
+                          className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-xs flex items-center justify-center transition-all"
                         >
-                          <Send size={15} />
-                          <span>Gửi Tin</span>
+                          <Send size={17} />
                         </button>
                       </div>
                     </div>

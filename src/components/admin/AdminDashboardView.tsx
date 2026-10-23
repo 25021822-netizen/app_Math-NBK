@@ -35,6 +35,8 @@ interface AdminDashboardViewProps {
   onToggleUserTier?: (userId: string) => void;
   onUpdateUser?: (updatedUser: UserProfile) => void;
   onDeleteUser?: (userId: string) => void;
+  onApproveUser?: (userId: string) => void;
+  onRejectUser?: (userId: string, reason?: string) => void;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
@@ -44,8 +46,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onToggleUserTier,
   onUpdateUser,
   onDeleteUser,
+  onApproveUser,
+  onRejectUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<'tokens' | 'users' | 'cheat_logs'>('users');
+  const [activeTab, setActiveTab] = useState<'tokens' | 'users' | 'pending_requests' | 'cheat_logs'>('users');
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
   // Internal user state if not provided via props
   const [internalUsers, setInternalUsers] = useState<UserProfile[]>([
@@ -78,6 +83,34 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   ]);
 
   const usersList = propUsers || internalUsers;
+  const pendingUsers = usersList.filter((u) => u.status === 'pending_approval');
+  const pendingCount = pendingUsers.length;
+
+  const handleApprove = (userId: string) => {
+    if (onApproveUser) {
+      onApproveUser(userId);
+    } else {
+      setInternalUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, status: 'active' } : u))
+      );
+    }
+    const target = usersList.find((u) => u.id === userId);
+    setApprovalMessage(`Đã phê duyệt và kích hoạt tài khoản "${target ? target.name : userId}" thành công!`);
+    setTimeout(() => setApprovalMessage(null), 3500);
+  };
+
+  const handleReject = (userId: string) => {
+    if (onRejectUser) {
+      onRejectUser(userId);
+    } else {
+      setInternalUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, status: 'rejected' } : u))
+      );
+    }
+    const target = usersList.find((u) => u.id === userId);
+    setApprovalMessage(`Đã từ chối yêu cầu đăng ký của "${target ? target.name : userId}".`);
+    setTimeout(() => setApprovalMessage(null), 3500);
+  };
 
   // Search & Filter state in User Management
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'teacher' | 'student'>('all');
@@ -319,7 +352,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
 
         {/* Tab switchers */}
-        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
+        <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold gap-1">
           <button
             onClick={() => setActiveTab('users')}
             className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
@@ -328,6 +361,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           >
             <Users size={14} />
             <span>Tài Khoản ({usersList.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('pending_requests')}
+            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+              activeTab === 'pending_requests' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+            }`}
+          >
+            <Clock size={14} className={pendingCount > 0 ? 'text-amber-500' : ''} />
+            <span>Chờ Duyệt</span>
+            {pendingCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono text-[10px] font-bold animate-pulse">
+                {pendingCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('tokens')}
@@ -350,9 +397,43 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       </div>
 
+      {/* Thông báo thao tác phê duyệt */}
+      {approvalMessage && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+          <span>{approvalMessage}</span>
+        </div>
+      )}
+
       {/* TAB 1: USER MANAGEMENT (CHỈ ADMIN MỚI CÓ QUYỀN TẠO TÀI KHOẢN) */}
       {activeTab === 'users' && (
         <div className="space-y-6">
+          {/* Callout thông báo yêu cầu chờ duyệt nếu có */}
+          {pendingCount > 0 && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+                  {pendingCount}
+                </div>
+                <div>
+                  <h5 className="font-extrabold text-xs text-amber-950">
+                    Có {pendingCount} yêu cầu đăng ký tài khoản mới đang chờ duyệt!
+                  </h5>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Học sinh hoặc giáo viên vừa đăng ký và cần Quản trị viên đối chiếu phê duyệt để kích hoạt.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveTab('pending_requests')}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5"
+              >
+                <Clock size={14} />
+                <span>Xem & Phê Duyệt Ngay →</span>
+              </button>
+            </div>
+          )}
+
           {/* Security Banner regarding Admin Exclusive User Provisioning */}
           <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50 to-slate-50 border border-rose-200 text-xs text-rose-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -518,10 +599,42 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <CheckCircle2 size={12} className="text-emerald-600" />
-                          <span>Hoạt động</span>
-                        </span>
+                        {u.status === 'pending_approval' ? (
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                              <Clock size={11} className="text-amber-600" />
+                              <span>Chờ duyệt</span>
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(u.id)}
+                                className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] shadow-2xs transition-colors"
+                                title="Phê duyệt kích hoạt tài khoản"
+                              >
+                                Duyệt
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReject(u.id)}
+                                className="px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-[10px] transition-colors"
+                                title="Từ chối yêu cầu đăng ký"
+                              >
+                                Từ chối
+                              </button>
+                            </div>
+                          </div>
+                        ) : u.status === 'rejected' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <X size={12} className="text-rose-600" />
+                            <span>Đã từ chối</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle2 size={12} className="text-emerald-600" />
+                            <span>Hoạt động</span>
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -559,6 +672,120 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: YÊU CẦU ĐĂNG KÝ TÀI KHOẢN CHỜ ADMIN PHÊ DUYỆT */}
+      {activeTab === 'pending_requests' && (
+        <div className="space-y-6">
+          <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
+                <Clock size={16} />
+                <span>Phê Duyệt Đăng Ký Tài Khoản ({pendingUsers.length})</span>
+              </span>
+              <h3 className="text-xl font-black text-slate-900 mt-1">
+                Yêu Cầu Tài Khoản Mới Đang Chờ Duyệt
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Người dùng đăng ký từ màn hình đăng nhập công khai bắt buộc phải được Quản trị viên đối chiếu và phê duyệt trước khi có thể đăng nhập.
+              </p>
+            </div>
+
+            <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 font-mono text-xs font-bold shrink-0">
+              Chờ xử lý: {pendingUsers.length} tài khoản
+            </div>
+          </div>
+
+          {pendingUsers.length === 0 ? (
+            <div className="p-12 text-center rounded-3xl bg-white border border-slate-200 shadow-xs space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                <CheckCircle2 size={30} />
+              </div>
+              <h4 className="font-extrabold text-base text-slate-900">
+                Không Có Yêu Cầu Nào Đang Chờ Duyệt
+              </h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                Tất cả yêu cầu đăng ký tài khoản từ giáo viên và học sinh đã được phê duyệt hoặc xử lý đầy đủ.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingUsers.map((u) => (
+                <div
+                  key={u.id}
+                  className="bg-white p-5 rounded-3xl border border-amber-200 shadow-xs space-y-4 hover:border-amber-300 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200">
+                        <img
+                          src={u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.name}`}
+                          alt={u.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900">{u.name}</h4>
+                        <p className="text-[11px] font-mono text-slate-500">{u.email}</p>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                          ID Đề xuất: <code className="font-mono text-slate-700 font-bold">{u.id}</code>
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        u.role === 'teacher'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {u.role === 'teacher' ? 'Giáo viên' : `Học sinh Lớp ${u.grade}`}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500">Trường THPT:</span>
+                      <span className="font-semibold text-slate-800">{u.schoolName || 'Chưa cập nhật'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500">Thời gian gửi yêu cầu:</span>
+                      <span className="font-mono text-slate-700">
+                        {u.requestedAt
+                          ? new Date(u.requestedAt).toLocaleString('vi-VN', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                            })
+                          : 'Vừa xong'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => handleReject(u.id)}
+                      className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <X size={14} />
+                      <span>Từ Chối</span>
+                    </button>
+                    <button
+                      onClick={() => handleApprove(u.id)}
+                      className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>Phê Duyệt Kích Hoạt</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

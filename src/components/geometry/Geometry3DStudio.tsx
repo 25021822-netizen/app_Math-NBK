@@ -2106,44 +2106,91 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
           </div>
         )}
 
-        {/* Hướng dẫn tương tác chuột */}
-        <div className="w-full max-w-[500px] mb-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-[11px] flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <Move size={13} className="text-blue-600" />
-            <span>Kéo chuột trên nền để xoay 3D · Kéo trực tiếp vào điểm để di chuyển</span>
-          </span>
-          {selectedPointName && (
-            <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md">
-              Đang chọn điểm [{selectedPointName}]
+        {/* Hướng dẫn tương tác chuột hoặc Thanh chỉ báo tạo điểm tự do */}
+        {isFreePointMode ? (
+          <div className="w-full max-w-[500px] mb-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] font-bold flex items-center justify-between shadow-2xs animate-in fade-in">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+              <span>ĐANG BẬT: Dùng con trỏ nhấp trực tiếp vào hình để tạo điểm [{manualPointName}]</span>
             </span>
-          )}
-        </div>
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-semibold">
+              Nhấp vào mặt, cạnh hoặc đáy
+            </span>
+          </div>
+        ) : (
+          <div className="w-full max-w-[500px] mb-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-[11px] flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Move size={13} className="text-blue-600" />
+              <span>Kéo chuột trên nền để xoay 3D · Kéo trực tiếp vào điểm để di chuyển</span>
+            </span>
+            {selectedPointName && (
+              <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md">
+                Đang chọn điểm [{selectedPointName}]
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Canvas SVG 3D Container */}
         <div className="w-full max-w-[520px] aspect-5/4 relative flex items-center justify-center select-none overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-50/70 to-white shadow-inner">
           <svg
             id="geometry-3d-studio-svg"
             viewBox="0 0 500 400"
-            className="w-full h-full cursor-grab active:cursor-grabbing"
+            className={`w-full h-full ${isFreePointMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
             onMouseMove={handleSvgMouseMove}
+            onMouseLeave={() => setHover3DPoint(null)}
             onMouseUp={handleSvgMouseUp}
             onMouseDown={(e) => {
               const startX = e.clientX;
               const startY = e.clientY;
               const initialRotY = rotY;
               const initialRotX = rotX;
+              let hasMoved = false;
 
               const onMouseMove = (moveEvent: MouseEvent) => {
-                if (dragStartRef.current) return; // Nếu đang kéo điểm thì không xoay canvas
+                if (dragStartRef.current) return;
                 const dx = moveEvent.clientX - startX;
                 const dy = moveEvent.clientY - startY;
+                if (Math.hypot(dx, dy) > 5) {
+                  hasMoved = true;
+                }
                 setRotY(initialRotY + dx * 0.7);
                 setRotX(Math.max(-45, Math.min(60, initialRotX - dy * 0.5)));
               };
 
-              const onMouseUp = () => {
+              const onMouseUp = (upEvent: MouseEvent) => {
                 window.removeEventListener('mousemove', onMouseMove);
                 window.removeEventListener('mouseup', onMouseUp);
+
+                // Nếu là nhấp chuột (không xoay) và đang ở chế độ Tạo Điểm Tự Do
+                if (!hasMoved && !dragStartRef.current && isFreePointMode) {
+                  const svgEl = document.getElementById('geometry-3d-studio-svg');
+                  if (svgEl) {
+                    const rect = svgEl.getBoundingClientRect();
+                    const svgX = ((upEvent.clientX - rect.left) / rect.width) * 500;
+                    const svgY = ((upEvent.clientY - rect.top) / rect.height) * 400;
+                    if (svgX >= 0 && svgX <= 500 && svgY >= 0 && svgY <= 400) {
+                      const calculated = calculate3DPointFromScreen(svgX, svgY);
+                      const name = manualPointName.trim() || getNextFreePointName(allPointNames);
+                      const newPoint: Point3D = {
+                        name,
+                        x: calculated.x,
+                        y: calculated.y,
+                        z: calculated.z,
+                        label: `${name} (${calculated.surfaceName})`,
+                        color: manualPointColor || '#10b981',
+                        isCustom: true,
+                      };
+                      setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+                      setSelectedPointName(name);
+                      setStatusMessage(`Đã tạo điểm tự do [${name}] trực tiếp trên ${calculated.surfaceName} tại tọa độ (${calculated.x}, ${calculated.y}, ${calculated.z})!`);
+                      setTimeout(() => setStatusMessage(null), 3500);
+
+                      const nextName = getNextFreePointName([...allPointNames, name]);
+                      setManualPointName(nextName);
+                    }
+                  }
+                }
               };
 
               window.addEventListener('mousemove', onMouseMove);
@@ -2853,6 +2900,69 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                 </g>
               );
             })}
+
+            {/* 4. CON TRỎ NGẮM TẠO ĐIỂM TỰ DO THỜI GIAN THỰC */}
+            {isFreePointMode && hover3DPoint && !draggingPointName && (
+              <g className="pointer-events-none select-none">
+                {/* Vòng tròn xoay ngắm tọa độ */}
+                <circle
+                  cx={hover3DPoint.svgX}
+                  cy={hover3DPoint.svgY}
+                  r="13"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 2"
+                />
+                {/* Điểm tâm phát xung */}
+                <circle
+                  cx={hover3DPoint.svgX}
+                  cy={hover3DPoint.svgY}
+                  r="4"
+                  fill="#10b981"
+                  stroke="#ffffff"
+                  strokeWidth="1.5"
+                />
+                {/* Dấu thập ngắm */}
+                <line
+                  x1={hover3DPoint.svgX - 9}
+                  y1={hover3DPoint.svgY}
+                  x2={hover3DPoint.svgX + 9}
+                  y2={hover3DPoint.svgY}
+                  stroke="#10b981"
+                  strokeWidth="1.2"
+                />
+                <line
+                  x1={hover3DPoint.svgX}
+                  y1={hover3DPoint.svgY - 9}
+                  x2={hover3DPoint.svgX}
+                  y2={hover3DPoint.svgY + 9}
+                  stroke="#10b981"
+                  strokeWidth="1.2"
+                />
+
+                {/* Hộp nhãn thông tin tọa độ bám theo con trỏ */}
+                <g transform={`translate(${Math.min(hover3DPoint.svgX + 12, 320)}, ${Math.max(hover3DPoint.svgY - 32, 20)})`}>
+                  <rect
+                    x="0"
+                    y="0"
+                    width="165"
+                    height="32"
+                    rx="8"
+                    fill="#0f172a"
+                    fillOpacity="0.94"
+                    stroke="#10b981"
+                    strokeWidth="1.2"
+                  />
+                  <text x="8" y="13" fill="#34d399" fontSize="9.5" fontWeight="bold">
+                    🎯 Điểm [{manualPointName}]: ({hover3DPoint.x}, {hover3DPoint.y}, {hover3DPoint.z})
+                  </text>
+                  <text x="8" y="25" fill="#e2e8f0" fontSize="8.5">
+                    {hover3DPoint.surfaceName} · Nhấp để tạo
+                  </text>
+                </g>
+              </g>
+            )}
           </svg>
         </div>
       </div>

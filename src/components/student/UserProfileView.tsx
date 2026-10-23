@@ -29,6 +29,7 @@ import {
   EyeOff,
   ShieldCheck,
   AlertTriangle,
+  LogOut,
 } from 'lucide-react';
 
 interface UserProfileViewProps {
@@ -39,6 +40,7 @@ interface UserProfileViewProps {
   onOpenFriendsModal?: () => void;
   onNavigateToClassroom?: () => void;
   onToggleTier?: () => void;
+  onLogout?: () => void;
 }
 
 export const UserProfileView: React.FC<UserProfileViewProps> = ({
@@ -49,6 +51,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   onOpenFriendsModal,
   onNavigateToClassroom,
   onToggleTier,
+  onLogout,
 }) => {
   const isTeacher = userProfile.role === 'teacher';
   const isAdmin = userProfile.role === 'admin';
@@ -245,11 +248,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
 
           {/* Action buttons */}
-          <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
             {onOpenFriendsModal && (
               <button
                 onClick={onOpenFriendsModal}
-                className="px-4 py-2.5 rounded-2xl bg-white text-blue-900 font-bold text-xs shadow-xs hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-white text-blue-900 font-bold text-xs shadow-xs hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
               >
                 <Users size={16} className="text-blue-600" />
                 <span>Mạng Lưới Bạn Bè</span>
@@ -258,10 +261,20 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             {onToggleTier && userProfile.tier === 'free' && (
               <button
                 onClick={onToggleTier}
-                className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-xs hover:opacity-95 transition-all flex items-center justify-center gap-1.5"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-xs hover:opacity-95 transition-all flex items-center justify-center gap-1.5"
               >
                 <Sparkles size={16} />
                 <span>Nâng Cấp Gói Pro</span>
+              </button>
+            )}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-rose-500/80 border border-white/20 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                title="Đăng xuất khỏi tài khoản"
+              >
+                <LogOut size={16} />
+                <span>Đăng Xuất</span>
               </button>
             )}
           </div>

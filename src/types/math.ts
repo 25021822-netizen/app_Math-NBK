@@ -17,8 +17,10 @@ export interface UserProfile {
   schoolName?: string;
   phone?: string;
   bio?: string;
-  subject?: string;
   password?: string; // Mật khẩu đăng nhập tối thiểu 8 ký tự
+  status?: 'active' | 'pending_approval' | 'rejected'; // Trạng thái tài khoản (phê duyệt bởi admin)
+  requestedAt?: string; // Thời gian gửi yêu cầu đăng ký
+  rejectionReason?: string; // Lý do từ chối nếu có
 }
 
 export type MathTopic = 
