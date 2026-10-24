@@ -133,8 +133,24 @@ export default function App() {
 
   // Tự động đồng bộ Real-Time cơ sở dữ liệu trên máy chủ (Sync đa thiết bị / khác máy)
   useEffect(() => {
+    let knownPendingIds = new Set<string>();
+
     const unsubscribe = startDbPolling((remoteData) => {
       if (remoteData.users && Array.isArray(remoteData.users)) {
+        const freshPending = remoteData.users.filter((u) => u.status === 'pending_approval');
+        // Nếu có yêu cầu đăng ký mới từ thiết bị khác
+        const newArrivals = freshPending.filter((u) => !knownPendingIds.has(u.id));
+        if (newArrivals.length > 0 && knownPendingIds.size > 0) {
+          newArrivals.forEach((u) => {
+            triggerPushNotification('Yêu Cầu Cấp Tài Khoản Mới', {
+              message: `Người dùng ${u.name} (${u.role === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${u.id}) vừa gửi yêu cầu đăng ký. Vui lòng vào duyệt.`,
+              type: 'system',
+              targetTab: 'admin_dashboard',
+            });
+          });
+        }
+        knownPendingIds = new Set(freshPending.map((u) => u.id));
+
         setAllUsers(remoteData.users);
 
         // Đồng bộ trạng thái tài khoản đang đăng nhập (nếu được Admin duyệt hoặc cập nhật từ máy khác)

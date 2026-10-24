@@ -395,20 +395,30 @@ app.post('/api/db/register', (req, res) => {
   const emailLower = user.email.trim().toLowerCase();
   const idLower = (user.id || '').trim().toLowerCase();
 
+  // Bắt buộc phải có ID và không ai được tạo trùng nhau
+  if (!idLower) {
+    return res.status(400).json({ success: false, error: 'Mã ID định danh là bắt buộc, không được để trống!' });
+  }
+
+  // Kiểm tra trùng ID (Mỗi tài khoản chỉ có 1 ID duy nhất, không ai được tạo giống nhau)
+  if (serverDb.users.some((u) => u.id.trim().toLowerCase() === idLower)) {
+    return res.status(400).json({ success: false, error: `Mã ID "${user.id}" đã được sử dụng! Mỗi tài khoản chỉ có 1 ID duy nhất trên hệ thống.` });
+  }
+
   // Kiểm tra trùng Email
   if (serverDb.users.some((u) => u.email.trim().toLowerCase() === emailLower)) {
     return res.status(400).json({ success: false, error: 'Địa chỉ Email này đã tồn tại trên hệ thống!' });
   }
 
-  // Kiểm tra trùng ID
-  if (idLower && serverDb.users.some((u) => u.id.trim().toLowerCase() === idLower)) {
-    return res.status(400).json({ success: false, error: `Mã ID "${user.id}" đã được sử dụng! Vui lòng chọn mã ID khác.` });
+  // Kiểm tra độ dài mật khẩu tối thiểu 8 ký tự
+  if (user.password && user.password.length < 8) {
+    return res.status(400).json({ success: false, error: 'Mật khẩu phải có tối thiểu 8 ký tự!' });
   }
 
   // Đăng ký mới luôn ở trạng thái chờ duyệt (Admin phê duyệt)
   const newUser = {
     ...user,
-    id: user.id || `usr_${user.role}_${Date.now().toString().slice(-5)}`,
+    id: idLower,
     status: 'pending_approval',
     requestedAt: new Date().toISOString(),
   };

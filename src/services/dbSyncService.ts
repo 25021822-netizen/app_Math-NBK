@@ -227,7 +227,7 @@ export async function dbSaveMessage(classId: string, message: ClassroomChatMessa
  */
 export function startDbPolling(
   onRemoteUpdate: (state: DatabaseState) => void,
-  intervalMs = 3500
+  intervalMs = 1500
 ): () => void {
   const poll = async () => {
     if (isSyncing) return;
