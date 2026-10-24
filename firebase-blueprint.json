@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile in Math&NBK platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "teacher", "admin"] },
+        "tier": { "type": "string", "enum": ["free", "premium"] },
+        "xp": { "type": "number" },
+        "streakDays": { "type": "number" },
+        "lastActiveDate": { "type": "string" },
+        "dailyScanCount": { "type": "number" },
+        "maxDailyScans": { "type": "number" },
+        "grade": { "type": "number" },
+        "avatar": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "phone": { "type": "string" },
+        "bio": { "type": "string" },
+        "password": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "pending_approval", "rejected"] },
+        "requestedAt": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "subject": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "Classroom": {
+      "title": "Classroom",
+      "description": "Classroom in Math&NBK platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "grade": { "type": "number" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" }
+      },
+      "required": ["id", "name", "code", "teacherId"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "Student exam submission",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "score": { "type": "number" }
+      },
+      "required": ["id", "examId", "studentId"]
+    },
+    "CheatLog": {
+      "title": "CheatLog",
+      "description": "Anti-cheat infraction log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["id", "examId", "studentId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and authentication status"
+    },
+    "/classrooms/{classId}": {
+      "schema": { "$ref": "#/entities/Classroom" },
+      "description": "Classrooms"
+    },
+    "/submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/Submission" },
+      "description": "Student exam submissions"
+    },
+    "/cheatLogs/{logId}": {
+      "schema": { "$ref": "#/entities/CheatLog" },
+      "description": "Anti-cheat logs"
+    }
+  }
+}
