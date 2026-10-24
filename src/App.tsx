@@ -14,6 +14,19 @@ import {
   SAMPLE_CLASSROOM_LESSONS,
   ALL_INITIAL_USERS,
 } from './data/mockData';
+import {
+  fetchDbState,
+  startDbPolling,
+  dbApproveUser,
+  dbRejectUser,
+  dbDeleteUser,
+  dbUpdateUser,
+  dbSaveClassrooms,
+  dbSaveSubmission,
+  dbSaveCheatLog,
+  dbSaveLessons,
+  dbSaveMessage,
+} from './services/dbSyncService';
 import { Navbar } from './components/Navbar';
 import { AIMathStudioView } from './components/student/AIMathStudioView';
 import { ExamEngineView } from './components/student/ExamEngineView';
@@ -56,8 +69,8 @@ export default function App() {
     return !!saved;
   });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
-  const [currentTab, setCurrentTab] = useState<string>('ask_ai');
-  const [userRole, setUserRole] = useState<UserRole>('student');
+  const [currentTab, setCurrentTab] = useState<string>('admin_dashboard');
+  const [userRole, setUserRole] = useState<UserRole>(INITIAL_USER_PROFILE.role);
   const [userProfile, setUserProfile] = useState(INITIAL_USER_PROFILE);
   const [allUsers, setAllUsers] = useState<UserProfile[]>(ALL_INITIAL_USERS);
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
@@ -65,7 +78,7 @@ export default function App() {
   const [examsList, setExamsList] = useState<Exam[]>([SAMPLE_EXAM_BGD]);
   const [activeExamId, setActiveExamId] = useState<string>(SAMPLE_EXAM_BGD.id);
 
-  // Nhóm lớp, Bài học & Kết quả bài nộp của học sinh
+  // Nhóm lớp, Bài học & Kết quả bài nộp của học sinh (Đồng bộ qua máy chủ)
   const [classrooms, setClassrooms] = useState<Classroom[]>(SAMPLE_CLASSROOMS);
   const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
   const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
@@ -118,6 +131,50 @@ export default function App() {
     return () => window.removeEventListener('math_nbk_push_notification', handler);
   }, []);
 
+  // Tự động đồng bộ Real-Time cơ sở dữ liệu trên máy chủ (Sync đa thiết bị / khác máy)
+  useEffect(() => {
+    const unsubscribe = startDbPolling((remoteData) => {
+      if (remoteData.users && Array.isArray(remoteData.users)) {
+        setAllUsers(remoteData.users);
+
+        // Đồng bộ trạng thái tài khoản đang đăng nhập (nếu được Admin duyệt hoặc cập nhật từ máy khác)
+        setUserProfile((curr) => {
+          const fresh = remoteData.users.find((u) => u.id === curr.id);
+          if (fresh) {
+            if (fresh.status === 'rejected') {
+              setIsAuthenticated(false);
+              localStorage.removeItem('math_nbk_auth_user');
+            } else {
+              localStorage.setItem('math_nbk_auth_user', JSON.stringify({ ...curr, ...fresh }));
+            }
+            return { ...curr, ...fresh };
+          }
+          return curr;
+        });
+      }
+
+      if (remoteData.classrooms && Array.isArray(remoteData.classrooms)) {
+        setClassrooms(remoteData.classrooms);
+      }
+
+      if (remoteData.submissions && Array.isArray(remoteData.submissions)) {
+        setSubmissions(remoteData.submissions);
+      }
+
+      if (remoteData.cheatLogs && Array.isArray(remoteData.cheatLogs)) {
+        setCheatLogs(remoteData.cheatLogs);
+      }
+
+      if (remoteData.classroomLessons && Array.isArray(remoteData.classroomLessons)) {
+        setClassroomLessons(remoteData.classroomLessons);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   // Phân quyền bảo mật tuyệt đối: Tự động điều hướng nếu tab không thuộc vai trò đang đăng nhập
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -161,11 +218,13 @@ export default function App() {
     localStorage.removeItem('math_nbk_auth_user');
   };
 
-  // Admin phê duyệt kích hoạt tài khoản
+  // Admin phê duyệt kích hoạt tài khoản (Đồng bộ ngay lên Server DB)
   const handleApproveUser = (userId: string) => {
     setAllUsers((prev) =>
       prev.map((u) => (u.id === userId ? { ...u, status: 'active' } : u))
     );
+    dbApproveUser(userId).catch(console.error);
+
     const approvedUser = allUsers.find((u) => u.id === userId);
     triggerPushNotification('Phê duyệt tài khoản thành công', {
       message: `Tài khoản của ${approvedUser ? approvedUser.name : userId} đã được kích hoạt thành công!`,
@@ -174,30 +233,34 @@ export default function App() {
     });
   };
 
-  // Admin từ chối yêu cầu đăng ký
+  // Admin từ chối yêu cầu đăng ký (Đồng bộ ngay lên Server DB)
   const handleRejectUser = (userId: string, reason?: string) => {
     setAllUsers((prev) =>
       prev.map((u) =>
         u.id === userId ? { ...u, status: 'rejected', rejectionReason: reason || 'Thông tin không hợp lệ' } : u
       )
     );
+    dbRejectUser(userId, reason).catch(console.error);
   };
 
-  // Cập nhật thông tin hồ sơ (ảnh đại diện, mật khẩu, thông tin cá nhân) đồng bộ vào allUsers (Admin quản lý)
+  // Cập nhật thông tin hồ sơ (ảnh đại diện, mật khẩu, thông tin cá nhân) đồng bộ vào allUsers và Server DB
   const handleUpdateProfile = (updated: UserProfile) => {
     setUserProfile(updated);
     setAllUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
     localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
+    dbUpdateUser(updated).catch(console.error);
   };
 
   // Admin cấp mới tài khoản
   const handleCreateUser = (newUser: UserProfile) => {
     setAllUsers((prev) => [newUser, ...prev]);
+    dbUpdateUser(newUser).catch(console.error);
   };
 
   // Admin cập nhật tài khoản / đổi mật khẩu người dùng
   const handleUpdateUser = (updatedUser: UserProfile) => {
     setAllUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)));
+    dbUpdateUser(updatedUser).catch(console.error);
     if (userProfile.id === updatedUser.id) {
       setUserProfile(updatedUser);
       localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
@@ -207,6 +270,19 @@ export default function App() {
   // Admin xóa tài khoản người dùng
   const handleDeleteUser = (userId: string) => {
     setAllUsers((prev) => prev.filter((u) => u.id !== userId));
+    dbDeleteUser(userId).catch(console.error);
+  };
+
+  // Cập nhật lớp học đồng bộ lên Server
+  const handleUpdateClassrooms = (updated: Classroom[]) => {
+    setClassrooms(updated);
+    dbSaveClassrooms(updated).catch(console.error);
+  };
+
+  // Cập nhật bài học đồng bộ lên Server
+  const handleUpdateLessons = (updated: ClassroomLesson[]) => {
+    setClassroomLessons(updated);
+    dbSaveLessons(updated).catch(console.error);
   };
 
   const handleToggleTier = () => {
@@ -229,6 +305,7 @@ export default function App() {
 
   const handleRecordCheatLog = (log: CheatLog) => {
     setCheatLogs((prev) => [log, ...prev]);
+    dbSaveCheatLog(log).catch(console.error);
   };
 
   // Giáo viên đăng tải đề thi mới: Tự động phát thông báo đẩy cho học sinh
@@ -248,9 +325,10 @@ export default function App() {
     });
   };
 
-  // Xử lý nộp bài thi của học sinh: tự động ghi nhận vào submissions & cộng XP & phát thông báo kết quả
+  // Xử lý nộp bài thi của học sinh: tự động ghi nhận vào submissions & cộng XP & phát thông báo kết quả & sync DB
   const handleAddSubmission = (submission: StudentExamSubmission) => {
     setSubmissions((prev) => [submission, ...prev]);
+    dbSaveSubmission(submission).catch(console.error);
     setUserProfile((prev) => {
       const updated = {
         ...prev,
@@ -259,6 +337,7 @@ export default function App() {
       };
       setAllUsers((all) => all.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
       localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
+      dbUpdateUser(updated).catch(console.error);
       return updated;
     });
 
@@ -320,7 +399,7 @@ export default function App() {
             currentUserId={userProfile.id}
             currentUserName={userProfile.name}
             classrooms={classrooms}
-            onUpdateClassrooms={setClassrooms}
+            onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
             onUpdateExamsList={setExamsList}
             onSelectExamToTake={(examId) => {
@@ -331,7 +410,7 @@ export default function App() {
               setCurrentTab('teacher_gradebook');
             }}
             classroomLessons={classroomLessons}
-            onUpdateLessons={setClassroomLessons}
+            onUpdateLessons={handleUpdateLessons}
           />
         );
       }
@@ -397,7 +476,7 @@ export default function App() {
             currentUserId={userProfile.id}
             currentUserName={userProfile.name}
             classrooms={classrooms}
-            onUpdateClassrooms={setClassrooms}
+            onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
             onUpdateExamsList={setExamsList}
             onSelectExamToTake={(examId) => {
@@ -405,7 +484,7 @@ export default function App() {
               setCurrentTab('exam');
             }}
             classroomLessons={classroomLessons}
-            onUpdateLessons={setClassroomLessons}
+            onUpdateLessons={handleUpdateLessons}
           />
         );
       case 'student_history':

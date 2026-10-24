@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "lastUpdated": "2026-10-24T15:41:31.771Z",
+  "users": [
+    {
+      "id": "usr_admin_01",
+      "name": "Ban Giám Hiệu - Quản Trị Hệ Thống",
+      "email": "admin@thpt-nbk.edu.vn",
+      "role": "admin",
+      "tier": "premium",
+      "xp": 15000,
+      "streakDays": 1,
+      "lastActiveDate": "2026-10-24",
+      "dailyScanCount": 0,
+      "maxDailyScans": 9999,
+      "grade": 12,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK",
+      "schoolName": "THPT Chuyên Nguyễn Bỉnh Khiêm",
+      "phone": "024 3858 1234",
+      "bio": "Quản trị viên toàn quyền hệ thống Math&NBK.",
+      "password": "AdminNBK@2025",
+      "status": "active"
+    }
+  ],
+  "classrooms": [],
+  "submissions": [],
+  "cheatLogs": [],
+  "classroomLessons": [],
+  "classroomMessages": {}
+}

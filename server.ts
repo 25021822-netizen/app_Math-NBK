@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -285,6 +286,270 @@ Không viết chữ nào ngoài JSON.`;
     console.error('Lỗi Gemini PDF Parser API:', error);
     res.status(500).json({ error: 'Không thể bóc tách đề thi' });
   }
+});
+
+// =========================================================================
+// HỆ THỐNG CƠ SỞ DỮ LIỆU ĐỒNG BỘ REAL-TIME GIỮA CÁC THIẾT BỊ (CROSS-MACHINE SYNC)
+// =========================================================================
+interface ServerDatabase {
+  version: number;
+  lastUpdated: string;
+  users: any[];
+  classrooms: any[];
+  submissions: any[];
+  cheatLogs: any[];
+  classroomLessons: any[];
+  classroomMessages: Record<string, any[]>;
+}
+
+const DEFAULT_ADMIN_USER = {
+  id: 'usr_admin_01',
+  name: 'Ban Giám Hiệu - Quản Trị Hệ Thống',
+  email: 'admin@thpt-nbk.edu.vn',
+  role: 'admin',
+  tier: 'premium',
+  xp: 15000,
+  streakDays: 1,
+  lastActiveDate: new Date().toISOString().split('T')[0],
+  dailyScanCount: 0,
+  maxDailyScans: 9999,
+  grade: 12,
+  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK',
+  schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+  phone: '024 3858 1234',
+  bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
+  password: 'AdminNBK@2025',
+  status: 'active',
+};
+
+const DB_DIR = path.resolve(process.cwd(), 'data');
+const DB_FILE = path.join(DB_DIR, 'database.json');
+
+function getCleanInitialDb(): ServerDatabase {
+  return {
+    version: 1,
+    lastUpdated: new Date().toISOString(),
+    users: [DEFAULT_ADMIN_USER],
+    classrooms: [],
+    submissions: [],
+    cheatLogs: [],
+    classroomLessons: [],
+    classroomMessages: {},
+  };
+}
+
+function loadDatabase(): ServerDatabase {
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(DB_FILE)) {
+      const initial = getCleanInitialDb();
+      fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+      return initial;
+    }
+    const raw = fs.readFileSync(DB_FILE, 'utf-8');
+    const parsed = JSON.parse(raw);
+    // Đảm bảo luôn có tài khoản Admin mẫu
+    if (!parsed.users || !parsed.users.some((u: any) => u.id === 'usr_admin_01' || u.role === 'admin')) {
+      parsed.users = [DEFAULT_ADMIN_USER, ...(parsed.users || [])];
+      saveDatabase(parsed);
+    }
+    return parsed;
+  } catch (err) {
+    console.error('Lỗi nạp database.json, sử dụng DB sạch:', err);
+    return getCleanInitialDb();
+  }
+}
+
+function saveDatabase(db: ServerDatabase) {
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
+    db.lastUpdated = new Date().toISOString();
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Lỗi ghi database.json:', err);
+  }
+}
+
+let serverDb: ServerDatabase = loadDatabase();
+
+// 1. Lấy toàn bộ trạng thái cơ sở dữ liệu đồng bộ
+app.get('/api/db/state', (_req, res) => {
+  res.json({
+    success: true,
+    version: serverDb.version,
+    data: serverDb,
+  });
+});
+
+// 2. Đăng ký tài khoản mới (gửi yêu cầu đến Admin, hỗ trợ trường ID tự đặt)
+app.post('/api/db/register', (req, res) => {
+  const { user } = req.body;
+  if (!user || !user.email) {
+    return res.status(400).json({ success: false, error: 'Thiếu thông tin người dùng!' });
+  }
+
+  const emailLower = user.email.trim().toLowerCase();
+  const idLower = (user.id || '').trim().toLowerCase();
+
+  // Kiểm tra trùng Email
+  if (serverDb.users.some((u) => u.email.trim().toLowerCase() === emailLower)) {
+    return res.status(400).json({ success: false, error: 'Địa chỉ Email này đã tồn tại trên hệ thống!' });
+  }
+
+  // Kiểm tra trùng ID
+  if (idLower && serverDb.users.some((u) => u.id.trim().toLowerCase() === idLower)) {
+    return res.status(400).json({ success: false, error: `Mã ID "${user.id}" đã được sử dụng! Vui lòng chọn mã ID khác.` });
+  }
+
+  // Đăng ký mới luôn ở trạng thái chờ duyệt (Admin phê duyệt)
+  const newUser = {
+    ...user,
+    id: user.id || `usr_${user.role}_${Date.now().toString().slice(-5)}`,
+    status: 'pending_approval',
+    requestedAt: new Date().toISOString(),
+  };
+
+  serverDb.users.push(newUser);
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+
+  res.json({
+    success: true,
+    user: newUser,
+    version: serverDb.version,
+  });
+});
+
+// 3. Admin phê duyệt kích hoạt tài khoản
+app.post('/api/db/user/approve', (req, res) => {
+  const { userId } = req.body;
+  let found = false;
+  serverDb.users = serverDb.users.map((u) => {
+    if (u.id === userId) {
+      found = true;
+      return { ...u, status: 'active', rejectionReason: undefined };
+    }
+    return u;
+  });
+
+  if (found) {
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+
+  res.json({ success: found, version: serverDb.version });
+});
+
+// 4. Admin từ chối phê duyệt
+app.post('/api/db/user/reject', (req, res) => {
+  const { userId, reason } = req.body;
+  let found = false;
+  serverDb.users = serverDb.users.map((u) => {
+    if (u.id === userId) {
+      found = true;
+      return { ...u, status: 'rejected', rejectionReason: reason || 'Thông tin tài khoản không hợp lệ' };
+    }
+    return u;
+  });
+
+  if (found) {
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+
+  res.json({ success: found, version: serverDb.version });
+});
+
+// 5. Admin xóa tài khoản
+app.post('/api/db/user/delete', (req, res) => {
+  const { userId } = req.body;
+  const initialLength = serverDb.users.length;
+  serverDb.users = serverDb.users.filter((u) => u.id !== userId);
+
+  if (serverDb.users.length !== initialLength) {
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 6. Cập nhật hồ sơ tài khoản (đổi mật khẩu, nâng gói, cập nhật thông tin)
+app.post('/api/db/user/update', (req, res) => {
+  const { user } = req.body;
+  if (!user || !user.id) {
+    return res.status(400).json({ success: false, error: 'Thiếu dữ liệu user!' });
+  }
+
+  serverDb.users = serverDb.users.map((u) => (u.id === user.id ? { ...u, ...user } : u));
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 7. Đồng bộ danh sách lớp học
+app.post('/api/db/classrooms', (req, res) => {
+  serverDb.classrooms = req.body.classrooms || [];
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 8. Lưu kết quả nộp bài thi của học sinh
+app.post('/api/db/submissions', (req, res) => {
+  const { submission } = req.body;
+  if (submission) {
+    serverDb.submissions = [submission, ...serverDb.submissions.filter((s) => s.id !== submission.id)];
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 9. Lưu nhật ký vi phạm quy chế thi
+app.post('/api/db/cheat-logs', (req, res) => {
+  const { log } = req.body;
+  if (log) {
+    serverDb.cheatLogs = [log, ...serverDb.cheatLogs];
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 10. Lưu chuyên đề bài học
+app.post('/api/db/lessons', (req, res) => {
+  serverDb.classroomLessons = req.body.lessons || [];
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 11. Lưu tin nhắn chat lớp học
+app.post('/api/db/messages', (req, res) => {
+  const { classId, message } = req.body;
+  if (classId && message) {
+    if (!serverDb.classroomMessages[classId]) {
+      serverDb.classroomMessages[classId] = [];
+    }
+    serverDb.classroomMessages[classId].push(message);
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 12. Khởi tạo lại dữ liệu sạch (Chỉ giữ duy nhất 1 tài khoản Admin)
+app.post('/api/db/reset-clean', (_req, res) => {
+  serverDb = getCleanInitialDb();
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, version: serverDb.version, data: serverDb });
 });
 
 // Khởi chạy Vite Server Middleware

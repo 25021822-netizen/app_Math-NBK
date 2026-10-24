@@ -21,6 +21,7 @@ export interface UserProfile {
   status?: 'active' | 'pending_approval' | 'rejected'; // Trạng thái tài khoản (phê duyệt bởi admin)
   requestedAt?: string; // Thời gian gửi yêu cầu đăng ký
   rejectionReason?: string; // Lý do từ chối nếu có
+  subject?: string; // Tổ chuyên môn hoặc bộ môn giảng dạy
 }
 
 export type MathTopic = 

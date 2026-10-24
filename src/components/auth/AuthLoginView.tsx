@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, UserRole } from '../../types/math';
+import { dbRegisterUser } from '../../services/dbSyncService';
 import {
   BookOpen,
   Lock,
@@ -19,6 +20,7 @@ import {
   Compass,
   FileCheck,
   MessageSquare,
+  Key,
 } from 'lucide-react';
 
 interface AuthLoginViewProps {
@@ -34,9 +36,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 }) => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-  // Login form state
-  const [loginIdentifier, setLoginIdentifier] = useState<string>('an.nguyen@thpt-nbk.edu.vn');
-  const [loginPassword, setLoginPassword] = useState<string>('AnNguyen@2025');
+  // Login form state - Mặc định điền tài khoản Quản trị viên duy nhất
+  const [loginIdentifier, setLoginIdentifier] = useState<string>('admin@thpt-nbk.edu.vn');
+  const [loginPassword, setLoginPassword] = useState<string>('AdminNBK@2025');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 
   // Register form state
   const [regRole, setRegRole] = useState<'student' | 'teacher'>('student');
+  const [regCustomId, setRegCustomId] = useState<string>(''); // Mục ID tự chọn khi đăng ký
   const [regName, setRegName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
   const [regGrade, setRegGrade] = useState<10 | 11 | 12>(12);
@@ -153,9 +156,29 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       return;
     }
 
-    const newId = `usr_${regRole}_${Date.now().toString().slice(-4)}`;
+    // Xử lý mục Mã ID (Tùy chọn - nếu người dùng nhập thì kiểm tra tính hợp lệ & trùng lặp)
+    let finalId = '';
+    const trimmedId = regCustomId.trim().toLowerCase();
+    if (trimmedId) {
+      if (!/^[a-zA-Z0-9_\-]+$/.test(trimmedId)) {
+        setRegError('Mã ID chỉ được chứa chữ cái, chữ số, dấu gạch dưới (_) hoặc gạch nối (-)!');
+        return;
+      }
+      if (trimmedId.length < 3 || trimmedId.length > 32) {
+        setRegError('Mã ID phải có độ dài từ 3 đến 32 ký tự!');
+        return;
+      }
+      if (allUsers.some((u) => u.id.toLowerCase() === trimmedId)) {
+        setRegError(`Mã ID "${trimmedId}" đã có người đăng ký trên hệ thống. Vui lòng chọn ID khác!`);
+        return;
+      }
+      finalId = trimmedId;
+    } else {
+      finalId = `usr_${regRole}_${Date.now().toString().slice(-4)}`;
+    }
+
     const newApplicant: UserProfile = {
-      id: newId,
+      id: finalId,
       name: regName.trim(),
       email: regEmail.trim().toLowerCase(),
       role: regRole, // 'student' or 'teacher' (TUYỆT ĐỐI KHÔNG CHO PHÉP TẠO ADMIN)
@@ -175,7 +198,11 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       requestedAt: new Date().toISOString(),
     };
 
+    // 1. Cập nhật vào state React ứng dụng
     onRegisterUser(newApplicant);
+
+    // 2. Đồng bộ trực tiếp lên Server Database để máy khác xem được ngay
+    dbRegisterUser(newApplicant).catch((err) => console.error('Lỗi sync đăng ký:', err));
 
     // Kích hoạt thông báo đẩy tới Admin
     try {
@@ -183,7 +210,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
         detail: {
           id: `notif_${Date.now()}`,
           title: 'Yêu Cầu Cấp Tài Khoản Mới',
-          message: `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
+          message: `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${newApplicant.id}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
           type: 'system',
           timestamp: new Date().toISOString(),
           isRead: false,
@@ -196,6 +223,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
     }
 
     setPendingModalUser(newApplicant);
+    setRegCustomId('');
     setRegName('');
     setRegEmail('');
     setRegPassword('');
@@ -427,55 +455,42 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     )}
                   </button>
 
-                  {/* Quick 1-Click Demo Accounts */}
+                  {/* Quick 1-Click Login: DUY NHẤT 1 TÀI KHOẢN ADMIN CÓ SẴN TRÊN HỆ THỐNG */}
                   <div className="pt-4 border-t border-white/10 space-y-2.5">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-                      Đăng Nhập Nhanh 1-Chạm (Tài Khoản Mẫu):
+                      Tài Khoản Có Sẵn Trên Hệ Thống (Duy Nhất 1 Tài Khoản Quản Trị):
                     </span>
 
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleQuickLogin('student')}
-                        className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all hover:scale-102 flex flex-col items-center text-center group"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-1">
-                          <GraduationCap size={16} />
+                    <button
+                      type="button"
+                      onClick={() => handleQuickLogin('admin')}
+                      className="w-full p-3 rounded-2xl bg-gradient-to-r from-rose-950/70 via-slate-900 to-indigo-950/70 hover:from-rose-900/80 hover:to-indigo-900/80 border border-rose-500/40 hover:border-rose-400 text-left transition-all hover:scale-[1.01] flex items-center justify-between group shadow-lg cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30 group-hover:scale-105 transition-transform">
+                          <ShieldCheck size={20} />
                         </div>
-                        <span className="text-[11px] font-extrabold text-white group-hover:text-emerald-300">
-                          Học Sinh
-                        </span>
-                        <span className="text-[9px] text-slate-400">An Nguyễn (12A1)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleQuickLogin('teacher')}
-                        className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all hover:scale-102 flex flex-col items-center text-center group"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center mb-1">
-                          <User size={16} />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-white group-hover:text-rose-200">
+                              Quản Trị Viên (Admin Duy Nhất)
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[9px] font-bold border border-rose-500/30">
+                              Toàn quyền
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-300 flex items-center gap-2 mt-0.5">
+                            <span>Email: <strong className="text-white font-mono">admin@thpt-nbk.edu.vn</strong></span>
+                            <span>·</span>
+                            <span>ID: <strong className="text-rose-300 font-mono">usr_admin_01</strong></span>
+                          </div>
                         </div>
-                        <span className="text-[11px] font-extrabold text-white group-hover:text-purple-300">
-                          Giáo Viên
-                        </span>
-                        <span className="text-[9px] text-slate-400">ThS. Trần Văn Minh</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleQuickLogin('admin')}
-                        className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all hover:scale-102 flex flex-col items-center text-center group"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center mb-1">
-                          <ShieldCheck size={16} />
-                        </div>
-                        <span className="text-[11px] font-extrabold text-white group-hover:text-rose-300">
-                          Quản Trị
-                        </span>
-                        <span className="text-[9px] text-slate-400">BGH Nhà Trường</span>
-                      </button>
-                    </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 group-hover:text-rose-300 pr-1 shrink-0">
+                        <span>Đăng nhập</span>
+                        <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </button>
                   </div>
                 </form>
               )}
@@ -555,6 +570,32 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                         className="w-full h-10 pl-10 pr-3 rounded-xl bg-black/40 border border-white/20 text-white placeholder-slate-500 text-xs focus:border-cyan-400 focus:outline-none"
                       />
                     </div>
+                  </div>
+
+                  {/* Mã ID người dùng (Tùy chọn - Tự đặt ID định danh) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <Key size={13} className="text-cyan-400" />
+                        <span>Mã ID người dùng (Tùy chọn - Tự tạo ID cá nhân)</span>
+                      </label>
+                      <span className="text-[10px] text-cyan-300 font-medium">Định danh kết nối</span>
+                    </div>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">
+                        #
+                      </div>
+                      <input
+                        type="text"
+                        value={regCustomId}
+                        onChange={(e) => setRegCustomId(e.target.value)}
+                        placeholder={regRole === 'teacher' ? 'VD: gv_minhtran hoặc gv_toan12' : 'VD: hs_nguyenan hoặc hs_12a1_01'}
+                        className="w-full h-10 pl-8 pr-3 rounded-xl bg-black/40 border border-white/20 text-cyan-300 placeholder-slate-500 text-xs focus:border-cyan-400 focus:outline-none font-mono"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      * Dùng để đăng nhập hoặc kết bạn trong nhóm lớp. Nếu để trống, hệ thống tự cấp phát tự động (VD: <span className="text-slate-300 font-mono">usr_{regRole}_xxx</span>).
+                    </p>
                   </div>
 
                   {/* Email & Khối lớp / Bộ môn */}
