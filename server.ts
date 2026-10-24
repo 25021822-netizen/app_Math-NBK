@@ -303,9 +303,9 @@ interface ServerDatabase {
 }
 
 const DEFAULT_ADMIN_USER = {
-  id: 'usr_admin_01',
-  name: 'Ban Giám Hiệu - Quản Trị Hệ Thống',
-  email: 'admin@thpt-nbk.edu.vn',
+  id: '25021822',
+  name: 'Ban Quản Trị Hệ Thống',
+  email: 'daon36124@gmail.com',
   role: 'admin',
   tier: 'premium',
   xp: 15000,
@@ -314,11 +314,11 @@ const DEFAULT_ADMIN_USER = {
   dailyScanCount: 0,
   maxDailyScans: 9999,
   grade: 12,
-  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK',
-  schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin25021822',
+  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
   phone: '024 3858 1234',
   bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
-  password: 'AdminNBK@2025',
+  password: 'Anhhungxom8@',
   status: 'active',
 };
 
@@ -350,11 +350,17 @@ function loadDatabase(): ServerDatabase {
     }
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    // Đảm bảo luôn có tài khoản Admin mẫu
-    if (!parsed.users || !parsed.users.some((u: any) => u.id === 'usr_admin_01' || u.role === 'admin')) {
-      parsed.users = [DEFAULT_ADMIN_USER, ...(parsed.users || [])];
-      saveDatabase(parsed);
+    // Loại bỏ tài khoản admin mẫu cũ usr_admin_01
+    parsed.users = (parsed.users || []).filter((u: any) => u.id !== 'usr_admin_01');
+    // Đảm bảo luôn có tài khoản Admin duy nhất đã cấu hình
+    if (!parsed.users.some((u: any) => u.id === '25021822' || u.email === 'daon36124@gmail.com')) {
+      parsed.users = [DEFAULT_ADMIN_USER, ...parsed.users];
+    } else {
+      parsed.users = parsed.users.map((u: any) =>
+        u.id === '25021822' || u.email === 'daon36124@gmail.com' ? { ...u, ...DEFAULT_ADMIN_USER } : u
+      );
     }
+    saveDatabase(parsed);
     return parsed;
   } catch (err) {
     console.error('Lỗi nạp database.json, sử dụng DB sạch:', err);

@@ -52,35 +52,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [activeTab, setActiveTab] = useState<'tokens' | 'users' | 'pending_requests' | 'cheat_logs'>('users');
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
-  // Internal user state if not provided via props
-  const [internalUsers, setInternalUsers] = useState<UserProfile[]>([
-    {
-      id: 'usr_student_01',
-      name: 'Nguyễn Văn An',
-      email: 'an.nguyen@thpt-nbk.edu.vn',
-      role: 'student',
-      tier: 'free',
-      xp: 1450,
-      streakDays: 7,
-      lastActiveDate: '2026-10-15',
-      dailyScanCount: 2,
-      maxDailyScans: 10,
-      grade: 12,
-    },
-    {
-      id: 'usr_teacher_01',
-      name: 'ThS. Trần Văn Minh',
-      email: 'minh.tran@thpt-nbk.edu.vn',
-      role: 'teacher',
-      tier: 'premium',
-      xp: 8900,
-      streakDays: 45,
-      lastActiveDate: '2026-10-15',
-      dailyScanCount: 0,
-      maxDailyScans: 9999,
-      grade: 12,
-    },
-  ]);
+  // Internal user state if not provided via props (Duy nhất 1 tài khoản Admin có sẵn)
+  const [internalUsers, setInternalUsers] = useState<UserProfile[]>([]);
 
   const usersList = propUsers || internalUsers;
   const pendingUsers = usersList.filter((u) => u.status === 'pending_approval');

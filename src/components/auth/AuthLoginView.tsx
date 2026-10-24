@@ -36,9 +36,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 }) => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-  // Login form state - Mặc định điền tài khoản Quản trị viên duy nhất
-  const [loginIdentifier, setLoginIdentifier] = useState<string>('admin@thpt-nbk.edu.vn');
-  const [loginPassword, setLoginPassword] = useState<string>('AdminNBK@2025');
+  // Login form state (Không điền sẵn - người dùng tự nhập)
+  const [loginIdentifier, setLoginIdentifier] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   const [regName, setRegName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
   const [regGrade, setRegGrade] = useState<10 | 11 | 12>(12);
-  const [regSchool, setRegSchool] = useState<string>('THPT Chuyên Nguyễn Bỉnh Khiêm');
+  const [regSchool, setRegSchool] = useState<string>('Toán Thầy Nguyễn Bá Kỳ');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
   const [regError, setRegError] = useState<string | null>(null);
@@ -107,27 +107,13 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       // Kiểm tra mật khẩu (nếu user có password thì đối chiếu)
       if (user.password && user.password !== pass) {
         setIsLoading(false);
-        setLoginError('Mật khẩu không chính xác! Vui lòng kiểm tra lại hoặc sử dụng nút Đăng nhập nhanh bên dưới.');
+        setLoginError('Mật khẩu không chính xác! Vui lòng kiểm tra lại.');
         return;
       }
 
       setIsLoading(false);
       onLoginSuccess(user);
     }, 450);
-  };
-
-  // Quick 1-click Demo Login
-  const handleQuickLogin = (role: 'student' | 'teacher' | 'admin') => {
-    let target = allUsers.find((u) => u.role === role);
-    if (!target) {
-      // Fallback
-      target = allUsers[0];
-    }
-    if (target) {
-      setLoginIdentifier(target.email);
-      setLoginPassword(target.password || '123456');
-      onLoginSuccess(target);
-    }
   };
 
   // Handle Register (Gửi yêu cầu tới Admin, TUYỆT ĐỐI KHÔNG CÓ QUYỀN TẠO ADMIN)
@@ -190,7 +176,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       maxDailyScans: 10,
       grade: regGrade,
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(regName.trim())}`,
-      schoolName: regSchool.trim() || 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+      schoolName: regSchool.trim() || 'Toán Thầy Nguyễn Bá Kỳ',
       bio: `${regRole === 'teacher' ? 'Giáo viên THPT' : `Học sinh lớp ${regGrade} THPT`}, tài khoản đăng ký mới trên nền tảng Math&NBK.`,
       subject: 'Toán Học THPT',
       password: regPassword,
@@ -458,44 +444,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                       </>
                     )}
                   </button>
-
-                  {/* Quick 1-Click Login: DUY NHẤT 1 TÀI KHOẢN ADMIN CÓ SẴN TRÊN HỆ THỐNG */}
-                  <div className="pt-4 border-t border-white/10 space-y-2.5">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-                      Tài Khoản Có Sẵn Trên Hệ Thống (Duy Nhất 1 Tài Khoản Quản Trị):
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => handleQuickLogin('admin')}
-                      className="w-full p-3 rounded-2xl bg-gradient-to-r from-rose-950/70 via-slate-900 to-indigo-950/70 hover:from-rose-900/80 hover:to-indigo-900/80 border border-rose-500/40 hover:border-rose-400 text-left transition-all hover:scale-[1.01] flex items-center justify-between group shadow-lg cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30 group-hover:scale-105 transition-transform">
-                          <ShieldCheck size={20} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-white group-hover:text-rose-200">
-                              Quản Trị Viên (Admin Duy Nhất)
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[9px] font-bold border border-rose-500/30">
-                              Toàn quyền
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-300 flex items-center gap-2 mt-0.5">
-                            <span>Email: <strong className="text-white font-mono">admin@thpt-nbk.edu.vn</strong></span>
-                            <span>·</span>
-                            <span>ID: <strong className="text-rose-300 font-mono">usr_admin_01</strong></span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 group-hover:text-rose-300 pr-1 shrink-0">
-                        <span>Đăng nhập</span>
-                        <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-                      </div>
-                    </button>
-                  </div>
                 </form>
               )}
 

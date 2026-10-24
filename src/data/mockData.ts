@@ -14,9 +14,9 @@ import {
 } from '../types/math';
 
 export const SAMPLE_ADMIN: UserProfile = {
-  id: 'usr_admin_01',
-  name: 'Ban Giám Hiệu - Quản Trị Hệ Thống',
-  email: 'admin@thpt-nbk.edu.vn',
+  id: '25021822',
+  name: 'Ban Quản Trị Hệ Thống',
+  email: 'daon36124@gmail.com',
   role: 'admin',
   tier: 'premium',
   xp: 15000,
@@ -25,11 +25,11 @@ export const SAMPLE_ADMIN: UserProfile = {
   dailyScanCount: 0,
   maxDailyScans: 9999,
   grade: 12,
-  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK',
-  schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin25021822',
+  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
   phone: '024 3858 1234',
   bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
-  password: 'AdminNBK@2025',
+  password: 'Anhhungxom8@',
   status: 'active',
 };
 

@@ -32,9 +32,9 @@ export interface DatabaseState {
 }
 
 export const DEFAULT_ADMIN_PROFILE: UserProfile = {
-  id: 'usr_admin_01',
-  name: 'Ban Giám Hiệu - Quản Trị Hệ Thống',
-  email: 'admin@thpt-nbk.edu.vn',
+  id: '25021822',
+  name: 'Ban Quản Trị Hệ Thống',
+  email: 'daon36124@gmail.com',
   role: 'admin',
   tier: 'premium',
   xp: 15000,
@@ -43,11 +43,11 @@ export const DEFAULT_ADMIN_PROFILE: UserProfile = {
   dailyScanCount: 0,
   maxDailyScans: 9999,
   grade: 12,
-  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminNBK',
-  schoolName: 'THPT Chuyên Nguyễn Bỉnh Khiêm',
+  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin25021822',
+  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
   phone: '024 3858 1234',
   bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
-  password: 'AdminNBK@2025',
+  password: 'Anhhungxom8@',
   status: 'active',
 };
 
@@ -57,10 +57,21 @@ async function ensureAdminSeeded() {
   if (adminSeeded) return;
   adminSeeded = true;
   try {
+    // Dọn dẹp tài khoản admin cũ usr_admin_01 nếu còn tồn tại
+    try {
+      const oldRef = doc(db, 'users', 'usr_admin_01');
+      const oldSnap = await getDoc(oldRef);
+      if (oldSnap.exists()) {
+        await deleteDoc(oldRef);
+      }
+    } catch {}
+
     const adminRef = doc(db, 'users', DEFAULT_ADMIN_PROFILE.id);
     const snap = await getDoc(adminRef);
     if (!snap.exists()) {
       await setDoc(adminRef, DEFAULT_ADMIN_PROFILE);
+    } else {
+      await setDoc(adminRef, DEFAULT_ADMIN_PROFILE, { merge: true });
     }
   } catch (err) {
     console.warn('Lỗi kiểm tra admin Firestore:', err);
@@ -352,12 +363,15 @@ export function startDbPolling(
       usersList.push(d.data() as UserProfile);
     });
 
-    // Luôn bảo đảm có tài khoản admin
-    if (!usersList.some((u) => u.id === DEFAULT_ADMIN_PROFILE.id)) {
-      usersList.unshift(DEFAULT_ADMIN_PROFILE);
+    // Loại bỏ tài khoản mẫu cũ usr_admin_01 nếu còn sót lại
+    const filteredUsers = usersList.filter((u) => u.id !== 'usr_admin_01');
+
+    // Luôn bảo đảm có tài khoản admin duy nhất đã cấu hình
+    if (!filteredUsers.some((u) => u.id === DEFAULT_ADMIN_PROFILE.id)) {
+      filteredUsers.unshift(DEFAULT_ADMIN_PROFILE);
     }
 
-    stateAccumulator.users = usersList;
+    stateAccumulator.users = filteredUsers;
     dispatchUpdate();
   }, (err) => {
     console.warn('Lỗi Firestore users onSnapshot:', err);

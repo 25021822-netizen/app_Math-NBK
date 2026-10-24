@@ -208,7 +208,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         // Sheet 1: Bảng điểm cả lớp
         const wsData: (string | number)[][] = [
           ['SỞ GIÁO DỤC VÀ ĐÀO TẠO', '', '', '', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'],
-          ['TRƯỜNG THPT CHUYÊN NGUYỄN BỈNH KHIÊM', '', '', '', 'Độc lập - Tự do - Hạnh phúc'],
+          ['HỆ THỐNG TOÁN THẦY NGUYỄN BÁ KỲ (MATH&NBK)', '', '', '', 'Độc lập - Tự do - Hạnh phúc'],
           ['TỔ CHUYÊN MÔN TOÁN - TIN', '', '', '', '-------------------'],
           [''],
           ['BÁO CÁO TỔNG HỢP ĐIỂM THI VÀ NĂNG LỰC TOÁN HỌC (GDPT 2018)'],
@@ -288,7 +288,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         const sub = selectedIndividualSub;
         const rank = sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
         const wsData: (string | number)[][] = [
-          ['TRƯỜNG THPT CHUYÊN NGUYỄN BỈNH KHIÊM', '', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'],
+          ['HỆ THỐNG TOÁN THẦY NGUYỄN BÁ KỲ (MATH&NBK)', '', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'],
           ['TỔ TOÁN - TIN', '', 'Độc lập - Tự do - Hạnh phúc'],
           [''],
           ['PHIẾU BÁO ĐIỂM VÀ ĐÁNH GIÁ NĂNG LỰC TOÁN HỌC'],
@@ -511,7 +511,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                 new Paragraph({
                   children: [
                     new TextRun({ text: 'SỞ GIÁO DỤC VÀ ĐÀO TẠO HÀ NỘI\n', bold: true }),
-                    new TextRun({ text: 'TRƯỜNG THPT CHUYÊN NGUYỄN BỈNH KHIÊM\n', bold: true }),
+                    new TextRun({ text: 'HỆ THỐNG TOÁN THẦY NGUYỄN BÁ KỲ (MATH&NBK)\n', bold: true }),
                     new TextRun({ text: 'TỔ TOÁN - TIN\n\n' }),
                   ],
                   alignment: AlignmentType.CENTER,
@@ -656,7 +656,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
               children: [
                 new Paragraph({
                   children: [
-                    new TextRun({ text: 'TRƯỜNG THPT CHUYÊN NGUYỄN BỈNH KHIÊM\n', bold: true }),
+                    new TextRun({ text: 'HỆ THỐNG TOÁN THẦY NGUYỄN BÁ KỲ (MATH&NBK)\n', bold: true }),
                     new TextRun({ text: 'TỔ TOÁN - TIN\n\n' }),
                   ],
                   alignment: AlignmentType.CENTER,
@@ -752,7 +752,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Báo Cáo Điểm Số - THPT Chuyên Nguyễn Bỉnh Khiêm</title>
+          <title>Báo Cáo Điểm Số - Toán Thầy Nguyễn Bá Kỳ</title>
           <meta charset="utf-8" />
           <script src="https://cdn.tailwindcss.com"></script>
           <style>
@@ -1098,7 +1098,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                   SỞ GIÁO DỤC VÀ ĐÀO TẠO HÀ NỘI
                 </span>
                 <strong className="text-xs font-black tracking-wide text-slate-900 block uppercase mt-0.5">
-                  TRƯỜNG THPT CHUYÊN NGUYỄN BỈNH KHIÊM
+                  HỆ THỐNG TOÁN THẦY NGUYỄN BÁ KỲ (MATH&NBK)
                 </strong>
                 <span className="text-[10px] text-slate-500 block italic">Tổ Chuyên Môn Toán Học - Tin Học</span>
               </div>
