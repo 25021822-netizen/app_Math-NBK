@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { FunctionGrapher } from '../FunctionGrapher';
 import { Geometry3DStudio } from './Geometry3DStudio';
+import { Three3DSceneView } from './Three3DSceneView';
 
 export interface CustomPoint3D {
   id: string;
@@ -67,6 +68,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
   onExportImageToExam,
 }) => {
   const [geometryMode, setGeometryMode] = useState<'2d' | '3d'>('3d');
+  const [subMode3D, setSubMode3D] = useState<'threejs' | 'technical'>('threejs');
   const [subMode2D, setSubMode2D] = useState<'function' | 'shapes'>('function');
 
   // ==========================================
@@ -870,7 +872,35 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
 
       {/* Main Studio Canvas Layout */}
       {geometryMode === '3d' ? (
-        <Geometry3DStudio onExportImage={onExportImageToExam} />
+        <div className="space-y-4">
+          <div className="flex bg-white p-2 rounded-2xl border border-slate-200 text-xs font-bold w-fit shadow-xs gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSubMode3D('threejs')}
+              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                subMode3D === 'threejs' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Sparkles size={15} />
+              <span>Three.js WebGL 3D Studio (PBR Đa Diện & Mặt Cong)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubMode3D('technical')}
+              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                subMode3D === 'technical' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Box size={15} />
+              <span>Bản Vẽ Kỹ Thuật Dựng Hình Oxyz</span>
+            </button>
+          </div>
+          {subMode3D === 'threejs' ? (
+            <Three3DSceneView onExportSnapshot={onExportImageToExam} />
+          ) : (
+            <Geometry3DStudio onExportImage={onExportImageToExam} />
+          )}
+        </div>
       ) : geometryMode === '2d' && subMode2D === 'function' ? (
         <div className="w-full">
           <FunctionGrapher initialFormula="y = 3x - 2" onExportImage={onExportImageToExam} />

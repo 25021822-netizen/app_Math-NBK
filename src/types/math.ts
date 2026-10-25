@@ -177,6 +177,12 @@ export interface SocraticMessage {
   };
   hintsRemaining?: number;
   timestamp: string;
+  groundingChunks?: {
+    web?: {
+      uri: string;
+      title: string;
+    };
+  }[];
 }
 
 export interface ScanResult {

@@ -20,6 +20,8 @@ import {
   FileCheck,
   ShieldAlert,
   GraduationCap,
+  Box,
+  Wand2,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -110,7 +112,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Sparkles size={15} className="text-blue-600" />
-                <span>Hỏi AI</span>
+                <span>Hỏi AI (Liki)</span>
               </button>
               <button
                 onClick={() => onSelectTab('classroom')}
@@ -210,7 +212,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Sparkles size={14} className="text-blue-600" />
-                <span>Hỏi AI</span>
+                <span>Hỏi AI (Liki)</span>
               </button>
               <button
                 onClick={() => onSelectTab('profile')}

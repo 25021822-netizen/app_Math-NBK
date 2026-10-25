@@ -5,33 +5,7 @@ import { FunctionGrapher } from '../FunctionGrapher';
 import { Bot, User, Send, Sparkles, Lightbulb, LineChart, HelpCircle, ArrowRight, RefreshCw } from 'lucide-react';
 
 export const SocraticTutorView: React.FC = () => {
-  const [messages, setMessages] = useState<SocraticMessage[]>([
-    {
-      id: 'm1',
-      role: 'assistant',
-      content:
-        'Xin chào bạn! Mình là Gia sư Socratic của Math&NBK. Theo phương pháp vấn đáp Socratic, mình sẽ không giải hộ bài toán, mà sẽ đặt câu hỏi dẫn dắt để giúp bạn tự khám phá bản chất kiến thức.',
-      timestamp: '08:30',
-    },
-    {
-      id: 'm2',
-      role: 'user',
-      content: 'Làm thế nào để tìm cực trị của hàm số y = x³ - 3x + 1 vậy thầy?',
-      timestamp: '08:31',
-    },
-    {
-      id: 'm3',
-      role: 'assistant',
-      content:
-        'Để tìm cực trị của một hàm số đa thức, chúng ta hãy nhớ lại định lý dấu đạo hàm. Đầu tiên, bạn hãy tính đạo hàm f\'(x) xem bằng bao nhiêu nhé?',
-      latex: 'y\' = (x^3 - 3x + 1)\' = ?',
-      graphHint: {
-        equation: 'y = x^3 - 3x + 1',
-        label: 'Đồ thị minh họa hàm số bậc ba có 2 cực trị',
-      },
-      timestamp: '08:31',
-    },
-  ]);
+  const [messages, setMessages] = useState<SocraticMessage[]>([]);
 
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -113,13 +87,13 @@ export const SocraticTutorView: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-extrabold text-slate-900">Gia Sư Socratic AI</h1>
+              <h1 className="text-xl font-extrabold text-slate-900">Trợ Lý & Gia Sư Toán Liki</h1>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700">
-                Gợi Mở Tư Duy
+                Liki AI
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Phương pháp Socrates: Hỏi - Đáp dẫn dắt bản chất · Không giải bài hộ · Kèm đồ thị trực quan
+              Đồng hành thông minh: Vấn đáp gợi mở · Không giải bài hộ · Kèm đồ thị & Tra cứu dữ liệu
             </p>
           </div>
         </div>
@@ -146,13 +120,42 @@ export const SocraticTutorView: React.FC = () => {
 
       {/* Chat Messages Stream */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 min-h-[480px] max-h-[580px] overflow-y-auto space-y-6 shadow-xs">
-        {messages.map((msg) => {
-          const isBot = msg.role === 'assistant';
-          return (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-3 ${isBot ? 'justify-start' : 'justify-end'}`}
-            >
+        {messages.length === 0 ? (
+          <div className="py-12 px-4 text-center space-y-4 animate-in fade-in">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+              <Sparkles size={28} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Chào bạn! Mình là Liki</h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                Hãy nhập một bài toán hoặc câu hỏi về đại số, hình học, tích phân để cùng Liki thảo luận và tìm hướng giải quyết nhé!
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center max-w-lg mx-auto pt-2">
+              {[
+                'Làm thế nào để tìm cực trị hàm số?',
+                'Cách tính thể tích khối lăng trụ đứng?',
+                'Quy tắc xét dấu nhị thức bậc nhất?',
+              ].map((p, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => handleSendMessage(p)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-xs text-slate-700 font-medium transition-colors"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isBot = msg.role === 'assistant';
+            return (
+              <div
+                key={msg.id}
+                className={`flex items-start gap-3 ${isBot ? 'justify-start' : 'justify-end'}`}
+              >
               {isBot && (
                 <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-1">
                   <Bot size={16} />
@@ -209,7 +212,8 @@ export const SocraticTutorView: React.FC = () => {
               )}
             </div>
           );
-        })}
+        })
+      )}
 
         {isTyping && (
           <div className="flex items-center gap-3">

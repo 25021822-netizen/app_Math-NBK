@@ -261,12 +261,12 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
               Đăng nhập để luyện thi, giải toán và học cùng{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-300">
-                AI Socratic 24/7
+                Trợ Lý AI Liki 24/7
               </span>
             </h1>
 
             <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl mx-auto lg:mx-0">
-              Đồng bộ dữ liệu học tập cá nhân hóa, làm đề thi trắc nghiệm 3 phần chuẩn BGD 2025, vẽ hình 2D/3D không gian Oxyz và thảo luận trực tiếp cùng thầy cô, bạn bè.
+              Đồng bộ dữ liệu học tập cá nhân hóa, làm đề thi trắc nghiệm 3 phần chuẩn BGD 2025, khám phá không gian 3D Three.js và xưởng tạo ảnh AI Liki cùng thầy cô, bạn bè.
             </p>
 
             {/* Feature Cards Grid */}
@@ -283,16 +283,16 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                 <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center">
                   <Compass size={16} />
                 </div>
-                <h4 className="font-extrabold text-xs text-white">Hình Học 3D Oxyz</h4>
-                <p className="text-[11px] text-slate-400">Vẽ chóp, nón, lăng trụ, nhấp chuột tạo điểm trực tiếp.</p>
+                <h4 className="font-extrabold text-xs text-white">Three.js 3D & Oxyz</h4>
+                <p className="text-[11px] text-slate-400">Mô phỏng 3D PBR chóp, nón, trụ và đồ thị z = f(x,y).</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs text-left space-y-1">
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
                   <Sparkles size={16} />
                 </div>
-                <h4 className="font-extrabold text-xs text-white">AI Gia Sư Socratic</h4>
-                <p className="text-[11px] text-slate-400">Gợi ý từng bước tư duy, không giải hộ thụ động.</p>
+                <h4 className="font-extrabold text-xs text-white">Trợ Lý AI Liki</h4>
+                <p className="text-[11px] text-slate-400">Gợi mở tư duy từng bước & tra cứu Google Search.</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs text-left space-y-1">

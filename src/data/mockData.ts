@@ -33,7 +33,24 @@ export const SAMPLE_ADMIN: UserProfile = {
   status: 'active',
 };
 
-export const INITIAL_USER_PROFILE: UserProfile = SAMPLE_ADMIN;
+export const DEFAULT_GUEST_USER: UserProfile = {
+  id: '',
+  name: 'Chưa Đăng Nhập',
+  email: '',
+  role: 'student',
+  tier: 'free',
+  xp: 0,
+  streakDays: 0,
+  lastActiveDate: new Date().toISOString().split('T')[0],
+  dailyScanCount: 0,
+  maxDailyScans: 10,
+  grade: 12,
+  avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=GuestNBK',
+  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
+  status: 'active',
+};
+
+export const INITIAL_USER_PROFILE: UserProfile = DEFAULT_GUEST_USER;
 
 export const SAMPLE_SKILL_TREES: Record<10 | 11 | 12, SkillNode[]> = {
   12: [
@@ -315,33 +332,7 @@ export const SAMPLE_OCR_PROBLEMS: {
 
 export const SAMPLE_SCAN_RESULTS: ScanResult[] = SAMPLE_OCR_PROBLEMS.map((p) => p.solution);
 
-export const SAMPLE_SOCRATIC_MESSAGES: SocraticMessage[] = [
-  {
-    id: 'm1',
-    role: 'assistant',
-    content:
-      'Xin chào bạn! Mình là Gia sư Socratic của Math&NBK. Theo phương pháp vấn đáp Socratic, mình sẽ không giải hộ bài toán, mà sẽ đặt câu hỏi dẫn dắt để giúp bạn tự khám phá bản chất kiến thức.',
-    timestamp: '08:30',
-  },
-  {
-    id: 'm2',
-    role: 'user',
-    content: 'Làm thế nào để tìm cực trị của hàm số y = x³ - 3x + 1 vậy thầy?',
-    timestamp: '08:31',
-  },
-  {
-    id: 'm3',
-    role: 'assistant',
-    content:
-      'Để tìm cực trị của một hàm số đa thức, chúng ta hãy nhớ lại định lý dấu đạo hàm. Đầu tiên, bạn hãy tính đạo hàm f\'(x) xem bằng bao nhiêu nhé?',
-    latex: "y' = (x^3 - 3x + 1)' = ?",
-    graphHint: {
-      equation: 'y = x^3 - 3x + 1',
-      label: 'Đồ thị minh họa hàm số bậc ba có 2 cực trị',
-    },
-    timestamp: '08:31',
-  },
-];
+export const SAMPLE_SOCRATIC_MESSAGES: SocraticMessage[] = [];
 
 export const SAMPLE_EXAM_BGD: Exam = {
   id: 'exam_bgd_2025_01',
