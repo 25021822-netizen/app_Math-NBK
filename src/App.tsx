@@ -659,8 +659,8 @@ export default function App() {
         />
       )}
 
-      {/* Main Content Area (100% toàn màn hình khi làm bài, không khung viền thừa) */}
-      <main className={`flex-1 flex justify-center ${isExamMode ? 'w-full p-0' : 'py-4 sm:py-8 px-2 sm:px-4'}`}>
+      {/* Main Content Area (100% toàn màn hình khi làm bài, không khung viền thừa; có padding-bottom pb-24 trên điện thoại để không bị thanh điều hướng che) */}
+      <main className={`flex-1 flex justify-center ${isExamMode ? 'w-full p-0' : 'py-3 sm:py-8 px-2 sm:px-4 pb-24 md:pb-8'}`}>
         {isExamMode || deviceMode === 'desktop' ? (
           <div className="w-full">{renderCurrentView()}</div>
         ) : deviceMode === 'tablet' ? (

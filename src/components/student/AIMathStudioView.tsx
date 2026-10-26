@@ -230,54 +230,54 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
           </p>
         </div>
 
-        {/* Unified Liki Mode Switcher: 4 Chức năng tích hợp trực tiếp */}
-        <div className="flex flex-wrap bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold w-full md:w-auto gap-1">
+        {/* Unified Liki Mode Switcher: 4 Chức năng tích hợp trực tiếp (2x2 trên mobile, flex trên desktop) */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold w-full md:w-auto gap-1.5">
           <button
             onClick={() => setActiveStudioTab('tutor')}
-            className={`px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
+            className={`px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-center ${
               activeStudioTab === 'tutor'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            <MessageSquare size={16} />
-            <span>Hỏi Đáp Với Liki</span>
+            <MessageSquare size={16} className="shrink-0" />
+            <span className="truncate">Hỏi Đáp Liki</span>
           </button>
 
           <button
             onClick={() => setActiveStudioTab('three_3d')}
-            className={`px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
+            className={`px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-center ${
               activeStudioTab === 'three_3d'
                 ? 'bg-cyan-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            <Box size={16} />
-            <span>Không Gian 3D</span>
+            <Box size={16} className="shrink-0" />
+            <span className="truncate">Không Gian 3D</span>
           </button>
 
           <button
             onClick={() => setActiveStudioTab('image_studio')}
-            className={`px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
+            className={`px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-center ${
               activeStudioTab === 'image_studio'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            <Wand2 size={16} />
-            <span>Tạo Ảnh AI</span>
+            <Wand2 size={16} className="shrink-0" />
+            <span className="truncate">Tạo Ảnh AI</span>
           </button>
 
           <button
             onClick={() => setActiveStudioTab('scanner')}
-            className={`px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
+            className={`px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-center ${
               activeStudioTab === 'scanner'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            <Camera size={16} />
-            <span>Quét Đề Bài</span>
+            <Camera size={16} className="shrink-0" />
+            <span className="truncate">Quét Đề Bài</span>
           </button>
         </div>
       </div>

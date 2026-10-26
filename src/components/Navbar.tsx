@@ -22,6 +22,13 @@ import {
   GraduationCap,
   Box,
   Wand2,
+  Menu,
+  X,
+  BarChart3,
+  FileText,
+  ChevronRight,
+  Shield,
+  Layers,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -68,93 +75,863 @@ export const Navbar: React.FC<NavbarProps> = ({
   onRequestPushPermission,
 }) => {
   const [showNotifDropdown, setShowNotifDropdown] = useState<boolean>(false);
+  const [showMobileMenu, setShowMobileMenu] = useState<boolean>(false);
+
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const handleMobileTabSelect = (tab: string) => {
+    onSelectTab(tab);
+    setShowMobileMenu(false);
+  };
+
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
-      {/* Top Bar Contract: 3 zones separated by gap-8 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-8">
-        {/* Zone 1: Brand Wordmark (Single text element) */}
-        <div className="flex items-center gap-3 shrink-0">
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              if (userRole === 'teacher') onSelectTab('classroom');
-              else if (userRole === 'admin') onSelectTab('admin_dashboard');
-              else onSelectTab('ask_ai');
-            }}
-            className="flex items-center gap-2.5 group"
-          >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform">
-              <BookOpen size={22} className="stroke-[2.5]" />
+    <>
+      {/* ========================================================= */}
+      {/* 1. TOP HEADER BAR (DESKTOP & MOBILE)                      */}
+      {/* ========================================================= */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-6">
+          {/* Zone 1: Brand Wordmark */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                if (userRole === 'teacher') handleMobileTabSelect('classroom');
+                else if (userRole === 'admin') handleMobileTabSelect('admin_dashboard');
+                else handleMobileTabSelect('ask_ai');
+              }}
+              className="flex items-center gap-2 sm:gap-2.5 group"
+            >
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform">
+                <BookOpen size={20} className="stroke-[2.5]" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 leading-none">
+                  Math<span className="text-blue-600">&</span>NBK
+                </span>
+                <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium tracking-wide">
+                  Toán Thầy Nguyễn Bá Kỳ
+                </span>
+              </div>
+            </a>
+          </div>
+
+          {/* Zone 2: Desktop Navigation Links (Single-line, whitespace-nowrap) */}
+          <nav className="hidden md:flex items-center gap-3 lg:gap-5 text-sm font-medium text-slate-600">
+            {userRole === 'student' && (
+              <>
+                <button
+                  onClick={() => onSelectTab('ask_ai')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1.5 ${
+                    currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <Sparkles size={15} className="text-blue-600" />
+                  <span>Hỏi AI (Liki)</span>
+                </button>
+                <button
+                  onClick={() => onSelectTab('classroom')}
+                  className={`whitespace-nowrap transition-colors py-1 ${
+                    currentTab === 'classroom'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  Nhóm Lớp
+                </button>
+                <button
+                  onClick={() => onSelectTab('student_history')}
+                  className={`whitespace-nowrap transition-colors py-1 ${
+                    currentTab === 'student_history'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  Bài Đã Làm
+                </button>
+                <button
+                  onClick={() => onSelectTab('geometry')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                    currentTab === 'geometry'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <Compass size={14} />
+                  <span>Vẽ Hình 2D/3D</span>
+                </button>
+                <button
+                  onClick={() => onSelectTab('profile')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                    currentTab === 'profile'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <User size={14} />
+                  <span>Hồ Sơ</span>
+                </button>
+              </>
+            )}
+
+            {userRole === 'teacher' && (
+              <>
+                <button
+                  onClick={() => onSelectTab('classroom')}
+                  className={`whitespace-nowrap transition-colors py-1 ${
+                    currentTab === 'classroom'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  Quản Lý Nhóm Lớp
+                </button>
+                <button
+                  onClick={() => onSelectTab('teacher_gradebook')}
+                  className={`whitespace-nowrap transition-colors py-1 ${
+                    currentTab === 'teacher_gradebook'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  Tổng Hợp Điểm Thi
+                </button>
+                <button
+                  onClick={() => onSelectTab('teacher_portal')}
+                  className={`whitespace-nowrap transition-colors py-1 ${
+                    currentTab === 'teacher_portal'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  Tạo Đề Thi & Tải PDF
+                </button>
+                <button
+                  onClick={() => onSelectTab('geometry')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                    currentTab === 'geometry'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <Compass size={14} />
+                  <span>Vẽ Hình 2D/3D</span>
+                </button>
+                <button
+                  onClick={() => onSelectTab('ask_ai')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                    currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <Sparkles size={14} className="text-blue-600" />
+                  <span>Hỏi AI (Liki)</span>
+                </button>
+                <button
+                  onClick={() => onSelectTab('profile')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                    currentTab === 'profile'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <User size={14} />
+                  <span>Hồ Sơ</span>
+                </button>
+              </>
+            )}
+
+            {userRole === 'admin' && (
+              <>
+                <button
+                  onClick={() => onSelectTab('admin_dashboard')}
+                  className={`whitespace-nowrap transition-colors py-1 ${
+                    currentTab === 'admin_dashboard'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  Trung Tâm Quản Trị & Token AI
+                </button>
+                <button
+                  onClick={() => onSelectTab('profile')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                    currentTab === 'profile'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <User size={14} />
+                  <span>Hồ Sơ</span>
+                </button>
+              </>
+            )}
+          </nav>
+
+          {/* Zone 3: Controls, Icons & Mobile Menu Button */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* Device viewport frame switcher (Ẩn trên điện thoại thật) */}
+            <div className="hidden lg:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                onClick={() => onSelectDeviceMode('desktop')}
+                title="Giao diện Màn hình rộng"
+                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                  deviceMode === 'desktop' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Monitor size={15} />
+              </button>
+              <button
+                onClick={() => onSelectDeviceMode('tablet')}
+                title="Khung Tablet (iPad)"
+                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                  deviceMode === 'tablet' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Tablet size={15} />
+              </button>
+              <button
+                onClick={() => onSelectDeviceMode('mobile')}
+                title="Khung Smartphone (iPhone)"
+                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                  deviceMode === 'mobile' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Smartphone size={15} />
+              </button>
             </div>
-            <div className="flex flex-col">
-              <span className="text-xl font-extrabold tracking-tight text-slate-900 leading-none">
-                Math<span className="text-blue-600">&</span>NBK
-              </span>
-              <span className="text-[10px] text-slate-400 font-medium tracking-wide">
-                Toán THPT Thế Hệ Mới
+
+            {/* Friends Network Button */}
+            {onOpenFriendsModal && (
+              <button
+                onClick={onOpenFriendsModal}
+                title="Mạng lưới bạn bè qua ID"
+                className="relative p-2 sm:px-3 sm:py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap shadow-xs cursor-pointer"
+              >
+                <UserCheck size={16} />
+                <span className="hidden sm:inline">Bạn Bè</span>
+                {friendsCount > 0 && (
+                  <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-mono font-bold">
+                    {friendsCount}
+                  </span>
+                )}
+                {pendingRequestsCount > 0 && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 absolute -top-1 -right-1 animate-pulse" />
+                )}
+              </button>
+            )}
+
+            {/* Push Notification Bell Icon with Badge & Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                title="Thông báo hệ thống & bài thi mới"
+                className="relative p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors cursor-pointer"
+              >
+                <Bell size={18} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white font-mono font-bold text-[10px] flex items-center justify-center animate-pulse shadow-xs">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown Panel */}
+              {showNotifDropdown && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl border border-slate-200 shadow-2xl p-4 z-50 animate-in fade-in space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Bell size={16} className="text-blue-600" />
+                      <span className="font-extrabold text-xs text-slate-900">Thông Báo Đẩy ({notifications.length})</span>
+                    </div>
+                    {notifications.length > 0 && onClearNotifications && (
+                      <button
+                        onClick={onClearNotifications}
+                        className="text-[10px] text-slate-400 hover:text-rose-600 font-bold transition-colors cursor-pointer"
+                      >
+                        Xóa tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Browser Push Permission Request Button */}
+                  {onRequestPushPermission && (
+                    <div className="p-2.5 rounded-2xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-2 text-xs">
+                      <span className="text-[11px] font-semibold text-blue-900">Nhận thông báo khi giáo viên đăng bài thi mới?</span>
+                      <button
+                        onClick={() => {
+                          onRequestPushPermission();
+                          setShowNotifDropdown(false);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
+                      >
+                        Bật
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Notifications List */}
+                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                    {notifications.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-6 italic">
+                        Hiện chưa có thông báo mới nào.
+                      </p>
+                    ) : (
+                      notifications.map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            if (n.targetTab) onSelectTab(n.targetTab);
+                            setShowNotifDropdown(false);
+                          }}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                            n.type === 'exam_published'
+                              ? 'bg-amber-50/60 border-amber-200 hover:bg-amber-50'
+                              : n.type === 'exam_graded'
+                              ? 'bg-emerald-50/60 border-emerald-200 hover:bg-emerald-50'
+                              : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h5 className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                              {n.type === 'exam_published' && <FileCheck size={14} className="text-amber-600 shrink-0" />}
+                              {n.type === 'exam_graded' && <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />}
+                              <span>{n.title}</span>
+                            </h5>
+                            <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                              {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-1 line-clamp-2">{n.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User Account Avatar & Profile Pill */}
+            <button
+              onClick={() => onSelectTab('profile')}
+              title="Xem hồ sơ cá nhân"
+              className="flex items-center gap-2 p-1.5 pr-2.5 sm:pr-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+            >
+              <div className="w-7 h-7 rounded-lg overflow-hidden bg-blue-100 shrink-0">
+                {userAvatar ? (
+                  <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+                ) : (
+                  <User size={16} className="text-blue-600 m-auto mt-1" />
+                )}
+              </div>
+              <div className="hidden lg:flex flex-col text-left">
+                <span className="text-xs font-bold text-slate-800 leading-none truncate max-w-[110px]">
+                  {userName}
+                </span>
+                <span className="text-[9px] text-slate-400 font-semibold uppercase">
+                  {userRole === 'student' ? 'Học sinh' : userRole === 'teacher' ? 'Giáo viên' : 'Quản trị'}
+                </span>
+              </div>
+            </button>
+
+            {/* Isolated Role Indicator Badge */}
+            <div
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold shadow-2xs select-none ${
+                userRole === 'admin'
+                  ? 'bg-rose-50 border-rose-200 text-rose-700'
+                  : userRole === 'teacher'
+                  ? 'bg-purple-50 border-purple-200 text-purple-700'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              }`}
+            >
+              {userRole === 'admin' ? (
+                <ShieldAlert size={15} className="text-rose-600 shrink-0" />
+              ) : userRole === 'teacher' ? (
+                <GraduationCap size={15} className="text-purple-600 shrink-0" />
+              ) : (
+                <BookOpen size={15} className="text-emerald-600 shrink-0" />
+              )}
+              <span className="whitespace-nowrap hidden md:inline">
+                {userRole === 'admin' ? 'Quản Trị Viên' : userRole === 'teacher' ? 'Giáo Viên' : 'Học Sinh'}
               </span>
             </div>
-          </a>
+
+            {/* Tier Badge / Upgrade Button */}
+            <button
+              onClick={onToggleTier}
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+                tier === 'premium'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+              }`}
+            >
+              <Sparkles size={14} />
+              <span className="hidden sm:inline">{tier === 'premium' ? 'Gói Pro' : 'Nâng cấp Pro'}</span>
+            </button>
+
+            {/* Logout Button (Desktop) */}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Đăng xuất khỏi tài khoản"
+                className="hidden md:flex p-2 rounded-xl text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 transition-all shadow-xs items-center gap-1 text-xs font-bold cursor-pointer"
+              >
+                <LogOut size={16} />
+                <span className="hidden xl:inline">Đăng Xuất</span>
+              </button>
+            )}
+
+            {/* ========================================================= */}
+            {/* MOBILE HAMBURGER BUTTON (HIỂN THỊ RÕ RÀNG TRÊN ĐIỆN THOẠI) */}
+            {/* ========================================================= */}
+            <button
+              type="button"
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              className={`md:hidden p-2 rounded-xl transition-all border flex items-center justify-center cursor-pointer ${
+                showMobileMenu
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                  : 'bg-slate-50 text-slate-800 hover:bg-slate-100 border-slate-300'
+              }`}
+              aria-label="Mở thực đơn chức năng điện thoại"
+            >
+              {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
         </div>
 
-        {/* Zone 2: Navigation Links (Single-line, whitespace-nowrap) */}
-        <nav className="hidden md:flex items-center gap-4 lg:gap-5 text-sm font-medium text-slate-600">
+        {/* ========================================================= */}
+        {/* MOBILE MENU DRAWER OVERLAY (MENU ĐẦY ĐỦ CHO ĐIỆN THOẠI)    */}
+        {/* ========================================================= */}
+        {showMobileMenu && (
+          <div className="md:hidden border-t border-slate-200 bg-white/98 backdrop-blur-xl animate-in slide-in-from-top-3 duration-200 shadow-2xl">
+            <div className="max-w-lg mx-auto px-4 py-5 space-y-4">
+              {/* User Identity Card on Mobile */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl overflow-hidden bg-white border border-blue-200 shrink-0 shadow-xs">
+                    {userAvatar ? (
+                      <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+                    ) : (
+                      <User size={22} className="text-blue-600 m-auto mt-2.5" />
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-extrabold text-sm text-slate-900 leading-tight">
+                      {userName}
+                    </span>
+                    <span className="text-[11px] text-blue-700 font-semibold mt-0.5 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      {userRole === 'student' ? 'Học Sinh THPT' : userRole === 'teacher' ? 'Giáo Viên THPT' : 'Quản Trị Viên'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                    {tier === 'premium' ? 'Gói Pro' : 'Miễn Phí'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono font-bold">
+                    {xp} XP
+                  </span>
+                </div>
+              </div>
+
+              {/* Title Section */}
+              <div className="text-[11px] font-black uppercase tracking-wider text-slate-400 px-1">
+                Tất Cả Chức Năng Hệ Thống
+              </div>
+
+              {/* Navigation Links for Mobile */}
+              <div className="grid grid-cols-1 gap-1.5">
+                {userRole === 'student' && (
+                  <>
+                    <button
+                      onClick={() => handleMobileTabSelect('ask_ai')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
+                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'ask_ai' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'
+                        }`}>
+                          <Sparkles size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Hỏi AI (Liki)</div>
+                          <div className={`text-[10px] ${currentTab === 'ask_ai' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Gia sư Socratic, 3D Three.js, Tạo ảnh toán & Quét OCR
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('classroom')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'classroom'
+                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'classroom' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-600'
+                        }`}>
+                          <Users size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Nhóm Lớp Trực Tuyến</div>
+                          <div className={`text-[10px] ${currentTab === 'classroom' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Trao đổi bài tập, lớp học trực tuyến & bài giảng
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('student_history')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'student_history'
+                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'student_history' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-600'
+                        }`}>
+                          <FileCheck size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Bài Đã Làm & Lịch Sử Thi</div>
+                          <div className={`text-[10px] ${currentTab === 'student_history' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Xem lại kết quả, bài nộp, làm lại đề thi
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('geometry')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'geometry'
+                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'geometry' ? 'bg-white/20 text-white' : 'bg-cyan-100 text-cyan-600'
+                        }`}>
+                          <Compass size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Phòng Vẽ Hình 2D / 3D</div>
+                          <div className={`text-[10px] ${currentTab === 'geometry' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Vẽ hình học không gian, trục tọa độ Oxyz & xuất ảnh
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('profile')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'profile'
+                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'profile' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-600'
+                        }`}>
+                          <User size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Hồ Sơ Học Sinh</div>
+                          <div className={`text-[10px] ${currentTab === 'profile' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Thông tin cá nhân, trường học & đổi mật khẩu
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+                  </>
+                )}
+
+                {userRole === 'teacher' && (
+                  <>
+                    <button
+                      onClick={() => handleMobileTabSelect('classroom')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'classroom'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                          <Users size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Quản Lý Nhóm Lớp</div>
+                          <div className="text-[10px] text-slate-400">Danh sách học sinh, bài giảng, nhóm lớp</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('teacher_gradebook')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'teacher_gradebook'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                          <BarChart3 size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Tổng Hợp Điểm Thi</div>
+                          <div className="text-[10px] text-slate-400">Bảng điểm thi, xếp loại & phân tích phổ điểm</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('teacher_portal')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'teacher_portal'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                          <FileText size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Tạo Đề Thi & Tải PDF / Word</div>
+                          <div className="text-[10px] text-slate-400">Tạo đề thi 4 phần chuẩn Bộ GD&ĐT</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('ask_ai')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                          <Sparkles size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Hỏi AI (Liki)</div>
+                          <div className="text-[10px] text-slate-400">Trợ lý toán học, 3D Three.js & tạo ảnh</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('geometry')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'geometry'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center">
+                          <Compass size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Vẽ Hình 2D / 3D</div>
+                          <div className="text-[10px] text-slate-400">Vẽ hình học không gian, trục Oxyz</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('profile')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'profile'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                          <User size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Hồ Sơ Giáo Viên</div>
+                          <div className="text-[10px] text-slate-400">Thông tin giáo viên & đổi mật khẩu</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+                  </>
+                )}
+
+                {userRole === 'admin' && (
+                  <>
+                    <button
+                      onClick={() => handleMobileTabSelect('admin_dashboard')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'admin_dashboard'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                          <ShieldAlert size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Trung Tâm Quản Trị Hệ Thống</div>
+                          <div className="text-[10px] text-slate-400">Phê duyệt người dùng, quản trị & token AI</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('profile')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'profile'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                          <User size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Hồ Sơ Quản Trị Viên</div>
+                          <div className="text-[10px] text-slate-400">Thông tin bảo mật Admin & đổi mật khẩu</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Logout Button in Mobile Menu */}
+              {onLogout && (
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      onLogout();
+                    }}
+                    className="w-full py-3 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-extrabold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <LogOut size={16} />
+                    <span>Đăng Xuất Tài Khoản</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* ========================================================= */}
+      {/* 2. PERSISTENT MOBILE BOTTOM NAVIGATION BAR                */}
+      {/* (LUÔN CỐ ĐỊNH Ở ĐÁY MÀN HÌNH ĐIỆN THOẠI ĐỂ ĐỔI TAB 1 CHẠM)  */}
+      {/* ========================================================= */}
+      {currentTab !== 'exam' && (
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 md:hidden flex items-center justify-around h-16 px-1 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
+          aria-label="Thanh điều hướng dưới điện thoại"
+        >
           {userRole === 'student' && (
             <>
               <button
-                onClick={() => onSelectTab('ask_ai')}
-                className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1.5 ${
+                type="button"
+                onClick={() => handleMobileTabSelect('ask_ai')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
                   currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                    ? 'text-blue-600 font-bold scale-105'
+                    : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
-                <Sparkles size={15} className="text-blue-600" />
-                <span>Hỏi AI (Liki)</span>
+                <Sparkles size={19} className={currentTab === 'ask_ai' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Hỏi AI</span>
               </button>
+
               <button
-                onClick={() => onSelectTab('classroom')}
-                className={`whitespace-nowrap transition-colors py-1 ${
+                type="button"
+                onClick={() => handleMobileTabSelect('classroom')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
                   currentTab === 'classroom'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                    ? 'text-blue-600 font-bold scale-105'
+                    : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
-                Nhóm Lớp
+                <Users size={19} className={currentTab === 'classroom' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Lớp Học</span>
               </button>
+
               <button
-                onClick={() => onSelectTab('student_history')}
-                className={`whitespace-nowrap transition-colors py-1 ${
+                type="button"
+                onClick={() => handleMobileTabSelect('student_history')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
                   currentTab === 'student_history'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                    ? 'text-blue-600 font-bold scale-105'
+                    : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
-                Bài Đã Làm
+                <FileCheck size={19} className={currentTab === 'student_history' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Bài Làm</span>
               </button>
+
               <button
-                onClick={() => onSelectTab('geometry')}
-                className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                type="button"
+                onClick={() => handleMobileTabSelect('geometry')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
                   currentTab === 'geometry'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                    ? 'text-blue-600 font-bold scale-105'
+                    : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
-                <Compass size={14} />
-                <span>Vẽ Hình 2D/3D</span>
+                <Compass size={19} className={currentTab === 'geometry' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Vẽ Hình</span>
               </button>
+
               <button
-                onClick={() => onSelectTab('profile')}
-                className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                  currentTab === 'profile'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                type="button"
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  showMobileMenu ? 'text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
-                <User size={14} />
-                <span>Hồ Sơ</span>
+                <Menu size={19} />
+                <span className="text-[10px] mt-0.5">Menu</span>
               </button>
             </>
           )}
@@ -162,68 +939,60 @@ export const Navbar: React.FC<NavbarProps> = ({
           {userRole === 'teacher' && (
             <>
               <button
-                onClick={() => onSelectTab('classroom')}
-                className={`whitespace-nowrap transition-colors py-1 ${
-                  currentTab === 'classroom'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                type="button"
+                onClick={() => handleMobileTabSelect('classroom')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  currentTab === 'classroom' ? 'text-blue-600 font-bold scale-105' : 'text-slate-400'
                 }`}
               >
-                Quản Lý Nhóm Lớp
-              </button>
-              <button
-                onClick={() => onSelectTab('teacher_gradebook')}
-                className={`whitespace-nowrap transition-colors py-1 ${
-                  currentTab === 'teacher_gradebook'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
-                }`}
-              >
-                Tổng Hợp Điểm Thi
-              </button>
-              <button
-                onClick={() => onSelectTab('teacher_portal')}
-                className={`whitespace-nowrap transition-colors py-1 ${
-                  currentTab === 'teacher_portal'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
-                }`}
-              >
-                Tạo Đề Thi & Tải PDF
+                <Users size={19} className={currentTab === 'classroom' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Lớp Học</span>
               </button>
 
               <button
-                onClick={() => onSelectTab('geometry')}
-                className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                  currentTab === 'geometry'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                type="button"
+                onClick={() => handleMobileTabSelect('teacher_gradebook')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  currentTab === 'teacher_gradebook' ? 'text-blue-600 font-bold scale-105' : 'text-slate-400'
                 }`}
               >
-                <Compass size={14} />
-                <span>Vẽ Hình 2D/3D</span>
+                <BarChart3 size={19} className={currentTab === 'teacher_gradebook' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Điểm Thi</span>
               </button>
+
               <button
-                onClick={() => onSelectTab('ask_ai')}
-                className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                type="button"
+                onClick={() => handleMobileTabSelect('teacher_portal')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  currentTab === 'teacher_portal' ? 'text-blue-600 font-bold scale-105' : 'text-slate-400'
+                }`}
+              >
+                <FileText size={19} className={currentTab === 'teacher_portal' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Tạo Đề</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleMobileTabSelect('ask_ai')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
                   currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                    ? 'text-blue-600 font-bold scale-105'
+                    : 'text-slate-400'
                 }`}
               >
-                <Sparkles size={14} className="text-blue-600" />
-                <span>Hỏi AI (Liki)</span>
+                <Sparkles size={19} />
+                <span className="text-[10px] mt-0.5">Hỏi AI</span>
               </button>
+
               <button
-                onClick={() => onSelectTab('profile')}
-                className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                  currentTab === 'profile'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                type="button"
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  showMobileMenu ? 'text-blue-600 font-bold' : 'text-slate-400'
                 }`}
               >
-                <User size={14} />
-                <span>Hồ Sơ</span>
+                <Menu size={19} />
+                <span className="text-[10px] mt-0.5">Menu</span>
               </button>
             </>
           )}
@@ -231,244 +1000,41 @@ export const Navbar: React.FC<NavbarProps> = ({
           {userRole === 'admin' && (
             <>
               <button
-                onClick={() => onSelectTab('admin_dashboard')}
-                className={`whitespace-nowrap transition-colors py-1 ${
-                  currentTab === 'admin_dashboard'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                type="button"
+                onClick={() => handleMobileTabSelect('admin_dashboard')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  currentTab === 'admin_dashboard' ? 'text-blue-600 font-bold scale-105' : 'text-slate-400'
                 }`}
               >
-                Trung Tâm Quản Trị & Token AI
+                <ShieldAlert size={19} className={currentTab === 'admin_dashboard' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Quản Trị</span>
               </button>
+
               <button
-                onClick={() => onSelectTab('profile')}
-                className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                  currentTab === 'profile'
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                    : 'hover:text-slate-900'
+                type="button"
+                onClick={() => handleMobileTabSelect('profile')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  currentTab === 'profile' ? 'text-blue-600 font-bold scale-105' : 'text-slate-400'
                 }`}
               >
-                <User size={14} />
-                <span>Hồ Sơ</span>
+                <User size={19} className={currentTab === 'profile' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Hồ Sơ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  showMobileMenu ? 'text-blue-600 font-bold' : 'text-slate-400'
+                }`}
+              >
+                <Menu size={19} />
+                <span className="text-[10px] mt-0.5">Menu</span>
               </button>
             </>
           )}
         </nav>
-
-        {/* Zone 3: 1 Primary Action & Context Controls */}
-        <div className="flex items-center gap-3 shrink-0">
-          {/* Device viewport frame switcher */}
-          <div className="hidden sm:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              onClick={() => onSelectDeviceMode('desktop')}
-              title="Giao diện Màn hình rộng"
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
-                deviceMode === 'desktop' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Monitor size={15} />
-            </button>
-            <button
-              onClick={() => onSelectDeviceMode('tablet')}
-              title="Khung Tablet (iPad)"
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
-                deviceMode === 'tablet' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Tablet size={15} />
-            </button>
-            <button
-              onClick={() => onSelectDeviceMode('mobile')}
-              title="Khung Smartphone (iPhone)"
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
-                deviceMode === 'mobile' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Smartphone size={15} />
-            </button>
-          </div>
-
-          {/* Friends Network Button (GV-GV, HS-HS, GV-HS) */}
-          {onOpenFriendsModal && (
-            <button
-              onClick={onOpenFriendsModal}
-              title="Mạng lưới kết bạn qua ID (GV-GV, HS-HS, GV-HS)"
-              className="relative px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap shadow-xs"
-            >
-              <UserCheck size={15} />
-              <span className="hidden sm:inline">Bạn Bè</span>
-              {friendsCount > 0 && (
-                <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-mono font-bold">
-                  {friendsCount}
-                </span>
-              )}
-              {pendingRequestsCount > 0 && (
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 absolute -top-1 -right-1 animate-pulse" />
-              )}
-            </button>
-          )}
-
-          {/* Push Notification Bell Icon with Badge & Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-              title="Thông báo hệ thống & bài thi mới"
-              className="relative p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors"
-            >
-              <Bell size={18} />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white font-mono font-bold text-[10px] flex items-center justify-center animate-pulse shadow-xs">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Notification Dropdown Panel */}
-            {showNotifDropdown && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl border border-slate-200 shadow-2xl p-4 z-50 animate-in fade-in space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <Bell size={16} className="text-blue-600" />
-                    <span className="font-extrabold text-xs text-slate-900">Thông Báo Đẩy ({notifications.length})</span>
-                  </div>
-                  {notifications.length > 0 && onClearNotifications && (
-                    <button
-                      onClick={onClearNotifications}
-                      className="text-[10px] text-slate-400 hover:text-rose-600 font-bold transition-colors"
-                    >
-                      Xóa tất cả
-                    </button>
-                  )}
-                </div>
-
-                {/* Browser Push Permission Request Button */}
-                {onRequestPushPermission && (
-                  <div className="p-2.5 rounded-2xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-2 text-xs">
-                    <span className="text-[11px] font-semibold text-blue-900">Nhận thông báo khi giáo viên đăng bài thi mới?</span>
-                    <button
-                      onClick={() => {
-                        onRequestPushPermission();
-                        setShowNotifDropdown(false);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] shrink-0 shadow-xs"
-                    >
-                      Bật Thông Báo
-                    </button>
-                  </div>
-                )}
-
-                {/* Notifications List */}
-                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                  {notifications.length === 0 ? (
-                    <p className="text-xs text-slate-400 text-center py-6 italic">
-                      Hiện chưa có thông báo mới nào.
-                    </p>
-                  ) : (
-                    notifications.map((n) => (
-                      <div
-                        key={n.id}
-                        onClick={() => {
-                          if (n.targetTab) onSelectTab(n.targetTab);
-                          setShowNotifDropdown(false);
-                        }}
-                        className={`p-3 rounded-2xl border transition-all cursor-pointer ${
-                          n.type === 'exam_published'
-                            ? 'bg-amber-50/60 border-amber-200 hover:bg-amber-50'
-                            : n.type === 'exam_graded'
-                            ? 'bg-emerald-50/60 border-emerald-200 hover:bg-emerald-50'
-                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <h5 className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                            {n.type === 'exam_published' && <FileCheck size={14} className="text-amber-600 shrink-0" />}
-                            {n.type === 'exam_graded' && <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />}
-                            <span>{n.title}</span>
-                          </h5>
-                          <span className="text-[9px] text-slate-400 font-mono shrink-0">
-                            {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 mt-1 line-clamp-2">{n.message}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* User Account Avatar & Profile Pill */}
-          <button
-            onClick={() => onSelectTab('profile')}
-            title="Xem hồ sơ cá nhân"
-            className="flex items-center gap-2 p-1.5 pr-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
-          >
-            <div className="w-7 h-7 rounded-lg overflow-hidden bg-blue-100 shrink-0">
-              {userAvatar ? (
-                <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
-              ) : (
-                <User size={16} className="text-blue-600 m-auto mt-1" />
-              )}
-            </div>
-            <div className="hidden lg:flex flex-col text-left">
-              <span className="text-xs font-bold text-slate-800 leading-none truncate max-w-[110px]">
-                {userName}
-              </span>
-              <span className="text-[9px] text-slate-400 font-semibold uppercase">
-                {userRole === 'student' ? 'Học sinh' : userRole === 'teacher' ? 'Giáo viên' : 'Quản trị'}
-              </span>
-            </div>
-          </button>
-
-          {/* Isolated Role Indicator Badge (Không cho phép chuyển vai trò tự do, mỗi tài khoản tách biệt hoàn toàn) */}
-          <div
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold shadow-2xs select-none ${
-              userRole === 'admin'
-                ? 'bg-rose-50 border-rose-200 text-rose-700'
-                : userRole === 'teacher'
-                ? 'bg-purple-50 border-purple-200 text-purple-700'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-            }`}
-          >
-            {userRole === 'admin' ? (
-              <ShieldAlert size={15} className="text-rose-600 shrink-0" />
-            ) : userRole === 'teacher' ? (
-              <GraduationCap size={15} className="text-purple-600 shrink-0" />
-            ) : (
-              <BookOpen size={15} className="text-emerald-600 shrink-0" />
-            )}
-            <span className="whitespace-nowrap">
-              {userRole === 'admin' ? 'Quản Trị Viên' : userRole === 'teacher' ? 'Giáo Viên' : 'Học Sinh'}
-            </span>
-          </div>
-
-          {/* Tier Badge / Upgrade Button */}
-          <button
-            onClick={onToggleTier}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              tier === 'premium'
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
-            }`}
-          >
-            <Sparkles size={14} />
-            <span className="hidden sm:inline">{tier === 'premium' ? 'Gói Pro' : 'Nâng cấp Pro'}</span>
-          </button>
-
-          {/* Logout Button */}
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              title="Đăng xuất khỏi tài khoản để quay lại giao diện đăng nhập"
-              className="p-2 rounded-xl text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 transition-all shadow-xs flex items-center gap-1 text-xs font-bold"
-            >
-              <LogOut size={16} />
-              <span className="hidden xl:inline">Đăng Xuất</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </header>
+      )}
+    </>
   );
 };
