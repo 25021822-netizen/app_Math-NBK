@@ -325,6 +325,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
+
             {/* Push Notification Bell Icon with Badge & Dropdown */}
             <div className="relative">
               <button
@@ -539,6 +540,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 </div>
               </div>
+
 
               {/* Title Section */}
               <div className="text-[11px] font-black uppercase tracking-wider text-slate-400 px-1">

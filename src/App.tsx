@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson } from './types/math';
+import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson, ClassroomChatMessage } from './types/math';
 import {
   INITIAL_USER_PROFILE,
   SAMPLE_CHEAT_LOGS,
@@ -25,7 +25,10 @@ import {
   dbSaveSubmission,
   dbSaveCheatLog,
   dbSaveLessons,
+  dbSaveLesson,
+  dbDeleteLesson,
   dbSaveMessage,
+  dbToggleMessageReaction,
 } from './services/dbSyncService';
 import { Navbar } from './components/Navbar';
 import { AIMathStudioView } from './components/student/AIMathStudioView';
@@ -106,6 +109,7 @@ export default function App() {
   const [classrooms, setClassrooms] = useState<Classroom[]>(SAMPLE_CLASSROOMS);
   const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
   const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
+  const [classroomMessages, setClassroomMessages] = useState<Record<string, ClassroomChatMessage[]>>({});
 
   // Quản lý thông báo đẩy (Push Notifications)
   const [notifications, setNotifications] = useState<PushNotificationItem[]>([
@@ -217,6 +221,10 @@ export default function App() {
 
       if (remoteData.classroomLessons && Array.isArray(remoteData.classroomLessons)) {
         setClassroomLessons(remoteData.classroomLessons);
+      }
+
+      if (remoteData.classroomMessages) {
+        setClassroomMessages(remoteData.classroomMessages);
       }
     });
 
@@ -344,10 +352,44 @@ export default function App() {
     dbSaveClassrooms(updated).catch(console.error);
   };
 
-  // Cập nhật bài học đồng bộ lên Server
+  // Cập nhật bài học đồng bộ lên Server & Firestore
   const handleUpdateLessons = (updated: ClassroomLesson[]) => {
     setClassroomLessons(updated);
     dbSaveLessons(updated).catch(console.error);
+  };
+
+  // Lưu 1 bài học (Thêm mới hoặc Sửa) đồng bộ ngay lên Firestore
+  const handleSaveLesson = (lesson: ClassroomLesson) => {
+    setClassroomLessons((prev) => {
+      const idx = prev.findIndex((l) => l.id === lesson.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = lesson;
+        return copy;
+      }
+      return [lesson, ...prev];
+    });
+    dbSaveLesson(lesson).catch(console.error);
+  };
+
+  // Xóa 1 bài học đồng bộ ngay trên Firestore
+  const handleDeleteLesson = (lessonId: string) => {
+    setClassroomLessons((prev) => prev.filter((l) => l.id !== lessonId));
+    dbDeleteLesson(lessonId).catch(console.error);
+  };
+
+  // Gửi tin nhắn chat nhóm lớp đồng bộ tức thời qua Firestore
+  const handleSendChatMessage = (message: ClassroomChatMessage) => {
+    setClassroomMessages((prev) => ({
+      ...prev,
+      [message.classId]: [...(prev[message.classId] || []), message],
+    }));
+    dbSaveMessage(message.classId, message).catch(console.error);
+  };
+
+  // Thả / Hủy tương tác biểu cảm Emoji trên tin nhắn chat đồng bộ tức thời
+  const handleToggleReaction = (messageId: string, emoji: string, classId: string) => {
+    dbToggleMessageReaction(classId, messageId, emoji, userProfile.id).catch(console.error);
   };
 
   const handleToggleTier = () => {
@@ -463,6 +505,7 @@ export default function App() {
             userRole={userRole}
             currentUserId={userProfile.id}
             currentUserName={userProfile.name}
+            currentUserAvatar={userProfile.avatar}
             classrooms={classrooms}
             onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
@@ -474,8 +517,14 @@ export default function App() {
             onViewClassGradebook={() => {
               setCurrentTab('teacher_gradebook');
             }}
+            allUsers={allUsers}
+            classroomMessages={classroomMessages}
+            onSendChatMessage={handleSendChatMessage}
+            onToggleReaction={handleToggleReaction}
             classroomLessons={classroomLessons}
             onUpdateLessons={handleUpdateLessons}
+            onSaveLesson={handleSaveLesson}
+            onDeleteLesson={handleDeleteLesson}
           />
         );
       }
@@ -540,6 +589,7 @@ export default function App() {
             userRole={userRole}
             currentUserId={userProfile.id}
             currentUserName={userProfile.name}
+            currentUserAvatar={userProfile.avatar}
             classrooms={classrooms}
             onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
@@ -548,8 +598,14 @@ export default function App() {
               setActiveExamId(examId);
               setCurrentTab('exam');
             }}
+            allUsers={allUsers}
+            classroomMessages={classroomMessages}
+            onSendChatMessage={handleSendChatMessage}
+            onToggleReaction={handleToggleReaction}
             classroomLessons={classroomLessons}
             onUpdateLessons={handleUpdateLessons}
+            onSaveLesson={handleSaveLesson}
+            onDeleteLesson={handleDeleteLesson}
           />
         );
       case 'student_history':
@@ -923,6 +979,7 @@ export default function App() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

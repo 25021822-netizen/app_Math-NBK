@@ -908,11 +908,38 @@ app.post('/api/db/cheat-logs', (req, res) => {
   res.json({ success: true, version: serverDb.version });
 });
 
-// 10. Lưu chuyên đề bài học
+// 10. Lưu toàn bộ chuyên đề bài học
 app.post('/api/db/lessons', (req, res) => {
   serverDb.classroomLessons = req.body.lessons || [];
   serverDb.version = (serverDb.version || 1) + 1;
   saveDatabase(serverDb);
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 10b. Lưu 1 bài học (Thêm mới hoặc Cập nhật)
+app.post('/api/db/lesson/save', (req, res) => {
+  const { lesson } = req.body;
+  if (lesson && lesson.id) {
+    const existingIdx = (serverDb.classroomLessons || []).findIndex((l: any) => l.id === lesson.id);
+    if (existingIdx >= 0) {
+      serverDb.classroomLessons[existingIdx] = lesson;
+    } else {
+      serverDb.classroomLessons = [lesson, ...(serverDb.classroomLessons || [])];
+    }
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 10c. Xóa 1 bài học khỏi lớp
+app.post('/api/db/lesson/delete', (req, res) => {
+  const { lessonId } = req.body;
+  if (lessonId) {
+    serverDb.classroomLessons = (serverDb.classroomLessons || []).filter((l: any) => l.id !== lessonId);
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
   res.json({ success: true, version: serverDb.version });
 });
 
@@ -923,7 +950,48 @@ app.post('/api/db/messages', (req, res) => {
     if (!serverDb.classroomMessages[classId]) {
       serverDb.classroomMessages[classId] = [];
     }
-    serverDb.classroomMessages[classId].push(message);
+    // Tránh lưu trùng lặp
+    const exists = serverDb.classroomMessages[classId].some((m: any) => m.id === message.id);
+    if (!exists) {
+      serverDb.classroomMessages[classId].push(message);
+    }
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 11b. Thả biểu cảm Emoji tin nhắn chat
+app.post('/api/db/message/reaction', (req, res) => {
+  const { classId, messageId, emoji, userId } = req.body;
+  if (classId && messageId && emoji && userId && serverDb.classroomMessages[classId]) {
+    serverDb.classroomMessages[classId] = serverDb.classroomMessages[classId].map((msg: any) => {
+      if (msg.id === messageId) {
+        const reactions = msg.reactions || [];
+        const existing = reactions.find((r: any) => r.emoji === emoji);
+        let nextReactions;
+        if (existing) {
+          if (existing.userIds.includes(userId)) {
+            const nextUsers = existing.userIds.filter((uid: string) => uid !== userId);
+            if (nextUsers.length === 0) {
+              nextReactions = reactions.filter((r: any) => r.emoji !== emoji);
+            } else {
+              nextReactions = reactions.map((r: any) =>
+                r.emoji === emoji ? { ...r, count: nextUsers.length, userIds: nextUsers } : r
+              );
+            }
+          } else {
+            nextReactions = reactions.map((r: any) =>
+              r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, userId] } : r
+            );
+          }
+        } else {
+          nextReactions = [...reactions, { emoji, count: 1, userIds: [userId] }];
+        }
+        return { ...msg, reactions: nextReactions };
+      }
+      return msg;
+    });
     serverDb.version = (serverDb.version || 1) + 1;
     saveDatabase(serverDb);
   }

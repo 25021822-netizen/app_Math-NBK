@@ -292,7 +292,44 @@ export async function dbSaveCheatLog(log: CheatLog): Promise<boolean> {
 }
 
 /**
- * Lưu bài học chuyên đề lớp học
+/**
+ * Lưu 1 bài học chuyên đề lớp học (Thêm mới hoặc Cập nhật)
+ */
+export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
+  try {
+    await setDoc(doc(db, 'lessons', lesson.id), lesson, { merge: true });
+    fetch('/api/db/lesson/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lesson }),
+    }).catch(() => {});
+    return true;
+  } catch (err) {
+    console.warn('Lỗi dbSaveLesson Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Xóa 1 bài học chuyên đề khỏi Firestore
+ */
+export async function dbDeleteLesson(lessonId: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'lessons', lessonId));
+    fetch('/api/db/lesson/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lessonId }),
+    }).catch(() => {});
+    return true;
+  } catch (err) {
+    console.warn('Lỗi dbDeleteLesson Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Lưu danh sách bài học chuyên đề lớp học
  */
 export async function dbSaveLessons(lessons: ClassroomLesson[]): Promise<boolean> {
   try {
@@ -325,6 +362,55 @@ export async function dbSaveMessage(classId: string, message: ClassroomChatMessa
 
     return true;
   } catch {
+    return false;
+  }
+}
+
+/**
+ * Thả / Hủy tương tác biểu cảm Emoji trên tin nhắn chat (Đồng bộ Real-time mọi máy)
+ */
+export async function dbToggleMessageReaction(
+  classId: string,
+  messageId: string,
+  emoji: string,
+  userId: string
+): Promise<boolean> {
+  try {
+    const msgRef = doc(db, 'messages', messageId);
+    const snap = await getDoc(msgRef);
+    if (!snap.exists()) return false;
+    const msgData = snap.data() as ClassroomChatMessage;
+    const reactions = msgData.reactions || [];
+    const existing = reactions.find((r) => r.emoji === emoji);
+    let nextReactions;
+    if (existing) {
+      if (existing.userIds.includes(userId)) {
+        const nextUsers = existing.userIds.filter((uid) => uid !== userId);
+        if (nextUsers.length === 0) {
+          nextReactions = reactions.filter((r) => r.emoji !== emoji);
+        } else {
+          nextReactions = reactions.map((r) =>
+            r.emoji === emoji ? { ...r, count: nextUsers.length, userIds: nextUsers } : r
+          );
+        }
+      } else {
+        nextReactions = reactions.map((r) =>
+          r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, userId] } : r
+        );
+      }
+    } else {
+      nextReactions = [...reactions, { emoji, count: 1, userIds: [userId] }];
+    }
+
+    await updateDoc(msgRef, { reactions: nextReactions });
+    fetch('/api/db/message/reaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classId, messageId, emoji, userId }),
+    }).catch(() => {});
+    return true;
+  } catch (err) {
+    console.warn('Lỗi dbToggleMessageReaction Firestore:', err);
     return false;
   }
 }
@@ -413,7 +499,40 @@ export function startDbPolling(
     console.warn('Lỗi Firestore cheatLogs onSnapshot:', err);
   });
 
-  // 5. Polling dự phòng qua server endpoint song song
+  // 5. Lắng nghe Bài học đăng bởi giáo viên trên Firestore Real-time (Đồng bộ ngay tới học sinh)
+  const unsubLessons = onSnapshot(collection(db, 'lessons'), (snapshot) => {
+    const list: ClassroomLesson[] = [];
+    snapshot.forEach((d) => {
+      list.push(d.data() as ClassroomLesson);
+    });
+    stateAccumulator.classroomLessons = list;
+    dispatchUpdate();
+  }, (err) => {
+    console.warn('Lỗi Firestore lessons onSnapshot:', err);
+  });
+
+  // 6. Lắng nghe Tin nhắn chat nhóm lớp trên Firestore Real-time (Đồng bộ tức thời mọi máy)
+  const unsubMessages = onSnapshot(collection(db, 'messages'), (snapshot) => {
+    const map: Record<string, ClassroomChatMessage[]> = {};
+    snapshot.forEach((d) => {
+      const data = d.data() as ClassroomChatMessage & { classId?: string };
+      const cId = data.classId || 'cls_12a1';
+      if (!map[cId]) {
+        map[cId] = [];
+      }
+      map[cId].push(data);
+    });
+    // Sắp xếp tin nhắn theo thời gian tăng dần
+    for (const k in map) {
+      map[k].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    }
+    stateAccumulator.classroomMessages = map;
+    dispatchUpdate();
+  }, (err) => {
+    console.warn('Lỗi Firestore messages onSnapshot:', err);
+  });
+
+  // 7. Polling dự phòng qua server endpoint song song
   const fallbackPoll = async () => {
     try {
       const res = await fetch('/api/db/state', {
@@ -422,8 +541,16 @@ export function startDbPolling(
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
+          let hasChanges = false;
           if (json.data.users && json.data.users.length > stateAccumulator.users.length) {
             stateAccumulator.users = json.data.users;
+            hasChanges = true;
+          }
+          if (json.data.classroomLessons && json.data.classroomLessons.length > stateAccumulator.classroomLessons.length) {
+            stateAccumulator.classroomLessons = json.data.classroomLessons;
+            hasChanges = true;
+          }
+          if (hasChanges) {
             dispatchUpdate();
           }
         }
@@ -440,6 +567,8 @@ export function startDbPolling(
     unsubClassrooms();
     unsubSubmissions();
     unsubCheatLogs();
+    unsubLessons();
+    unsubMessages();
     clearInterval(timer);
   };
 }

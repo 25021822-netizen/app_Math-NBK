@@ -65,6 +65,35 @@
         "reason": { "type": "string" }
       },
       "required": ["id", "examId", "studentId"]
+    },
+    "ClassroomLesson": {
+      "title": "ClassroomLesson",
+      "description": "Lesson and assignment posted by teacher to classroom",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "classId": { "type": "string" },
+        "chapter": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "classId", "title"]
+    },
+    "ClassroomMessage": {
+      "title": "ClassroomMessage",
+      "description": "Chat message sent in classroom group",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "classId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "classId", "senderId", "content"]
     }
   },
   "firestore": {
@@ -83,6 +112,14 @@
     "/cheatLogs/{logId}": {
       "schema": { "$ref": "#/entities/CheatLog" },
       "description": "Anti-cheat logs"
+    },
+    "/lessons/{lessonId}": {
+      "schema": { "$ref": "#/entities/ClassroomLesson" },
+      "description": "Classroom lessons and study chapters"
+    },
+    "/messages/{msgId}": {
+      "schema": { "$ref": "#/entities/ClassroomMessage" },
+      "description": "Classroom chat messages"
     }
   }
 }
