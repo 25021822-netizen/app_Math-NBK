@@ -378,17 +378,56 @@ export default function App() {
     dbDeleteLesson(lessonId).catch(console.error);
   };
 
-  // Gửi tin nhắn chat nhóm lớp đồng bộ tức thời qua Firestore
+  // Gửi tin nhắn chat nhóm lớp đồng bộ tức thời qua Firestore & Server
   const handleSendChatMessage = (message: ClassroomChatMessage) => {
-    setClassroomMessages((prev) => ({
-      ...prev,
-      [message.classId]: [...(prev[message.classId] || []), message],
-    }));
+    setClassroomMessages((prev) => {
+      const existing = prev[message.classId] || [];
+      const msgMap = new Map<string, ClassroomChatMessage>();
+      existing.forEach((m) => msgMap.set(m.id, m));
+      msgMap.set(message.id, message);
+      return {
+        ...prev,
+        [message.classId]: Array.from(msgMap.values()).sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        ),
+      };
+    });
     dbSaveMessage(message.classId, message).catch(console.error);
   };
 
   // Thả / Hủy tương tác biểu cảm Emoji trên tin nhắn chat đồng bộ tức thời
   const handleToggleReaction = (messageId: string, emoji: string, classId: string) => {
+    setClassroomMessages((prev) => {
+      const existing = prev[classId] || [];
+      const updated = existing.map((msg) => {
+        if (msg.id === messageId) {
+          const reactions = msg.reactions || [];
+          const found = reactions.find((r) => r.emoji === emoji);
+          let nextReactions;
+          if (found) {
+            if (found.userIds.includes(userProfile.id)) {
+              const nextUsers = found.userIds.filter((uid) => uid !== userProfile.id);
+              if (nextUsers.length === 0) {
+                nextReactions = reactions.filter((r) => r.emoji !== emoji);
+              } else {
+                nextReactions = reactions.map((r) =>
+                  r.emoji === emoji ? { ...r, count: nextUsers.length, userIds: nextUsers } : r
+                );
+              }
+            } else {
+              nextReactions = reactions.map((r) =>
+                r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, userProfile.id] } : r
+              );
+            }
+          } else {
+            nextReactions = [...reactions, { emoji, count: 1, userIds: [userProfile.id] }];
+          }
+          return { ...msg, reactions: nextReactions };
+        }
+        return msg;
+      });
+      return { ...prev, [classId]: updated };
+    });
     dbToggleMessageReaction(classId, messageId, emoji, userProfile.id).catch(console.error);
   };
 

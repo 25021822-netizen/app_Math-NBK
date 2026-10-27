@@ -943,22 +943,37 @@ app.post('/api/db/lesson/delete', (req, res) => {
   res.json({ success: true, version: serverDb.version });
 });
 
-// 11. Lưu tin nhắn chat lớp học
+// 11. Lưu tin nhắn chat lớp học (Thêm mới hoặc cập nhật phản ứng)
 app.post('/api/db/messages', (req, res) => {
   const { classId, message } = req.body;
   if (classId && message) {
     if (!serverDb.classroomMessages[classId]) {
       serverDb.classroomMessages[classId] = [];
     }
-    // Tránh lưu trùng lặp
-    const exists = serverDb.classroomMessages[classId].some((m: any) => m.id === message.id);
-    if (!exists) {
+    const index = serverDb.classroomMessages[classId].findIndex((m: any) => m.id === message.id);
+    if (index >= 0) {
+      serverDb.classroomMessages[classId][index] = { ...serverDb.classroomMessages[classId][index], ...message };
+    } else {
       serverDb.classroomMessages[classId].push(message);
     }
+    // Sắp xếp tin nhắn theo thời gian tăng dần
+    serverDb.classroomMessages[classId].sort(
+      (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
     serverDb.version = (serverDb.version || 1) + 1;
     saveDatabase(serverDb);
   }
   res.json({ success: true, version: serverDb.version });
+});
+
+// 11b. Lấy danh sách tin nhắn chat theo lớp học
+app.get('/api/db/messages', (req, res) => {
+  const classId = req.query.classId as string;
+  if (classId) {
+    const list = serverDb.classroomMessages[classId] || [];
+    return res.json({ success: true, data: list });
+  }
+  res.json({ success: true, data: serverDb.classroomMessages });
 });
 
 // 11b. Thả biểu cảm Emoji tin nhắn chat

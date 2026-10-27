@@ -348,22 +348,30 @@ export async function dbSaveLessons(lessons: ClassroomLesson[]): Promise<boolean
 }
 
 /**
- * Lưu tin nhắn chat trong nhóm lớp
+ * Lưu tin nhắn chat trong nhóm lớp (Đồng bộ tức thời Real-time cả Firestore và Server)
  */
 export async function dbSaveMessage(classId: string, message: ClassroomChatMessage): Promise<boolean> {
-  try {
-    await setDoc(doc(db, 'messages', message.id), { ...message, classId }, { merge: true });
+  const payload = { ...message, classId };
 
-    fetch('/api/db/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ classId, message }),
-    }).catch(() => {});
+  // 1. Lưu lên Firestore Real-time để đẩy ngay lập tức cho các máy khác đang mở app
+  const firestorePromise = setDoc(doc(db, 'messages', message.id), payload, { merge: true })
+    .catch((err) => {
+      console.warn('Lỗi dbSaveMessage Firestore:', err);
+      return null;
+    });
 
-    return true;
-  } catch {
-    return false;
-  }
+  // 2. Đồng thời lưu vào Server Express API (data/database.json) để dự phòng mọi thiết bị
+  const serverPromise = fetch('/api/db/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ classId, message: payload }),
+  }).catch((err) => {
+    console.warn('Lỗi dbSaveMessage Server API:', err);
+    return null;
+  });
+
+  await Promise.allSettled([firestorePromise, serverPromise]);
+  return true;
 }
 
 /**
@@ -375,44 +383,65 @@ export async function dbToggleMessageReaction(
   emoji: string,
   userId: string
 ): Promise<boolean> {
-  try {
-    const msgRef = doc(db, 'messages', messageId);
-    const snap = await getDoc(msgRef);
-    if (!snap.exists()) return false;
-    const msgData = snap.data() as ClassroomChatMessage;
-    const reactions = msgData.reactions || [];
-    const existing = reactions.find((r) => r.emoji === emoji);
-    let nextReactions;
-    if (existing) {
-      if (existing.userIds.includes(userId)) {
-        const nextUsers = existing.userIds.filter((uid) => uid !== userId);
-        if (nextUsers.length === 0) {
-          nextReactions = reactions.filter((r) => r.emoji !== emoji);
+  // 1. Cập nhật Server API ngay lập tức
+  const serverPromise = fetch('/api/db/message/reaction', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ classId, messageId, emoji, userId }),
+  }).catch(() => null);
+
+  // 2. Cập nhật Firestore Real-time
+  const firestorePromise = (async () => {
+    try {
+      const msgRef = doc(db, 'messages', messageId);
+      const snap = await getDoc(msgRef);
+      if (!snap.exists()) return;
+      const msgData = snap.data() as ClassroomChatMessage;
+      const reactions = msgData.reactions || [];
+      const existing = reactions.find((r) => r.emoji === emoji);
+      let nextReactions;
+      if (existing) {
+        if (existing.userIds.includes(userId)) {
+          const nextUsers = existing.userIds.filter((uid) => uid !== userId);
+          if (nextUsers.length === 0) {
+            nextReactions = reactions.filter((r) => r.emoji !== emoji);
+          } else {
+            nextReactions = reactions.map((r) =>
+              r.emoji === emoji ? { ...r, count: nextUsers.length, userIds: nextUsers } : r
+            );
+          }
         } else {
           nextReactions = reactions.map((r) =>
-            r.emoji === emoji ? { ...r, count: nextUsers.length, userIds: nextUsers } : r
+            r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, userId] } : r
           );
         }
       } else {
-        nextReactions = reactions.map((r) =>
-          r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, userId] } : r
-        );
+        nextReactions = [...reactions, { emoji, count: 1, userIds: [userId] }];
       }
-    } else {
-      nextReactions = [...reactions, { emoji, count: 1, userIds: [userId] }];
+      await updateDoc(msgRef, { reactions: nextReactions });
+    } catch (err) {
+      console.warn('Lỗi dbToggleMessageReaction Firestore:', err);
     }
+  })();
 
-    await updateDoc(msgRef, { reactions: nextReactions });
-    fetch('/api/db/message/reaction', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ classId, messageId, emoji, userId }),
-    }).catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Lỗi dbToggleMessageReaction Firestore:', err);
-    return false;
-  }
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
+}
+
+/**
+ * Tải danh sách tin nhắn của 1 lớp học từ Server / Firestore (On-demand)
+ */
+export async function dbFetchClassMessages(classId: string): Promise<ClassroomChatMessage[]> {
+  try {
+    const res = await fetch(`/api/db/messages?classId=${encodeURIComponent(classId)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        return json.data;
+      }
+    }
+  } catch {}
+  return [];
 }
 
 /**
@@ -532,7 +561,7 @@ export function startDbPolling(
     console.warn('Lỗi Firestore messages onSnapshot:', err);
   });
 
-  // 7. Polling dự phòng qua server endpoint song song
+  // 7. Polling dự phòng qua server endpoint song song (Bảo đảm luôn đồng bộ kể cả khi Firestore mất mạng)
   const fallbackPoll = async () => {
     try {
       const res = await fetch('/api/db/state', {
@@ -542,13 +571,52 @@ export function startDbPolling(
         const json = await res.json();
         if (json.success && json.data) {
           let hasChanges = false;
-          if (json.data.users && json.data.users.length > stateAccumulator.users.length) {
-            stateAccumulator.users = json.data.users;
-            hasChanges = true;
+          // Đồng bộ Users
+          if (json.data.users && Array.isArray(json.data.users) && json.data.users.length > 0) {
+            if (JSON.stringify(json.data.users) !== JSON.stringify(stateAccumulator.users)) {
+              stateAccumulator.users = json.data.users;
+              hasChanges = true;
+            }
           }
-          if (json.data.classroomLessons && json.data.classroomLessons.length > stateAccumulator.classroomLessons.length) {
-            stateAccumulator.classroomLessons = json.data.classroomLessons;
-            hasChanges = true;
+          // Đồng bộ Lớp học
+          if (json.data.classrooms && Array.isArray(json.data.classrooms)) {
+            if (JSON.stringify(json.data.classrooms) !== JSON.stringify(stateAccumulator.classrooms)) {
+              stateAccumulator.classrooms = json.data.classrooms;
+              hasChanges = true;
+            }
+          }
+          // Đồng bộ Bài học chuyên đề
+          if (json.data.classroomLessons && Array.isArray(json.data.classroomLessons)) {
+            if (JSON.stringify(json.data.classroomLessons) !== JSON.stringify(stateAccumulator.classroomLessons)) {
+              stateAccumulator.classroomLessons = json.data.classroomLessons;
+              hasChanges = true;
+            }
+          }
+          // Đồng bộ Tin nhắn chat lớp học
+          if (json.data.classroomMessages && typeof json.data.classroomMessages === 'object') {
+            const serverMsgs = json.data.classroomMessages as Record<string, ClassroomChatMessage[]>;
+            for (const cId in serverMsgs) {
+              const currentList = stateAccumulator.classroomMessages[cId] || [];
+              const sList = serverMsgs[cId] || [];
+              if (sList.length > 0) {
+                const msgMap = new Map<string, ClassroomChatMessage>();
+                currentList.forEach((m) => msgMap.set(m.id, m));
+                let newFound = false;
+                sList.forEach((m) => {
+                  const exist = msgMap.get(m.id);
+                  if (!exist || JSON.stringify(exist.reactions) !== JSON.stringify(m.reactions)) {
+                    msgMap.set(m.id, m);
+                    newFound = true;
+                  }
+                });
+                if (newFound) {
+                  stateAccumulator.classroomMessages[cId] = Array.from(msgMap.values()).sort(
+                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                  );
+                  hasChanges = true;
+                }
+              }
+            }
           }
           if (hasChanges) {
             dispatchUpdate();

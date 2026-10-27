@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention } from '../../types/math';
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
+import { dbFetchClassMessages } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import {
   Users,
@@ -27,6 +28,7 @@ import {
   Image as ImageIcon,
   AtSign,
   Send,
+  RefreshCw,
   Eye,
   UserCheck,
   ShieldAlert,
@@ -133,15 +135,48 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     }
   }, [classroomLessons]);
 
-  // Đồng bộ Real-Time tin nhắn chat nhóm lớp từ máy khác qua Firestore
+  // Đồng bộ Real-Time tin nhắn chat nhóm lớp từ máy khác qua Firestore & Server
   useEffect(() => {
-    if (classroomMessages) {
-      setLocalMessages((prev) => ({
-        ...prev,
-        ...classroomMessages,
-      }));
+    if (classroomMessages && typeof classroomMessages === 'object') {
+      setLocalMessages((prev) => {
+        const next = { ...prev };
+        for (const [cId, msgs] of Object.entries(classroomMessages)) {
+          if (Array.isArray(msgs)) {
+            const existing = next[cId] || [];
+            const msgMap = new Map<string, ClassroomChatMessage>();
+            existing.forEach((m) => msgMap.set(m.id, m));
+            msgs.forEach((m) => msgMap.set(m.id, m));
+            next[cId] = Array.from(msgMap.values()).sort(
+              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+          }
+        }
+        return next;
+      });
     }
   }, [classroomMessages]);
+
+  // Tự động tải tin nhắn khi chuyển sang tab Thảo Luận hoặc đổi lớp học
+  useEffect(() => {
+    if (activeRightTab === 'chat' && currentClass) {
+      dbFetchClassMessages(currentClass.id).then((serverList) => {
+        if (serverList && serverList.length > 0) {
+          setLocalMessages((prev) => {
+            const existing = prev[currentClass.id] || [];
+            const msgMap = new Map<string, ClassroomChatMessage>();
+            existing.forEach((m) => msgMap.set(m.id, m));
+            serverList.forEach((m) => msgMap.set(m.id, m));
+            return {
+              ...prev,
+              [currentClass.id]: Array.from(msgMap.values()).sort(
+                (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              ),
+            };
+          });
+        }
+      });
+    }
+  }, [activeRightTab, selectedClassId]);
   // Trạng thái thu gọn/mở rộng các chương học: Học sinh chỉ xem danh sách chương, ấn vào chương mới mở các bài học
   const [expandedChapters, setExpandedChapters] = useState<string[]>([]);
 
@@ -273,8 +308,18 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   // Lớp học đang chọn
   const currentClass = classrooms.find((c) => c.id === selectedClassId) || classrooms[0];
 
-  // Danh sách tin nhắn lớp học hiện tại
-  const currentClassMessages = currentClass ? localMessages[currentClass.id] || [] : [];
+  // Danh sách tin nhắn lớp học hiện tại (Hợp nhất tức thời Firestore và Bộ nhớ đệm)
+  const currentClassMessages = useMemo(() => {
+    if (!currentClass) return [];
+    const local = localMessages[currentClass.id] || [];
+    const remote = classroomMessages?.[currentClass.id] || [];
+    const map = new Map<string, ClassroomChatMessage>();
+    local.forEach((m) => map.set(m.id, m));
+    remote.forEach((m) => map.set(m.id, m));
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  }, [currentClass, localMessages, classroomMessages]);
 
   // Danh sách bài học và chương học thuộc lớp đang chọn (Mục lục lớp)
   const currentClassLessons = currentClass ? localLessons.filter((l) => l.classId === currentClass.id) : [];
@@ -1125,21 +1170,57 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setChatMessageText((prev) => prev + emoji);
   };
 
-  // Xử lý upload ảnh từ máy tính / điện thoại (Tối đa 10MB)
+  // Xử lý nén tự động và đính kèm ảnh bài tập từ máy/điện thoại (Tối ưu hóa dưới 150KB để Firestore truyền tức thời)
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert('Dung lượng ảnh đính kèm vượt quá giới hạn 10MB. Vui lòng chọn ảnh nhỏ hơn!');
+      if (file.size > 20 * 1024 * 1024) {
+        setImageUploadError('Dung lượng tệp ảnh quá lớn (>20MB). Vui lòng chọn ảnh nhỏ hơn!');
+        setTimeout(() => setImageUploadError(null), 4000);
         return;
       }
       const reader = new FileReader();
       reader.onload = (event) => {
-        if (event.target?.result) {
-          setAttachedImage(event.target.result as string);
-        }
+        const rawUrl = event.target?.result as string;
+        if (!rawUrl) return;
+
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1200;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.8);
+            setAttachedImage(compressed);
+          } else {
+            setAttachedImage(rawUrl);
+          }
+        };
+        img.onerror = () => {
+          setAttachedImage(rawUrl);
+        };
+        img.src = rawUrl;
       };
       reader.readAsDataURL(file);
+    }
+    if (e.target) {
+      e.target.value = '';
     }
   };
 
@@ -1919,9 +2000,39 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <span>Đồng bộ tức thời đa máy (&lt;100ms)</span>
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-400 font-medium">
-                    {currentClassMessages.length} tin nhắn
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentClass) {
+                          dbFetchClassMessages(currentClass.id).then((serverList) => {
+                            if (serverList && serverList.length > 0) {
+                              setLocalMessages((prev) => {
+                                const existing = prev[currentClass.id] || [];
+                                const msgMap = new Map<string, ClassroomChatMessage>();
+                                existing.forEach((m) => msgMap.set(m.id, m));
+                                serverList.forEach((m) => msgMap.set(m.id, m));
+                                return {
+                                  ...prev,
+                                  [currentClass.id]: Array.from(msgMap.values()).sort(
+                                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                                  ),
+                                };
+                              });
+                            }
+                          });
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors flex items-center gap-1 border border-slate-200"
+                      title="Làm mới tin nhắn tức thời"
+                    >
+                      <RefreshCw size={12} />
+                      <span>Làm mới</span>
+                    </button>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {currentClassMessages.length} tin nhắn
+                    </span>
+                  </div>
                 </div>
 
                 {/* Chat Message Stream */}
@@ -2241,6 +2352,14 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <span>{showEmojiPicker ? 'Đóng' : 'Thêm Emoji'}</span>
                     </button>
                   </div>
+
+                  {/* Image Upload Warning */}
+                  {imageUploadError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 animate-in fade-in">
+                      <AlertTriangle size={15} className="shrink-0 text-rose-600" />
+                      <span>{imageUploadError}</span>
+                    </div>
+                  )}
 
                   {/* Form Soạn & Gửi Tin Nhắn */}
                   <form onSubmit={handleSendChatMessage} className="space-y-2">
