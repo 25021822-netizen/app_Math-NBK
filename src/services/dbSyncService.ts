@@ -323,10 +323,56 @@ function sanitizeLessonForFirestore(lesson: ClassroomLesson): any {
 }
 
 /**
+ * Tải file PDF lên máy chủ để lưu trữ vĩnh viễn dạng file nhị phân chuẩn và nhận link fileUrl
+ */
+export async function dbUploadPdfFile(
+  fileName: string,
+  fileData: string
+): Promise<{ success: boolean; fileUrl?: string; fileName?: string; fileSize?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/upload/file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName, fileData }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+    const errData = await res.json().catch(() => ({}));
+    return { success: false, error: errData.error || 'Máy chủ không thể lưu file' };
+  } catch (err: any) {
+    console.warn('Lỗi khi tải file lên máy chủ:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Lưu 1 bài học chuyên đề lớp học (Thêm mới hoặc Cập nhật) - Đồng bộ Real-Time cả Firestore và Server
  */
 export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
-  const cleanLesson = cleanForFirestore(lesson);
+  const lessonToSave = { ...lesson };
+
+  // Đảm bảo các file PDF có link fileUrl trực tiếp từ server
+  if (lessonToSave.pdfAttachment?.fileData && !lessonToSave.pdfAttachment.fileUrl) {
+    try {
+      const uploadRes = await dbUploadPdfFile(lessonToSave.pdfAttachment.fileName, lessonToSave.pdfAttachment.fileData);
+      if (uploadRes.success && uploadRes.fileUrl) {
+        lessonToSave.pdfAttachment.fileUrl = uploadRes.fileUrl;
+      }
+    } catch {}
+  }
+
+  if (lessonToSave.practicePdfAttachment?.fileData && !lessonToSave.practicePdfAttachment.fileUrl) {
+    try {
+      const uploadRes = await dbUploadPdfFile(lessonToSave.practicePdfAttachment.fileName, lessonToSave.practicePdfAttachment.fileData);
+      if (uploadRes.success && uploadRes.fileUrl) {
+        lessonToSave.practicePdfAttachment.fileUrl = uploadRes.fileUrl;
+      }
+    } catch {}
+  }
+
+  const cleanLesson = cleanForFirestore(lessonToSave);
 
   // 1. Lưu lên Server API để đảm bảo giữ nguyên toàn bộ dữ liệu (kể cả file PDF tới 20MB)
   const serverPromise = fetch('/api/db/lesson/save', {
@@ -341,8 +387,8 @@ export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
   // 2. Lưu lên Firestore Real-Time để push tức thời tới mọi thiết bị khác
   const firestorePromise = (async () => {
     try {
-      const firestorePayload = sanitizeLessonForFirestore(lesson);
-      await setDoc(doc(db, 'lessons', lesson.id), firestorePayload, { merge: true });
+      const firestorePayload = sanitizeLessonForFirestore(lessonToSave);
+      await setDoc(doc(db, 'lessons', lessonToSave.id), firestorePayload, { merge: true });
     } catch (err) {
       console.warn('Lỗi dbSaveLesson Firestore:', err);
     }

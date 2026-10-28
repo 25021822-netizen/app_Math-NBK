@@ -695,6 +695,13 @@ const DEFAULT_ADMIN_USER = {
 
 const DB_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DB_DIR, 'database.json');
+const UPLOADS_DIR = path.join(DB_DIR, 'uploads');
+
+if (!fs.existsSync(UPLOADS_DIR)) {
+  try {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  } catch {}
+}
 
 function getCleanInitialDb(): ServerDatabase {
   return {
@@ -1062,6 +1069,70 @@ app.post('/api/db/reset-clean', (_req, res) => {
   serverDb.version = (serverDb.version || 1) + 1;
   saveDatabase(serverDb);
   res.json({ success: true, version: serverDb.version, data: serverDb });
+});
+
+// 13. Tải lên file tài liệu PDF bài học / luyện tập (Lưu file nhị phân chuẩn vào data/uploads)
+app.post('/api/upload/file', (req, res) => {
+  try {
+    const { fileName, fileData } = req.body;
+    if (!fileName || !fileData) {
+      return res.status(400).json({ success: false, error: 'Thiếu thông tin tên file hoặc nội dung file!' });
+    }
+
+    // Làm sạch tên file để bảo mật đường dẫn và tránh ký tự đặc biệt
+    const ext = path.extname(fileName) || '.pdf';
+    const baseName = path.basename(fileName, ext).replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1E00-\u1EFF]/g, '_');
+    const safeBaseName = baseName.substring(0, 50) || 'document';
+    const uniqueFileName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeBaseName}${ext}`;
+    const targetPath = path.join(UPLOADS_DIR, uniqueFileName);
+
+    // Xử lý Base64 Data URL hoặc base64 thuần
+    const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    if (buffer.length === 0) {
+      return res.status(400).json({ success: false, error: 'Dữ liệu file tải lên rỗng!' });
+    }
+
+    fs.writeFileSync(targetPath, buffer);
+
+    const sizeInMB = (buffer.length / (1024 * 1024)).toFixed(2);
+    const fileSizeStr = buffer.length >= 1024 * 1024 ? `${sizeInMB} MB` : `${Math.round(buffer.length / 1024)} KB`;
+
+    console.log(`[Math&NBK File Upload] Đã lưu tệp ${fileName} (${fileSizeStr}) vào ${uniqueFileName}`);
+
+    res.json({
+      success: true,
+      fileUrl: `/api/files/${uniqueFileName}`,
+      fileName: fileName,
+      fileSize: fileSizeStr,
+    });
+  } catch (err: any) {
+    console.error('Lỗi khi lưu file PDF tải lên:', err);
+    res.status(500).json({ success: false, error: err.message || 'Lỗi lưu trữ file trên máy chủ!' });
+  }
+});
+
+// 14. Phục vụ file PDF nhị phân với đầy đủ Content-Type & Content-Disposition
+app.get('/api/files/:filename', (req, res) => {
+  try {
+    const safeFileName = path.basename(req.params.filename);
+    const filePath = path.join(UPLOADS_DIR, safeFileName);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('Không tìm thấy tài liệu PDF trên máy chủ!');
+    }
+
+    // Lấy tên hiển thị gốc nếu có
+    const originalName = safeFileName.replace(/^\d+-[a-f0-9]+-/, '') || 'tai_lieu.pdf';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(originalName)}"`);
+    res.sendFile(filePath);
+  } catch (err: any) {
+    console.error('Lỗi khi phục vụ file PDF:', err);
+    res.status(500).send('Lỗi khi tải tài liệu PDF!');
+  }
 });
 
 // Khởi chạy Vite Server Middleware
