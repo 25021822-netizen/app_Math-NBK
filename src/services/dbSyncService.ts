@@ -294,91 +294,123 @@ export async function dbSaveCheatLog(log: CheatLog): Promise<boolean> {
 }
 
 /**
- * Tối ưu hóa dữ liệu bài học khi lưu lên Firestore (giới hạn tài liệu < 1MB)
+ * Làm sạch hoàn toàn dữ liệu trước khi gửi lên Firestore:
+ * 1. Loại bỏ triệt để các trường có giá trị undefined (Firestore báo lỗi nếu có undefined)
+ * 2. Cắt giảm file base64 quá lớn (> 300KB) để bảo đảm document không vượt 1MB Firestore limit
  */
-function sanitizeLessonForFirestore(lesson: ClassroomLesson): ClassroomLesson {
-  const copy = { ...lesson };
-  if (copy.pdfAttachment && copy.pdfAttachment.fileData && copy.pdfAttachment.fileData.length > 400000) {
-    copy.pdfAttachment = { ...copy.pdfAttachment, fileData: '' };
+export function cleanForFirestore<T>(data: T): any {
+  if (data === null || data === undefined) return null;
+  return JSON.parse(JSON.stringify(data));
+}
+
+function sanitizeLessonForFirestore(lesson: ClassroomLesson): any {
+  const cleaned = cleanForFirestore(lesson);
+  if (cleaned.pdfAttachment && cleaned.pdfAttachment.fileData && cleaned.pdfAttachment.fileData.length > 300000) {
+    cleaned.pdfAttachment.fileData = '';
   }
-  if (copy.practicePdfAttachment && copy.practicePdfAttachment.fileData && copy.practicePdfAttachment.fileData.length > 400000) {
-    copy.practicePdfAttachment = { ...copy.practicePdfAttachment, fileData: '' };
+  if (cleaned.practicePdfAttachment && cleaned.practicePdfAttachment.fileData && cleaned.practicePdfAttachment.fileData.length > 300000) {
+    cleaned.practicePdfAttachment.fileData = '';
   }
-  if (copy.attachments && Array.isArray(copy.attachments)) {
-    copy.attachments = copy.attachments.map((att) => {
-      if (att.url && att.url.length > 400000) {
+  if (cleaned.attachments && Array.isArray(cleaned.attachments)) {
+    cleaned.attachments = cleaned.attachments.map((att: any) => {
+      if (att.url && att.url.length > 300000) {
         return { ...att, url: '' };
       }
       return att;
     });
   }
-  return copy;
+  return cleaned;
 }
 
 /**
- * Lưu 1 bài học chuyên đề lớp học (Thêm mới hoặc Cập nhật) - Đồng bộ Real-Time
+ * Lưu 1 bài học chuyên đề lớp học (Thêm mới hoặc Cập nhật) - Đồng bộ Real-Time cả Firestore và Server
  */
 export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
-  try {
-    const firestorePayload = sanitizeLessonForFirestore(lesson);
-    await setDoc(doc(db, 'lessons', lesson.id), firestorePayload, { merge: true });
-    fetch('/api/db/lesson/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lesson }),
-    }).catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Lỗi dbSaveLesson Firestore, lưu qua server:', err);
+  const cleanLesson = cleanForFirestore(lesson);
+
+  // 1. Lưu lên Server API để đảm bảo giữ nguyên toàn bộ dữ liệu (kể cả file PDF tới 20MB)
+  const serverPromise = fetch('/api/db/lesson/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lesson: cleanLesson }),
+  }).catch((err) => {
+    console.warn('Lỗi dbSaveLesson Server API:', err);
+    return null;
+  });
+
+  // 2. Lưu lên Firestore Real-Time để push tức thời tới mọi thiết bị khác
+  const firestorePromise = (async () => {
     try {
-      await fetch('/api/db/lesson/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lesson }),
-      });
-      return true;
-    } catch {
-      return false;
+      const firestorePayload = sanitizeLessonForFirestore(lesson);
+      await setDoc(doc(db, 'lessons', lesson.id), firestorePayload, { merge: true });
+    } catch (err) {
+      console.warn('Lỗi dbSaveLesson Firestore:', err);
     }
-  }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
  * Xóa 1 bài học chuyên đề khỏi Firestore & Server
  */
 export async function dbDeleteLesson(lessonId: string): Promise<boolean> {
-  try {
-    await deleteDoc(doc(db, 'lessons', lessonId));
-    fetch('/api/db/lesson/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lessonId }),
-    }).catch(() => {});
-    return true;
-  } catch (err) {
+  const serverPromise = fetch('/api/db/lesson/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lessonId }),
+  }).catch(() => null);
+
+  const firestorePromise = deleteDoc(doc(db, 'lessons', lessonId)).catch((err) => {
     console.warn('Lỗi dbDeleteLesson Firestore:', err);
-    return false;
-  }
+  });
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
- * Lưu danh sách bài học chuyên đề lớp học
+ * Lưu danh sách bài học chuyên đề lớp học đồng bộ Real-Time
  */
 export async function dbSaveLessons(lessons: ClassroomLesson[]): Promise<boolean> {
-  try {
-    for (const les of lessons) {
-      const firestorePayload = sanitizeLessonForFirestore(les);
-      await setDoc(doc(db, 'lessons', les.id), firestorePayload, { merge: true });
+  const cleanLessons = cleanForFirestore(lessons);
+
+  const serverPromise = fetch('/api/db/lessons', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lessons: cleanLessons }),
+  }).catch(() => null);
+
+  const firestorePromise = (async () => {
+    try {
+      for (const les of lessons) {
+        const firestorePayload = sanitizeLessonForFirestore(les);
+        await setDoc(doc(db, 'lessons', les.id), firestorePayload, { merge: true });
+      }
+    } catch (err) {
+      console.warn('Lỗi dbSaveLessons Firestore:', err);
     }
-    fetch('/api/db/lessons', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lessons }),
-    }).catch(() => {});
-    return true;
-  } catch {
-    return false;
-  }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
+}
+
+/**
+ * Tải danh sách bài học từ Server (On-demand)
+ */
+export async function dbFetchLessons(): Promise<ClassroomLesson[]> {
+  try {
+    const res = await fetch('/api/db/state', { headers: { 'Cache-Control': 'no-cache' } });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data?.classroomLessons) {
+        return json.data.classroomLessons;
+      }
+    }
+  } catch {}
+  return [];
 }
 
 /**
@@ -634,7 +666,10 @@ export function startDbPolling(
     snapshot.forEach((d) => {
       list.push(d.data() as ClassroomLesson);
     });
-    stateAccumulator.classroomLessons = list;
+    const lessonMap = new Map<string, ClassroomLesson>();
+    stateAccumulator.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
+    list.forEach((l) => lessonMap.set(l.id, l));
+    stateAccumulator.classroomLessons = Array.from(lessonMap.values());
     dispatchUpdate();
   }, (err) => {
     console.warn('Lỗi Firestore lessons onSnapshot:', err);
@@ -646,7 +681,10 @@ export function startDbPolling(
     snapshot.forEach((d) => {
       list.push(d.data() as Exam);
     });
-    stateAccumulator.exams = list;
+    const examMap = new Map<string, Exam>();
+    stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
+    list.forEach((e) => examMap.set(e.id, e));
+    stateAccumulator.exams = Array.from(examMap.values());
     dispatchUpdate();
   }, (err) => {
     console.warn('Lỗi Firestore exams onSnapshot:', err);
@@ -697,17 +735,25 @@ export function startDbPolling(
               hasChanges = true;
             }
           }
-          // Đồng bộ Bài học chuyên đề
+          // Đồng bộ Bài học chuyên đề (hợp nhất thông minh)
           if (json.data.classroomLessons && Array.isArray(json.data.classroomLessons)) {
-            if (JSON.stringify(json.data.classroomLessons) !== JSON.stringify(stateAccumulator.classroomLessons)) {
-              stateAccumulator.classroomLessons = json.data.classroomLessons;
+            const lessonMap = new Map<string, ClassroomLesson>();
+            stateAccumulator.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
+            json.data.classroomLessons.forEach((l: ClassroomLesson) => lessonMap.set(l.id, l));
+            const merged = Array.from(lessonMap.values());
+            if (JSON.stringify(merged) !== JSON.stringify(stateAccumulator.classroomLessons)) {
+              stateAccumulator.classroomLessons = merged;
               hasChanges = true;
             }
           }
-          // Đồng bộ Đề thi
+          // Đồng bộ Đề thi (hợp nhất thông minh)
           if (json.data.exams && Array.isArray(json.data.exams)) {
-            if (JSON.stringify(json.data.exams) !== JSON.stringify(stateAccumulator.exams)) {
-              stateAccumulator.exams = json.data.exams;
+            const examMap = new Map<string, Exam>();
+            stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
+            json.data.exams.forEach((e: Exam) => examMap.set(e.id, e));
+            const mergedExams = Array.from(examMap.values());
+            if (JSON.stringify(mergedExams) !== JSON.stringify(stateAccumulator.exams)) {
+              stateAccumulator.exams = mergedExams;
               hasChanges = true;
             }
           }
@@ -746,6 +792,9 @@ export function startDbPolling(
       // offline
     }
   };
+
+  // Kích hoạt nạp ngay lập tức khi mở trang / F5 để không bị trễ
+  fallbackPoll();
 
   const timer = setInterval(fallbackPoll, intervalMs * 2);
 

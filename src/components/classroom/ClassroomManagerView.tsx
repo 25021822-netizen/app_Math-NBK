@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention } from '../../types/math';
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
-import { dbFetchClassMessages } from '../../services/dbSyncService';
+import { dbFetchClassMessages, dbFetchLessons } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import {
   Users,
@@ -177,13 +177,27 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       });
     }
   }, [activeRightTab, selectedClassId]);
-  // Trạng thái thu gọn/mở rộng các chương học: Học sinh chỉ xem danh sách chương, ấn vào chương mới mở các bài học
+  // Trạng thái thu gọn/mở rộng các chương học: Tự động mở rộng khi có bài học để học sinh thấy ngay
   const [expandedChapters, setExpandedChapters] = useState<string[]>([]);
+  const [isRefreshingLessons, setIsRefreshingLessons] = useState<boolean>(false);
 
   const toggleChapter = (chapterTitle: string) => {
     setExpandedChapters((prev) =>
       prev.includes(chapterTitle) ? prev.filter((c) => c !== chapterTitle) : [...prev, chapterTitle]
     );
+  };
+
+  const handleManualRefreshLessons = async () => {
+    setIsRefreshingLessons(true);
+    try {
+      const fresh = await dbFetchLessons();
+      if (fresh && fresh.length > 0) {
+        setLocalLessons(fresh);
+        if (onUpdateLessons) onUpdateLessons(fresh);
+      }
+    } finally {
+      setTimeout(() => setIsRefreshingLessons(false), 500);
+    }
   };
 
   // Form thêm chương / bài học mới (Chương -> Bài học -> Ô Bài học & Ô Luyện tập)
@@ -322,15 +336,43 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   }, [currentClass, localMessages, classroomMessages]);
 
   // Danh sách bài học và chương học thuộc lớp đang chọn (Mục lục lớp)
-  const currentClassLessons = currentClass ? localLessons.filter((l) => l.classId === currentClass.id) : [];
+  // Tự động hợp nhất cả classroomLessons (từ props / Firestore Sync) và localLessons để cập nhật ngay lập tức
+  const currentClassLessons = useMemo(() => {
+    if (!currentClass) return [];
+    const all = [...(classroomLessons || []), ...localLessons];
+    const uniqueMap = new Map<string, ClassroomLesson>();
+    all.forEach((l) => {
+      if (l && l.id) uniqueMap.set(l.id, l);
+    });
+    return Array.from(uniqueMap.values()).filter(
+      (l) =>
+        l.classId === currentClass.id ||
+        (currentClass.code && l.classId === currentClass.code) ||
+        !l.classId ||
+        l.classId === 'all'
+    );
+  }, [currentClass, localLessons, classroomLessons]);
+
+  // Tự động mở rộng các chương khi có bài học mới xuất hiện để học sinh thấy ngay trước mắt
+  useEffect(() => {
+    if (currentClassLessons.length > 0) {
+      const allChapters = Array.from(new Set(currentClassLessons.map((l) => l.chapter || 'Chuyên đề chung')));
+      setExpandedChapters((prev) => {
+        const set = new Set([...prev, ...allChapters]);
+        return Array.from(set);
+      });
+    }
+  }, [currentClassLessons]);
 
   // Nhóm các bài học theo Chương học (Mục lục chuyên đề)
-  const groupedLessons = currentClassLessons.reduce((acc, lesson) => {
-    const ch = lesson.chapter || 'Chuyên đề chung';
-    if (!acc[ch]) acc[ch] = [];
-    acc[ch].push(lesson);
-    return acc;
-  }, {} as Record<string, ClassroomLesson[]>);
+  const groupedLessons = useMemo(() => {
+    return currentClassLessons.reduce((acc, lesson) => {
+      const ch = lesson.chapter || 'Chuyên đề chung';
+      if (!acc[ch]) acc[ch] = [];
+      acc[ch].push(lesson);
+      return acc;
+    }, {} as Record<string, ClassroomLesson[]>);
+  }, [currentClassLessons]);
 
   // Danh sách toàn bộ học sinh đăng ký trong hệ thống
   const registeredStudents: UserProfile[] = (allUsers || []).filter((u) => u.role === 'student');
@@ -1744,6 +1786,15 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleManualRefreshLessons}
+                      className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                      title="Tải lại danh sách bài học mới nhất từ máy chủ"
+                    >
+                      <RefreshCw size={13} className={isRefreshingLessons ? 'animate-spin text-blue-600' : 'text-slate-500'} />
+                      <span>{isRefreshingLessons ? 'Đang tải...' : 'Làm mới'}</span>
+                    </button>
                     <span className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 shadow-2xs">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                       <span>Đồng bộ Real-Time</span>
