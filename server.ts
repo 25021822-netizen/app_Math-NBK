@@ -670,6 +670,7 @@ interface ServerDatabase {
   cheatLogs: any[];
   classroomLessons: any[];
   classroomMessages: Record<string, any[]>;
+  exams: any[];
 }
 
 const DEFAULT_ADMIN_USER = {
@@ -705,6 +706,7 @@ function getCleanInitialDb(): ServerDatabase {
     cheatLogs: [],
     classroomLessons: [],
     classroomMessages: {},
+    exams: [],
   };
 }
 
@@ -720,6 +722,7 @@ function loadDatabase(): ServerDatabase {
     }
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
+    parsed.exams = parsed.exams || [];
     // Loại bỏ tài khoản admin mẫu cũ usr_admin_01
     parsed.users = (parsed.users || []).filter((u: any) => u.id !== 'usr_admin_01');
     // Đảm bảo luôn có tài khoản Admin duy nhất đã cấu hình
@@ -941,6 +944,46 @@ app.post('/api/db/lesson/delete', (req, res) => {
     saveDatabase(serverDb);
   }
   res.json({ success: true, version: serverDb.version });
+});
+
+// 10d. Lưu danh sách toàn bộ đề thi
+app.post('/api/db/exams', (req, res) => {
+  serverDb.exams = req.body.exams || [];
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 10e. Lưu 1 đề thi mới / cập nhật đề thi (Giáo viên xuất bản đề thi)
+app.post('/api/db/exam/save', (req, res) => {
+  const { exam } = req.body;
+  if (exam && exam.id) {
+    const existingIdx = (serverDb.exams || []).findIndex((e: any) => e.id === exam.id);
+    if (existingIdx >= 0) {
+      serverDb.exams[existingIdx] = exam;
+    } else {
+      serverDb.exams = [exam, ...(serverDb.exams || [])];
+    }
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 10f. Xóa 1 đề thi
+app.post('/api/db/exam/delete', (req, res) => {
+  const { examId } = req.body;
+  if (examId) {
+    serverDb.exams = (serverDb.exams || []).filter((e: any) => e.id !== examId);
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 10g. Lấy danh sách đề thi
+app.get('/api/db/exams', (_req, res) => {
+  res.json({ success: true, data: serverDb.exams || [] });
 });
 
 // 11. Lưu tin nhắn chat lớp học (Thêm mới hoặc cập nhật phản ứng)

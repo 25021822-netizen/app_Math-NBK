@@ -18,6 +18,7 @@ import {
   CheatLog,
   ClassroomLesson,
   ClassroomChatMessage,
+  Exam,
 } from '../types/math';
 
 export interface DatabaseState {
@@ -29,6 +30,7 @@ export interface DatabaseState {
   cheatLogs: CheatLog[];
   classroomLessons: ClassroomLesson[];
   classroomMessages: Record<string, ClassroomChatMessage[]>;
+  exams: Exam[];
 }
 
 export const DEFAULT_ADMIN_PROFILE: UserProfile = {
@@ -292,12 +294,34 @@ export async function dbSaveCheatLog(log: CheatLog): Promise<boolean> {
 }
 
 /**
+ * Tối ưu hóa dữ liệu bài học khi lưu lên Firestore (giới hạn tài liệu < 1MB)
+ */
+function sanitizeLessonForFirestore(lesson: ClassroomLesson): ClassroomLesson {
+  const copy = { ...lesson };
+  if (copy.pdfAttachment && copy.pdfAttachment.fileData && copy.pdfAttachment.fileData.length > 400000) {
+    copy.pdfAttachment = { ...copy.pdfAttachment, fileData: '' };
+  }
+  if (copy.practicePdfAttachment && copy.practicePdfAttachment.fileData && copy.practicePdfAttachment.fileData.length > 400000) {
+    copy.practicePdfAttachment = { ...copy.practicePdfAttachment, fileData: '' };
+  }
+  if (copy.attachments && Array.isArray(copy.attachments)) {
+    copy.attachments = copy.attachments.map((att) => {
+      if (att.url && att.url.length > 400000) {
+        return { ...att, url: '' };
+      }
+      return att;
+    });
+  }
+  return copy;
+}
+
 /**
- * Lưu 1 bài học chuyên đề lớp học (Thêm mới hoặc Cập nhật)
+ * Lưu 1 bài học chuyên đề lớp học (Thêm mới hoặc Cập nhật) - Đồng bộ Real-Time
  */
 export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
   try {
-    await setDoc(doc(db, 'lessons', lesson.id), lesson, { merge: true });
+    const firestorePayload = sanitizeLessonForFirestore(lesson);
+    await setDoc(doc(db, 'lessons', lesson.id), firestorePayload, { merge: true });
     fetch('/api/db/lesson/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -305,13 +329,22 @@ export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
     }).catch(() => {});
     return true;
   } catch (err) {
-    console.warn('Lỗi dbSaveLesson Firestore:', err);
-    return false;
+    console.warn('Lỗi dbSaveLesson Firestore, lưu qua server:', err);
+    try {
+      await fetch('/api/db/lesson/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lesson }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
 /**
- * Xóa 1 bài học chuyên đề khỏi Firestore
+ * Xóa 1 bài học chuyên đề khỏi Firestore & Server
  */
 export async function dbDeleteLesson(lessonId: string): Promise<boolean> {
   try {
@@ -334,12 +367,78 @@ export async function dbDeleteLesson(lessonId: string): Promise<boolean> {
 export async function dbSaveLessons(lessons: ClassroomLesson[]): Promise<boolean> {
   try {
     for (const les of lessons) {
-      await setDoc(doc(db, 'lessons', les.id), les, { merge: true });
+      const firestorePayload = sanitizeLessonForFirestore(les);
+      await setDoc(doc(db, 'lessons', les.id), firestorePayload, { merge: true });
     }
     fetch('/api/db/lessons', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lessons }),
+    }).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Lưu 1 đề thi mới hoặc cập nhật đề thi (Đồng bộ Real-Time cả Firestore và Server)
+ * Giúp học sinh thấy đề thi ngay lập tức khi giáo viên đăng bài
+ */
+export async function dbSaveExam(exam: Exam): Promise<boolean> {
+  try {
+    await setDoc(doc(db, 'exams', exam.id), exam, { merge: true });
+    fetch('/api/db/exam/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exam }),
+    }).catch(() => {});
+    return true;
+  } catch (err) {
+    console.warn('Lỗi dbSaveExam Firestore, chuyển hướng qua server:', err);
+    try {
+      await fetch('/api/db/exam/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exam }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/**
+ * Xóa 1 đề thi khỏi Firestore & Server
+ */
+export async function dbDeleteExam(examId: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'exams', examId));
+    fetch('/api/db/exam/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ examId }),
+    }).catch(() => {});
+    return true;
+  } catch (err) {
+    console.warn('Lỗi dbDeleteExam Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Lưu danh sách đề thi đồng bộ lên Firestore & Server
+ */
+export async function dbSaveExams(exams: Exam[]): Promise<boolean> {
+  try {
+    for (const ex of exams) {
+      await setDoc(doc(db, 'exams', ex.id), ex, { merge: true });
+    }
+    fetch('/api/db/exams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exams }),
     }).catch(() => {});
     return true;
   } catch {
@@ -463,6 +562,7 @@ export function startDbPolling(
     cheatLogs: [],
     classroomLessons: [],
     classroomMessages: {},
+    exams: [],
   };
 
   const dispatchUpdate = () => {
@@ -540,6 +640,18 @@ export function startDbPolling(
     console.warn('Lỗi Firestore lessons onSnapshot:', err);
   });
 
+  // 5b. Lắng nghe Đề thi đăng bởi giáo viên trên Firestore Real-time (Đồng bộ ngay tới học sinh)
+  const unsubExams = onSnapshot(collection(db, 'exams'), (snapshot) => {
+    const list: Exam[] = [];
+    snapshot.forEach((d) => {
+      list.push(d.data() as Exam);
+    });
+    stateAccumulator.exams = list;
+    dispatchUpdate();
+  }, (err) => {
+    console.warn('Lỗi Firestore exams onSnapshot:', err);
+  });
+
   // 6. Lắng nghe Tin nhắn chat nhóm lớp trên Firestore Real-time (Đồng bộ tức thời mọi máy)
   const unsubMessages = onSnapshot(collection(db, 'messages'), (snapshot) => {
     const map: Record<string, ClassroomChatMessage[]> = {};
@@ -592,6 +704,13 @@ export function startDbPolling(
               hasChanges = true;
             }
           }
+          // Đồng bộ Đề thi
+          if (json.data.exams && Array.isArray(json.data.exams)) {
+            if (JSON.stringify(json.data.exams) !== JSON.stringify(stateAccumulator.exams)) {
+              stateAccumulator.exams = json.data.exams;
+              hasChanges = true;
+            }
+          }
           // Đồng bộ Tin nhắn chat lớp học
           if (json.data.classroomMessages && typeof json.data.classroomMessages === 'object') {
             const serverMsgs = json.data.classroomMessages as Record<string, ClassroomChatMessage[]>;
@@ -636,6 +755,7 @@ export function startDbPolling(
     unsubSubmissions();
     unsubCheatLogs();
     unsubLessons();
+    unsubExams();
     unsubMessages();
     clearInterval(timer);
   };

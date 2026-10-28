@@ -1,12 +1,12 @@
 {
-  "version": 4,
-  "lastUpdated": "2026-10-27T10:07:17.369Z",
+  "version": 8,
+  "lastUpdated": "2026-10-28T10:38:29.902Z",
   "users": [
     {
       "schoolName": "Toán Thầy Nguyễn Bá Kỳ",
       "id": "25021822",
       "dailyScanCount": 0,
-      "lastActiveDate": "2026-10-27",
+      "lastActiveDate": "2026-10-28",
       "streakDays": 1,
       "bio": "Quản trị viên toàn quyền hệ thống Math&NBK.",
       "grade": 12,
@@ -216,5 +216,6 @@
   "classroomLessons": [],
   "classroomMessages": {
     "cls_1792860475376": []
-  }
+  },
+  "exams": []
 }

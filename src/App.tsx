@@ -27,6 +27,9 @@ import {
   dbSaveLessons,
   dbSaveLesson,
   dbDeleteLesson,
+  dbSaveExam,
+  dbDeleteExam,
+  dbSaveExams,
   dbSaveMessage,
   dbToggleMessageReaction,
 } from './services/dbSyncService';
@@ -167,6 +170,8 @@ export default function App() {
   // Tự động đồng bộ Real-Time cơ sở dữ liệu trên máy chủ (Sync đa thiết bị / khác máy)
   useEffect(() => {
     let knownPendingIds = new Set<string>();
+    let knownLessonIds = new Set<string>(SAMPLE_CLASSROOM_LESSONS.map((l) => l.id));
+    let knownExamIds = new Set<string>([SAMPLE_EXAM_BGD.id]);
 
     const unsubscribe = startDbPolling((remoteData) => {
       if (remoteData.users && Array.isArray(remoteData.users)) {
@@ -219,8 +224,49 @@ export default function App() {
         setCheatLogs(remoteData.cheatLogs);
       }
 
+      // Đồng bộ Bài học chuyên đề tức thời giữa các máy
       if (remoteData.classroomLessons && Array.isArray(remoteData.classroomLessons)) {
-        setClassroomLessons(remoteData.classroomLessons);
+        const lessonMap = new Map<string, ClassroomLesson>();
+        SAMPLE_CLASSROOM_LESSONS.forEach((l) => lessonMap.set(l.id, l));
+        remoteData.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
+        const mergedLessons = Array.from(lessonMap.values());
+
+        // Nếu có bài học mới được đăng tải từ máy giáo viên khác
+        const freshLessonArrivals = mergedLessons.filter((l) => !knownLessonIds.has(l.id));
+        if (freshLessonArrivals.length > 0 && knownLessonIds.size > 0) {
+          freshLessonArrivals.forEach((l) => {
+            triggerPushNotification(`Bài học mới: ${l.title}`, {
+              message: `Thầy cô vừa đăng tải bài học mới (${l.chapter}). Nhấn để mở xem ngay!`,
+              type: 'system',
+              targetTab: 'classroom',
+            });
+          });
+        }
+        knownLessonIds = new Set(mergedLessons.map((l) => l.id));
+        setClassroomLessons(mergedLessons);
+      }
+
+      // Đồng bộ Đề thi tức thời giữa các máy (Giáo viên đăng đề -> Học sinh thấy ngay)
+      if (remoteData.exams && Array.isArray(remoteData.exams)) {
+        const examMap = new Map<string, Exam>();
+        examMap.set(SAMPLE_EXAM_BGD.id, SAMPLE_EXAM_BGD);
+        remoteData.exams.forEach((ex) => examMap.set(ex.id, ex));
+        const mergedExams = Array.from(examMap.values());
+
+        // Nếu có đề thi mới được xuất bản từ máy khác
+        const freshExamArrivals = mergedExams.filter((ex) => !knownExamIds.has(ex.id));
+        if (freshExamArrivals.length > 0 && knownExamIds.size > 0) {
+          freshExamArrivals.forEach((ex) => {
+            triggerPushNotification(`Đề thi mới: ${ex.title}`, {
+              message: `Thầy cô vừa đăng tải đề thi mới (${ex.durationMinutes} phút - ${ex.questions.length} câu). Nhấn để vào làm bài ngay!`,
+              type: 'exam_published',
+              targetTab: 'classroom',
+              examId: ex.id,
+            });
+          });
+        }
+        knownExamIds = new Set(mergedExams.map((ex) => ex.id));
+        setExamsList(mergedExams);
       }
 
       if (remoteData.classroomMessages) {
@@ -454,13 +500,30 @@ export default function App() {
     dbSaveCheatLog(log).catch(console.error);
   };
 
-  // Giáo viên đăng tải đề thi mới: Tự động phát thông báo đẩy cho học sinh
+  // Giáo viên đăng tải đề thi mới: Đồng bộ tức thời lên Firestore & Server DB cho toàn bộ học sinh thấy ngay
   const handlePublishExam = (newExam: Exam) => {
     setExamsList((prev) => {
       const filtered = prev.filter((e) => e.id !== newExam.id);
       return [newExam, ...filtered];
     });
     setActiveExamId(newExam.id);
+
+    // Đồng bộ tức thời lên Firestore và Server để học sinh các máy khác thấy ngay lập tức
+    dbSaveExam(newExam).catch(console.error);
+
+    // Nếu đề thi giao cho các nhóm lớp cụ thể, cập nhật assignedExamIds của lớp và đồng bộ lên DB
+    if (newExam.targetClassIds && newExam.targetClassIds.length > 0) {
+      setClassrooms((prev) => {
+        const updated = prev.map((cls) => {
+          if (newExam.targetClassIds?.includes(cls.id) && !cls.assignedExamIds.includes(newExam.id)) {
+            return { ...cls, assignedExamIds: [...cls.assignedExamIds, newExam.id] };
+          }
+          return cls;
+        });
+        dbSaveClassrooms(updated).catch(console.error);
+        return updated;
+      });
+    }
 
     // Kích hoạt thông báo đẩy cho học sinh
     triggerPushNotification(`Đề thi mới: ${newExam.title}`, {
@@ -469,6 +532,12 @@ export default function App() {
       targetTab: 'classroom',
       examId: newExam.id,
     });
+  };
+
+  // Cập nhật danh sách đề thi (Đồng bộ lên Firestore & Server DB)
+  const handleUpdateExamsList = (updated: Exam[]) => {
+    setExamsList(updated);
+    dbSaveExams(updated).catch(console.error);
   };
 
   // Xử lý nộp bài thi của học sinh: tự động ghi nhận vào submissions & cộng XP & phát thông báo kết quả & sync DB
@@ -548,7 +617,7 @@ export default function App() {
             classrooms={classrooms}
             onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
-            onUpdateExamsList={setExamsList}
+            onUpdateExamsList={handleUpdateExamsList}
             onSelectExamToTake={(examId) => {
               setActiveExamId(examId);
               setCurrentTab('exam');
@@ -632,7 +701,7 @@ export default function App() {
             classrooms={classrooms}
             onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
-            onUpdateExamsList={setExamsList}
+            onUpdateExamsList={handleUpdateExamsList}
             onSelectExamToTake={(examId) => {
               setActiveExamId(examId);
               setCurrentTab('exam');
