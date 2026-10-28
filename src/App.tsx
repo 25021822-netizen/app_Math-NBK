@@ -685,6 +685,7 @@ export default function App() {
         <TeacherPortalView
           classrooms={classrooms}
           onPublishExam={handlePublishExam}
+          currentUserName={userProfile.name}
         />
       );
     }

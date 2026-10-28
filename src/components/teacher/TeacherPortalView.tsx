@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Exam, Question, ExamPartType, Classroom } from '../../types/math';
-import { SAMPLE_EXAM_BGD, SAMPLE_CLASSROOMS } from '../../data/mockData';
+import { SAMPLE_CLASSROOMS } from '../../data/mockData';
 import { MathView } from '../MathView';
 import { ParsedExamSchema } from '../../lib/pdfParserSchema';
 import {
@@ -37,22 +37,24 @@ interface TeacherPortalViewProps {
   onPublishExam?: (newExam: Exam) => void;
   onPreviewExam?: (exam: Exam) => void;
   classrooms?: Classroom[];
+  currentUserName?: string;
 }
 
 export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   onPublishExam,
   onPreviewExam,
   classrooms = SAMPLE_CLASSROOMS,
+  currentUserName = '',
 }) => {
   // Chế độ: 'manual' (Tạo đề thủ công) hoặc 'ai_pdf' (AI Bóc Tách PDF)
   const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf'>('manual');
 
   // ================= STATE DÀNH CHO TẠO ĐỀ THỦ CÔNG =================
-  const [manualTitle, setManualTitle] = useState('Đề Khảo Sát Toán THPT 2025 - Chuẩn Cấu Trúc Bộ GD&ĐT');
+  const [manualTitle, setManualTitle] = useState('');
   const [manualGrade, setManualGrade] = useState<10 | 11 | 12>(12);
-  const [manualYear, setManualYear] = useState<number>(2025);
+  const [manualYear, setManualYear] = useState<number>(new Date().getFullYear());
   const [manualDuration, setManualDuration] = useState<number>(90);
-  const [manualCreatedBy, setManualCreatedBy] = useState('ThS. Trần Văn Minh - Tổ Toán THPT');
+  const [manualCreatedBy, setManualCreatedBy] = useState(currentUserName || '');
 
   // 1. Giới hạn số lượt làm bài (0 = Không giới hạn, 1 = Thi chính thức, 2, 3...)
   const [manualMaxAttempts, setManualMaxAttempts] = useState<number>(1);
@@ -68,13 +70,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // 3. Giao đề cho nhóm lớp hoặc đưa vào kho tổng hợp
   const [manualDistributionType, setManualDistributionType] = useState<'classroom' | 'repository' | 'both'>('classroom');
-  const [manualTargetClassIds, setManualTargetClassIds] = useState<string[]>(['cls_12a1']);
+  const [manualTargetClassIds, setManualTargetClassIds] = useState<string[]>([]);
 
   // 4. Cho phép học sinh xem đáp án & lời giải chi tiết khi làm xong
   const [manualAllowViewAnswers, setManualAllowViewAnswers] = useState<boolean>(true);
 
-  // Danh sách câu hỏi trong đề thi (Chỉ 3 phần trắc nghiệm chuẩn BGD)
-  const [manualQuestions, setManualQuestions] = useState<Question[]>(SAMPLE_EXAM_BGD.questions);
+  // Danh sách câu hỏi trong đề thi (Khởi tạo rỗng, không chứa câu hỏi mẫu)
+  const [manualQuestions, setManualQuestions] = useState<Question[]>([]);
 
   // 4. Tổng điểm tính toán tự động dựa trên tổng điểm từng câu hỏi của bài
   const dynamicTotalPoints = manualQuestions.reduce((sum, q) => sum + (q.points || 0), 0);
@@ -138,20 +140,20 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
     if (partType === 'part_1_mcq') {
       setModalPoints(0.25);
-      setModalOptA('Phương án A');
-      setModalOptB('Phương án B');
-      setModalOptC('Phương án C');
-      setModalOptD('Phương án D');
+      setModalOptA('');
+      setModalOptB('');
+      setModalOptC('');
+      setModalOptD('');
       setModalCorrectMcq('A');
     } else if (partType === 'part_2_true_false') {
       setModalPoints(1.0);
-      setModalTfA({ text: 'Mệnh đề a', isCorrect: true });
-      setModalTfB({ text: 'Mệnh đề b', isCorrect: false });
-      setModalTfC({ text: 'Mệnh đề c', isCorrect: true });
-      setModalTfD({ text: 'Mệnh đề d', isCorrect: false });
+      setModalTfA({ text: '', isCorrect: true });
+      setModalTfB({ text: '', isCorrect: false });
+      setModalTfC({ text: '', isCorrect: true });
+      setModalTfD({ text: '', isCorrect: false });
     } else if (partType === 'part_3_short_answer') {
       setModalPoints(0.5);
-      setModalShortAnswer('4');
+      setModalShortAnswer('');
     }
 
     setShowQuestionModal(true);
@@ -279,44 +281,56 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     let newQuestion: Question;
 
     if (modalPart === 'part_1_mcq') {
+      if (!modalOptA.trim() && !modalOptB.trim() && !modalOptC.trim() && !modalOptD.trim() && !modalImageAttachment) {
+        alert('Vui lòng nhập nội dung cho các phương án A, B, C, D!');
+        return;
+      }
       newQuestion = {
         id: editingQuestionId || `q_${Date.now()}`,
         part: 'part_1_mcq',
         questionNumber,
-        prompt: modalPrompt,
-        latex: modalLatex || undefined,
+        prompt: modalPrompt.trim(),
+        latex: modalLatex.trim() || undefined,
         options: [
-          { key: 'A', text: modalOptA || 'Phương án A' },
-          { key: 'B', text: modalOptB || 'Phương án B' },
-          { key: 'C', text: modalOptC || 'Phương án C' },
-          { key: 'D', text: modalOptD || 'Phương án D' },
+          { key: 'A', text: modalOptA.trim() },
+          { key: 'B', text: modalOptB.trim() },
+          { key: 'C', text: modalOptC.trim() },
+          { key: 'D', text: modalOptD.trim() },
         ],
         correctAnswer: modalCorrectMcq,
-        explanation: modalExplanation,
+        explanation: modalExplanation.trim(),
         points: modalPoints || 0.25,
         imageAttachment: modalImageAttachment || undefined,
         pdfAttachmentName: modalPdfName || undefined,
       };
     } else if (modalPart === 'part_2_true_false') {
+      if (!modalTfA.text.trim() && !modalTfB.text.trim() && !modalTfC.text.trim() && !modalTfD.text.trim() && !modalImageAttachment) {
+        alert('Vui lòng nhập nội dung cho 4 ý mệnh đề a, b, c, d!');
+        return;
+      }
       newQuestion = {
         id: editingQuestionId || `q_${Date.now()}`,
         part: 'part_2_true_false',
         questionNumber,
-        prompt: modalPrompt,
-        latex: modalLatex || undefined,
+        prompt: modalPrompt.trim(),
+        latex: modalLatex.trim() || undefined,
         items: [
-          { id: `tf_a_${Date.now()}`, subKey: 'a', text: modalTfA.text || 'Mệnh đề a', isCorrect: modalTfA.isCorrect },
-          { id: `tf_b_${Date.now()}`, subKey: 'b', text: modalTfB.text || 'Mệnh đề b', isCorrect: modalTfB.isCorrect },
-          { id: `tf_c_${Date.now()}`, subKey: 'c', text: modalTfC.text || 'Mệnh đề c', isCorrect: modalTfC.isCorrect },
-          { id: `tf_d_${Date.now()}`, subKey: 'd', text: modalTfD.text || 'Mệnh đề d', isCorrect: modalTfD.isCorrect },
+          { id: `tf_a_${Date.now()}`, subKey: 'a', text: modalTfA.text.trim(), isCorrect: modalTfA.isCorrect },
+          { id: `tf_b_${Date.now()}`, subKey: 'b', text: modalTfB.text.trim(), isCorrect: modalTfB.isCorrect },
+          { id: `tf_c_${Date.now()}`, subKey: 'c', text: modalTfC.text.trim(), isCorrect: modalTfC.isCorrect },
+          { id: `tf_d_${Date.now()}`, subKey: 'd', text: modalTfD.text.trim(), isCorrect: modalTfD.isCorrect },
         ],
-        explanation: modalExplanation,
+        explanation: modalExplanation.trim(),
         points: modalPoints || 1.0,
         imageAttachment: modalImageAttachment || undefined,
         pdfAttachmentName: modalPdfName || undefined,
       };
     } else {
       const sanitized = modalShortAnswer.trim().replace(/\s+/g, '');
+      if (!sanitized) {
+        alert('Vui lòng nhập đáp án cho câu hỏi trả lời ngắn!');
+        return;
+      }
       if (sanitized.length > 4) {
         alert('Quy chế BGD Phần 3: Đáp án không được vượt quá 4 ký tự!');
         return;
@@ -325,10 +339,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         id: editingQuestionId || `q_${Date.now()}`,
         part: 'part_3_short_answer',
         questionNumber,
-        prompt: modalPrompt,
-        latex: modalLatex || undefined,
-        correctAnswer: sanitized || '0',
-        explanation: modalExplanation,
+        prompt: modalPrompt.trim(),
+        latex: modalLatex.trim() || undefined,
+        correctAnswer: sanitized,
+        explanation: modalExplanation.trim(),
         points: modalPoints || 0.5,
         imageAttachment: modalImageAttachment || undefined,
         pdfAttachmentName: modalPdfName || undefined,
@@ -517,20 +531,34 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               </span>
             </div>
 
-            {/* Hàng 1: Tên đề, khối lớp, năm học, thời lượng */}
+            {/* Hàng 1: Tên đề thi & Giáo viên biên soạn */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs">
-              <div className="md:col-span-6 space-y-1">
+              <div className="md:col-span-7 space-y-1">
                 <label className="font-bold text-slate-700">Tên Đề Thi *</label>
                 <input
                   type="text"
                   value={manualTitle}
                   onChange={(e) => setManualTitle(e.target.value)}
-                  placeholder="Nhập tên đề thi..."
+                  placeholder="Nhập tên đề thi (VD: Đề khảo sát chất lượng, Đề thi học kỳ...)"
                   className="w-full h-10 px-3.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
-              <div className="md:col-span-2 space-y-1">
+              <div className="md:col-span-5 space-y-1">
+                <label className="font-bold text-slate-700">Giáo Viên / Tổ Bộ Môn Biên Soạn</label>
+                <input
+                  type="text"
+                  value={manualCreatedBy}
+                  onChange={(e) => setManualCreatedBy(e.target.value)}
+                  placeholder="Nhập tên giáo viên hoặc tổ bộ môn..."
+                  className="w-full h-10 px-3.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Hàng 2: Khối lớp, năm học, thời lượng, số lượt làm bài */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+              <div className="space-y-1">
                 <label className="font-bold text-slate-700">Khối Lớp</label>
                 <select
                   value={manualGrade}
@@ -543,22 +571,33 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 </select>
               </div>
 
-              <div className="md:col-span-2 space-y-1">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Năm Học</label>
+                <input
+                  type="number"
+                  value={manualYear}
+                  onChange={(e) => setManualYear(Number(e.target.value))}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold bg-white focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
                 <label className="font-bold text-slate-700">Thời Lượng</label>
                 <select
                   value={manualDuration}
                   onChange={(e) => setManualDuration(Number(e.target.value))}
                   className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold bg-white focus:border-blue-600 focus:outline-none"
                 >
+                  <option value={15}>15 phút</option>
                   <option value={45}>45 phút</option>
                   <option value={60}>60 phút</option>
-                  <option value={90}>90 phút (BGD)</option>
+                  <option value={90}>90 phút (Chuẩn BGD)</option>
                   <option value={120}>120 phút</option>
                 </select>
               </div>
 
               {/* 1. GIỚI HẠN SỐ LƯỢT LÀM BÀI */}
-              <div className="md:col-span-2 space-y-1">
+              <div className="space-y-1">
                 <label className="font-bold text-slate-700">Số Lượt Làm Bài</label>
                 <select
                   value={manualMaxAttempts}
@@ -566,7 +605,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold bg-white focus:border-blue-600 focus:outline-none"
                 >
                   <option value={0}>Không giới hạn</option>
-                  <option value={1}>1 lượt (Thi thật)</option>
+                  <option value={1}>1 lượt (Thi chính thức)</option>
                   <option value={2}>2 lượt</option>
                   <option value={3}>3 lượt</option>
                 </select>
@@ -808,11 +847,52 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
           {/* Question List */}
           <div className="space-y-4">
-            {manualQuestions.map((q, idx) => (
-              <div
-                key={q.id}
-                className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xs text-xs relative"
-              >
+            {manualQuestions.length === 0 ? (
+              <div className="bg-white rounded-3xl border-2 border-dashed border-slate-200 p-8 sm:p-12 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-2xs">
+                  <FileText size={28} />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-base text-slate-900">
+                    Chưa có câu hỏi nào trong đề thi
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Đề thi hiện đang trống, không có câu hỏi mẫu. Thầy/Cô hãy bấm vào các nút bên dưới để bắt đầu soạn câu hỏi theo chuẩn Bộ GD&ĐT 2025.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddQuestion('part_1_mcq')}
+                    className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 flex items-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <Plus size={14} />
+                    <span>+ Phần 1: Trắc Nghiệm 4 Chọn 1 (0.25đ)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddQuestion('part_2_true_false')}
+                    className="px-4 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs border border-purple-200 flex items-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <Plus size={14} />
+                    <span>+ Phần 2: Đúng / Sai 4 Ý (1.0đ)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddQuestion('part_3_short_answer')}
+                    className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-xs border border-amber-200 flex items-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <Plus size={14} />
+                    <span>+ Phần 3: Trả Lời Ngắn (0.5đ)</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              manualQuestions.map((q, idx) => (
+                <div
+                  key={q.id}
+                  className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xs text-xs relative"
+                >
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
@@ -948,7 +1028,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   </div>
                 )}
               </div>
-            ))}
+            ))
+            )}
           </div>
         </div>
       )}
