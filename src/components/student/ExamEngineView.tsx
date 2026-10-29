@@ -447,9 +447,26 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                   {exam.durationMinutes} phút · {exam.totalPoints} điểm · {exam.questions.length} câu hỏi
                 </span>
               </div>
-              <h1 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
-                {exam.title}
-              </h1>
+              <div className="flex items-center gap-2">
+                {examsList && examsList.length > 1 && onSelectExamId ? (
+                  <select
+                    value={exam.id}
+                    onChange={(e) => onSelectExamId(e.target.value)}
+                    className="text-sm sm:text-base font-black text-slate-900 bg-white border border-slate-300 rounded-xl px-2.5 py-1 focus:outline-none focus:border-blue-600 shadow-2xs max-w-[280px] sm:max-w-[420px] truncate cursor-pointer"
+                    title="Chọn đề thi để làm bài"
+                  >
+                    {examsList.map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.title} ({ex.durationMinutes} phút · {ex.totalPoints}đ)
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <h1 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                    {exam.title}
+                  </h1>
+                )}
+              </div>
             </div>
           </div>
 

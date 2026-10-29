@@ -240,17 +240,19 @@ export async function dbUpdateUser(user: UserProfile): Promise<boolean> {
  * Đồng bộ danh sách lớp học
  */
 export async function dbSaveClassrooms(classrooms: Classroom[]): Promise<boolean> {
+  const cleanClasses = cleanForFirestore(classrooms);
   try {
-    for (const c of classrooms) {
+    for (const c of cleanClasses) {
       await setDoc(doc(db, 'classrooms', c.id), c, { merge: true });
     }
     fetch('/api/db/classrooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ classrooms }),
+      body: JSON.stringify({ classrooms: cleanClasses }),
     }).catch(() => {});
     return true;
-  } catch {
+  } catch (err) {
+    console.warn('Lỗi dbSaveClassrooms Firestore:', err);
     return false;
   }
 }
@@ -259,17 +261,19 @@ export async function dbSaveClassrooms(classrooms: Classroom[]): Promise<boolean
  * Lưu kết quả bài làm thi của học sinh
  */
 export async function dbSaveSubmission(submission: StudentExamSubmission): Promise<boolean> {
+  const cleanSub = cleanForFirestore(submission);
   try {
-    await setDoc(doc(db, 'submissions', submission.id), submission, { merge: true });
+    await setDoc(doc(db, 'submissions', submission.id), cleanSub, { merge: true });
 
     fetch('/api/db/submissions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submission }),
+      body: JSON.stringify({ submission: cleanSub }),
     }).catch(() => {});
 
     return true;
-  } catch {
+  } catch (err) {
+    console.warn('Lỗi dbSaveSubmission Firestore:', err);
     return false;
   }
 }
@@ -464,64 +468,77 @@ export async function dbFetchLessons(): Promise<ClassroomLesson[]> {
  * Giúp học sinh thấy đề thi ngay lập tức khi giáo viên đăng bài
  */
 export async function dbSaveExam(exam: Exam): Promise<boolean> {
-  try {
-    await setDoc(doc(db, 'exams', exam.id), exam, { merge: true });
-    fetch('/api/db/exam/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ exam }),
-    }).catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Lỗi dbSaveExam Firestore, chuyển hướng qua server:', err);
+  const cleanExam = cleanForFirestore(exam);
+  if (!cleanExam || !cleanExam.id) return false;
+
+  const serverPromise = fetch('/api/db/exam/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exam: cleanExam }),
+  }).catch((err) => {
+    console.warn('Lỗi dbSaveExam Server API:', err);
+    return null;
+  });
+
+  const firestorePromise = (async () => {
     try {
-      await fetch('/api/db/exam/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exam }),
-      });
-      return true;
-    } catch {
-      return false;
+      await setDoc(doc(db, 'exams', cleanExam.id), cleanExam, { merge: true });
+    } catch (err) {
+      console.warn('Lỗi dbSaveExam Firestore:', err);
     }
-  }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
  * Xóa 1 đề thi khỏi Firestore & Server
  */
 export async function dbDeleteExam(examId: string): Promise<boolean> {
-  try {
-    await deleteDoc(doc(db, 'exams', examId));
-    fetch('/api/db/exam/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ examId }),
-    }).catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Lỗi dbDeleteExam Firestore:', err);
-    return false;
-  }
+  const serverPromise = fetch('/api/db/exam/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ examId }),
+  }).catch(() => null);
+
+  const firestorePromise = (async () => {
+    try {
+      await deleteDoc(doc(db, 'exams', examId));
+    } catch (err) {
+      console.warn('Lỗi dbDeleteExam Firestore:', err);
+    }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
  * Lưu danh sách đề thi đồng bộ lên Firestore & Server
  */
 export async function dbSaveExams(exams: Exam[]): Promise<boolean> {
-  try {
-    for (const ex of exams) {
-      await setDoc(doc(db, 'exams', ex.id), ex, { merge: true });
+  const cleanExams = cleanForFirestore(exams);
+  if (!Array.isArray(cleanExams)) return false;
+
+  const serverPromise = fetch('/api/db/exams', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exams: cleanExams }),
+  }).catch(() => null);
+
+  const firestorePromise = (async () => {
+    try {
+      for (const ex of cleanExams) {
+        await setDoc(doc(db, 'exams', ex.id), ex, { merge: true });
+      }
+    } catch (err) {
+      console.warn('Lỗi dbSaveExams Firestore:', err);
     }
-    fetch('/api/db/exams', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ exams }),
-    }).catch(() => {});
-    return true;
-  } catch {
-    return false;
-  }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**

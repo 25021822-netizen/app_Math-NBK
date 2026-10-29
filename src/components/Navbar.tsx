@@ -5,9 +5,6 @@ import {
   BookOpen,
   Flame,
   Zap,
-  Smartphone,
-  Monitor,
-  Tablet,
   Sparkles,
   UserCheck,
   Users,
@@ -40,8 +37,8 @@ interface NavbarProps {
   onToggleTier: () => void;
   streakDays: number;
   xp: number;
-  deviceMode: 'desktop' | 'tablet' | 'mobile';
-  onSelectDeviceMode: (mode: 'desktop' | 'tablet' | 'mobile') => void;
+  deviceMode?: 'desktop' | 'tablet' | 'mobile';
+  onSelectDeviceMode?: (mode: 'desktop' | 'tablet' | 'mobile') => void;
   onOpenFriendsModal?: () => void;
   friendsCount?: number;
   pendingRequestsCount?: number;
@@ -62,8 +59,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleTier,
   streakDays,
   xp,
-  deviceMode,
-  onSelectDeviceMode,
   onOpenFriendsModal,
   friendsCount = 0,
   pendingRequestsCount = 0,
@@ -274,36 +269,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Zone 3: Controls, Icons & Mobile Menu Button */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {/* Device viewport frame switcher (Ẩn trên điện thoại thật) */}
-            <div className="hidden lg:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-              <button
-                onClick={() => onSelectDeviceMode('desktop')}
-                title="Giao diện Màn hình rộng"
-                className={`p-1.5 rounded-lg text-xs transition-colors ${
-                  deviceMode === 'desktop' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <Monitor size={15} />
-              </button>
-              <button
-                onClick={() => onSelectDeviceMode('tablet')}
-                title="Khung Tablet (iPad)"
-                className={`p-1.5 rounded-lg text-xs transition-colors ${
-                  deviceMode === 'tablet' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <Tablet size={15} />
-              </button>
-              <button
-                onClick={() => onSelectDeviceMode('mobile')}
-                title="Khung Smartphone (iPhone)"
-                className={`p-1.5 rounded-lg text-xs transition-colors ${
-                  deviceMode === 'mobile' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <Smartphone size={15} />
-              </button>
-            </div>
 
             {/* Friends Network Button */}
             {onOpenFriendsModal && (

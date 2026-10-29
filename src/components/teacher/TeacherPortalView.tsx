@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Exam, Question, ExamPartType, Classroom } from '../../types/math';
 import { SAMPLE_CLASSROOMS } from '../../data/mockData';
 import { MathView } from '../MathView';
@@ -70,7 +70,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // 3. Giao đề cho nhóm lớp hoặc đưa vào kho tổng hợp
   const [manualDistributionType, setManualDistributionType] = useState<'classroom' | 'repository' | 'both'>('classroom');
-  const [manualTargetClassIds, setManualTargetClassIds] = useState<string[]>([]);
+  const [manualTargetClassIds, setManualTargetClassIds] = useState<string[]>(() => classrooms.map((c) => c.id));
+
+  // Tự động chọn tất cả nhóm lớp nếu có lớp mới hoặc danh sách được tải về
+  useEffect(() => {
+    if (manualTargetClassIds.length === 0 && classrooms.length > 0) {
+      setManualTargetClassIds(classrooms.map((c) => c.id));
+    }
+  }, [classrooms]);
 
   // 4. Cho phép học sinh xem đáp án & lời giải chi tiết khi làm xong
   const [manualAllowViewAnswers, setManualAllowViewAnswers] = useState<boolean>(true);
@@ -388,16 +395,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     const errors: string[] = [];
 
     if (manualQuestions.length === 0) {
-      errors.push('Đề thi chưa có câu hỏi nào. Vui lòng thêm ít nhất 1 câu hỏi!');
-    }
-
-    if (manualDistributionType !== 'repository' && manualTargetClassIds.length === 0) {
-      errors.push('Vui lòng chọn ít nhất 1 nhóm lớp nhận đề thi, hoặc chọn hình thức "Kho Đề Thi Tổng Hợp"!');
+      errors.push('Đề thi chưa có câu hỏi nào. Vui lòng thêm ít nhất 1 câu hỏi vào đề thi trước khi xuất bản!');
     }
 
     if (errors.length > 0) {
       setManualValidationErrors(errors);
       return;
+    }
+
+    // Tự động phân bổ nhóm lớp nếu giáo viên chưa chọn riêng
+    if (manualDistributionType !== 'repository' && manualTargetClassIds.length === 0) {
+      if (classrooms.length > 0) {
+        setManualTargetClassIds(classrooms.map((c) => c.id));
+      } else {
+        setManualDistributionType('repository');
+      }
     }
 
     // Mở bước xác nhận xuất bản
@@ -407,6 +419,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // Xác nhận xuất bản chính thức trong modal
   const handleConfirmPublishExam = () => {
     const calculatedTotalPoints = Number(dynamicTotalPoints.toFixed(2));
+    const effectiveTargetIds =
+      manualDistributionType !== 'repository'
+        ? manualTargetClassIds.length > 0
+          ? manualTargetClassIds
+          : classrooms.map((c) => c.id)
+        : undefined;
 
     const newExam: Exam = {
       id: `exam_manual_${Date.now()}`,
@@ -423,7 +441,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       openTime: manualHasTimeWindow && manualOpenTime ? manualOpenTime : undefined,
       closeTime: manualHasTimeWindow && manualCloseTime ? manualCloseTime : undefined,
       distributionType: manualDistributionType,
-      targetClassIds: manualDistributionType !== 'repository' ? manualTargetClassIds : undefined,
+      targetClassIds: effectiveTargetIds,
       allowViewAnswersAfterSubmit: manualAllowViewAnswers,
     };
 
@@ -435,7 +453,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
     const targetDesc =
       manualDistributionType === 'classroom'
-        ? `cho ${manualTargetClassIds.length} nhóm lớp được chỉ định`
+        ? `cho ${effectiveTargetIds?.length || 0} nhóm lớp`
         : manualDistributionType === 'repository'
         ? 'vào Kho đề thi tổng hợp toàn trường'
         : 'cho các nhóm lớp và Kho đề thi chung';
@@ -704,32 +722,60 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               {/* Danh sách nhóm lớp được giao */}
               {manualDistributionType !== 'repository' && (
                 <div className="pt-2 border-t border-blue-200/60 space-y-1.5">
-                  <span className="text-[11px] font-bold text-slate-700 block">
-                    Đánh dấu các nhóm lớp nhận đề thi này:
-                  </span>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {classrooms.map((cls) => (
-                      <label
-                        key={cls.id}
-                        className="flex items-center gap-2 p-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={manualTargetClassIds.includes(cls.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setManualTargetClassIds((prev) => [...prev, cls.id]);
-                            } else {
-                              setManualTargetClassIds((prev) => prev.filter((id) => id !== cls.id));
-                            }
-                          }}
-                          className="rounded text-blue-600"
-                        />
-                        <span>{cls.name}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">({cls.code})</span>
-                      </label>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700 block">
+                      Đánh dấu các nhóm lớp nhận đề thi này:
+                    </span>
+                    {classrooms.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setManualTargetClassIds(classrooms.map((c) => c.id))}
+                          className="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline"
+                        >
+                          Chọn tất cả ({classrooms.length})
+                        </button>
+                        <span className="text-slate-300">·</span>
+                        <button
+                          type="button"
+                          onClick={() => setManualTargetClassIds([])}
+                          className="text-[11px] text-slate-500 hover:text-slate-700 font-bold hover:underline"
+                        >
+                          Bỏ chọn
+                        </button>
+                      </div>
+                    )}
                   </div>
+
+                  {classrooms.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                      Chưa có nhóm lớp nào. Đề thi sẽ tự động được phân phối vào <strong>Kho Đề Thi Tổng Hợp</strong> để học sinh toàn trường có thể làm ngay!
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-3">
+                      {classrooms.map((cls) => (
+                        <label
+                          key={cls.id}
+                          className="flex items-center gap-2 p-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold cursor-pointer hover:border-blue-300 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={manualTargetClassIds.includes(cls.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setManualTargetClassIds((prev) => [...prev, cls.id]);
+                              } else {
+                                setManualTargetClassIds((prev) => prev.filter((id) => id !== cls.id));
+                              }
+                            }}
+                            className="rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{cls.name}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">({cls.code})</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
