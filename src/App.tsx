@@ -405,7 +405,8 @@ export default function App() {
   };
 
   // Lưu 1 bài học (Thêm mới hoặc Sửa) đồng bộ ngay lên Firestore
-  const handleSaveLesson = (lesson: ClassroomLesson) => {
+  const handleSaveLesson = async (lesson: ClassroomLesson) => {
+    // Cập nhật giao diện tức thời (Optimistic UI update)
     setClassroomLessons((prev) => {
       const idx = prev.findIndex((l) => l.id === lesson.id);
       if (idx >= 0) {
@@ -415,7 +416,66 @@ export default function App() {
       }
       return [lesson, ...prev];
     });
-    dbSaveLesson(lesson).catch(console.error);
+
+    console.log('[handleSaveLesson] Bắt đầu đồng bộ bài học lên Firestore & Server:', {
+      lessonId: lesson.id,
+      title: lesson.title,
+      classId: lesson.classId,
+      chapter: lesson.chapter,
+      hasPdf: !!lesson.pdfAttachment,
+      hasPracticePdf: !!lesson.practicePdfAttachment,
+      timestamp: new Date().toISOString(),
+    });
+
+    try {
+      const success = await dbSaveLesson(lesson);
+      if (!success) {
+        throw new Error('Hệ thống cơ sở dữ liệu không phản hồi trạng thái thành công.');
+      }
+      console.log('[handleSaveLesson] Đồng bộ bài học lên Firestore & Server THÀNH CÔNG:', lesson.id);
+    } catch (error: any) {
+      console.error('[handleSaveLesson] LỖI ĐỒNG BỘ BÀI HỌC LÊN FIRESTORE HOẶC SERVER:', {
+        lessonId: lesson.id,
+        lessonTitle: lesson.title,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error?.stack,
+        fullError: error,
+      });
+
+      // Trích xuất thông điệp lỗi rõ ràng, chi tiết để hiển thị trên Toast
+      let userFriendlyMessage = 'Không thể đồng bộ bài học lên cơ sở dữ liệu Firestore.';
+      const rawMsg = error instanceof Error ? error.message : String(error);
+
+      try {
+        // Kiểm tra cấu trúc FirestoreErrorInfo JSON chuẩn
+        const parsed = JSON.parse(rawMsg);
+        if (parsed && (parsed.error || parsed.operationType)) {
+          userFriendlyMessage = `Lỗi Firestore [${parsed.operationType} ${parsed.path || ''}]: ${parsed.error}`;
+        }
+      } catch {
+        if (rawMsg.includes('permission-denied') || rawMsg.includes('Missing or insufficient permissions')) {
+          userFriendlyMessage = 'Lỗi bảo mật Firestore: Thiếu quyền ghi dữ liệu bài học (Permission Denied).';
+        } else if (rawMsg.includes('quota') || rawMsg.includes('RESOURCE_EXHAUSTED')) {
+          userFriendlyMessage = 'Lỗi hạn ngạch Firestore: Đã vượt quá giới hạn truy cập hôm nay (Quota Exceeded).';
+        } else if (rawMsg.includes('413') || rawMsg.includes('Payload Too Large')) {
+          userFriendlyMessage = 'Lỗi dung lượng: File đính kèm quá lớn vượt giới hạn cho phép.';
+        } else if (rawMsg.includes('the client is offline')) {
+          userFriendlyMessage = 'Lỗi mạng: Không thể kết nối với Firestore (Thiết bị đang offline).';
+        } else {
+          userFriendlyMessage = `Chi tiết lỗi: ${rawMsg}`;
+        }
+      }
+
+      // Hiển thị Toast thông báo lỗi trực tiếp trên giao diện
+      triggerPushNotification('Lỗi Đồng Bộ Bài Học!', {
+        message: userFriendlyMessage,
+        type: 'error',
+        targetTab: 'classroom',
+      });
+
+      // Ném lại lỗi để form modal (ClassroomManagerView) bắt và hiển thị thông báo lỗi tại chỗ
+      throw error;
+    }
   };
 
   // Xóa 1 bài học đồng bộ ngay trên Firestore
@@ -996,10 +1056,24 @@ export default function App() {
             }
             setActiveToast(null);
           }}
-          className="fixed bottom-5 right-5 z-50 max-w-sm w-full bg-slate-900/95 text-white p-4 rounded-2xl shadow-2xl border border-blue-500/30 backdrop-blur-md cursor-pointer animate-in slide-in-from-bottom-5 duration-300 hover:scale-[1.02] transition-transform flex items-start gap-3"
+          className={`fixed bottom-5 right-5 z-50 max-w-sm w-full text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md cursor-pointer animate-in slide-in-from-bottom-5 duration-300 hover:scale-[1.02] transition-transform flex items-start gap-3 ${
+            activeToast.type === 'error'
+              ? 'bg-slate-950/95 border border-rose-500/60 ring-1 ring-rose-500/30'
+              : 'bg-slate-900/95 border border-blue-500/30'
+          }`}
         >
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shrink-0 shadow-xs">
-            {activeToast.type === 'exam_graded' ? (
+          <div
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+              activeToast.type === 'error'
+                ? 'bg-gradient-to-br from-rose-600 to-red-700 text-white'
+                : activeToast.type === 'exam_graded'
+                ? 'bg-gradient-to-br from-blue-600 to-indigo-600'
+                : 'bg-gradient-to-br from-blue-600 to-indigo-600'
+            }`}
+          >
+            {activeToast.type === 'error' ? (
+              <AlertTriangle size={20} className="text-white animate-pulse" />
+            ) : activeToast.type === 'exam_graded' ? (
               <FileCheck size={20} className="text-emerald-300" />
             ) : (
               <Sparkles size={20} className="text-amber-300" />
@@ -1007,13 +1081,25 @@ export default function App() {
           </div>
           <div className="flex-1 min-w-0 pr-1">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">
-                {activeToast.type === 'exam_graded' ? 'Kết quả chấm thi' : 'Thông báo mới'}
+              <span
+                className={`text-[10px] font-black uppercase tracking-wider ${
+                  activeToast.type === 'error' ? 'text-rose-400' : 'text-blue-400'
+                }`}
+              >
+                {activeToast.type === 'error'
+                  ? 'Cảnh báo lỗi'
+                  : activeToast.type === 'exam_graded'
+                  ? 'Kết quả chấm thi'
+                  : 'Thông báo mới'}
               </span>
               <span className="text-[10px] text-slate-400">Vừa xong</span>
             </div>
             <h4 className="text-xs font-bold text-white truncate mt-0.5">{activeToast.title}</h4>
-            <p className="text-[11px] text-slate-300 line-clamp-2 mt-0.5 leading-snug">
+            <p
+              className={`text-[11px] line-clamp-2 mt-0.5 leading-snug ${
+                activeToast.type === 'error' ? 'text-rose-100 font-medium' : 'text-slate-300'
+              }`}
+            >
               {activeToast.message}
             </p>
           </div>

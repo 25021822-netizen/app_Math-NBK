@@ -10,7 +10,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import {
   UserProfile,
   Classroom,
@@ -20,6 +20,53 @@ import {
   ClassroomChatMessage,
   Exam,
 } from '../types/math';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('[Firestore Error Details]', JSON.stringify(errInfo, null, 2));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export interface DatabaseState {
   version: number;
@@ -309,21 +356,28 @@ export function cleanForFirestore<T>(data: T): any {
 
 function sanitizeLessonForFirestore(lesson: ClassroomLesson): any {
   const cleaned = cleanForFirestore(lesson);
-  if (cleaned.pdfAttachment && cleaned.pdfAttachment.fileData && cleaned.pdfAttachment.fileData.length > 300000) {
+  // Tuyệt đối không lưu chuỗi base64 fileData nặng vào Firestore document
+  if (cleaned.pdfAttachment) {
     cleaned.pdfAttachment.fileData = '';
   }
-  if (cleaned.practicePdfAttachment && cleaned.practicePdfAttachment.fileData && cleaned.practicePdfAttachment.fileData.length > 300000) {
+  if (cleaned.practicePdfAttachment) {
     cleaned.practicePdfAttachment.fileData = '';
   }
   if (cleaned.attachments && Array.isArray(cleaned.attachments)) {
     cleaned.attachments = cleaned.attachments.map((att: any) => {
-      if (att.url && att.url.length > 300000) {
-        return { ...att, url: '' };
+      if (att.url && (att.url.startsWith('data:') || att.url.length > 2000)) {
+        return {
+          ...att,
+          url:
+            (att.name === cleaned.pdfAttachment?.fileName && cleaned.pdfAttachment?.fileUrl) ||
+            (att.name === cleaned.practicePdfAttachment?.fileName && cleaned.practicePdfAttachment?.fileUrl) ||
+            '',
+        };
       }
       return att;
     });
   }
-  return cleaned;
+  return cleanForFirestore(cleaned);
 }
 
 /**
@@ -355,50 +409,141 @@ export async function dbUploadPdfFile(
  * Lưu 1 bài học chuyên đề lớp học (Thêm mới hoặc Cập nhật) - Đồng bộ Real-Time cả Firestore và Server
  */
 export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
+  console.log('[dbSaveLesson] Bắt đầu đồng bộ bài học:', {
+    id: lesson.id,
+    title: lesson.title,
+    chapter: lesson.chapter,
+    classId: lesson.classId,
+    timestamp: new Date().toISOString(),
+  });
+
   const lessonToSave = { ...lesson };
 
-  // Đảm bảo các file PDF có link fileUrl trực tiếp từ server
+  // 1. Đảm bảo file PDF bài học được lưu vào server và có link fileUrl chuẩn
   if (lessonToSave.pdfAttachment?.fileData && !lessonToSave.pdfAttachment.fileUrl) {
     try {
+      console.log(`[dbSaveLesson] Đang tải PDF bài học lên máy chủ: "${lessonToSave.pdfAttachment.fileName}"...`);
       const uploadRes = await dbUploadPdfFile(lessonToSave.pdfAttachment.fileName, lessonToSave.pdfAttachment.fileData);
       if (uploadRes.success && uploadRes.fileUrl) {
-        lessonToSave.pdfAttachment.fileUrl = uploadRes.fileUrl;
+        console.log(`[dbSaveLesson] Upload PDF bài học thành công: ${uploadRes.fileUrl}`);
+        lessonToSave.pdfAttachment = {
+          ...lessonToSave.pdfAttachment,
+          fileUrl: uploadRes.fileUrl,
+          fileSize: uploadRes.fileSize || lessonToSave.pdfAttachment.fileSize,
+          fileData: '',
+        };
+      } else {
+        console.warn(`[dbSaveLesson] Cảnh báo upload PDF bài học:`, uploadRes.error);
       }
-    } catch {}
+    } catch (err) {
+      console.error('[dbSaveLesson] Lỗi ngoại lệ khi upload PDF bài học:', err);
+    }
+  } else if (lessonToSave.pdfAttachment) {
+    lessonToSave.pdfAttachment = {
+      ...lessonToSave.pdfAttachment,
+      fileData: '',
+    };
   }
 
+  // 2. Đảm bảo file PDF luyện tập được lưu vào server và có link fileUrl chuẩn
   if (lessonToSave.practicePdfAttachment?.fileData && !lessonToSave.practicePdfAttachment.fileUrl) {
     try {
+      console.log(`[dbSaveLesson] Đang tải PDF luyện tập lên máy chủ: "${lessonToSave.practicePdfAttachment.fileName}"...`);
       const uploadRes = await dbUploadPdfFile(lessonToSave.practicePdfAttachment.fileName, lessonToSave.practicePdfAttachment.fileData);
       if (uploadRes.success && uploadRes.fileUrl) {
-        lessonToSave.practicePdfAttachment.fileUrl = uploadRes.fileUrl;
+        console.log(`[dbSaveLesson] Upload PDF luyện tập thành công: ${uploadRes.fileUrl}`);
+        lessonToSave.practicePdfAttachment = {
+          ...lessonToSave.practicePdfAttachment,
+          fileUrl: uploadRes.fileUrl,
+          fileSize: uploadRes.fileSize || lessonToSave.practicePdfAttachment.fileSize,
+          fileData: '',
+        };
+      } else {
+        console.warn(`[dbSaveLesson] Cảnh báo upload PDF luyện tập:`, uploadRes.error);
       }
-    } catch {}
+    } catch (err) {
+      console.error('[dbSaveLesson] Lỗi ngoại lệ khi upload PDF luyện tập:', err);
+    }
+  } else if (lessonToSave.practicePdfAttachment) {
+    lessonToSave.practicePdfAttachment = {
+      ...lessonToSave.practicePdfAttachment,
+      fileData: '',
+    };
+  }
+
+  // 3. Chuẩn hóa attachments url (loại bỏ chuỗi base64 nặng để tránh nghẽn payload)
+  if (lessonToSave.attachments && Array.isArray(lessonToSave.attachments)) {
+    lessonToSave.attachments = lessonToSave.attachments.map((att) => {
+      if (att.name === lessonToSave.pdfAttachment?.fileName && lessonToSave.pdfAttachment?.fileUrl) {
+        return { ...att, url: lessonToSave.pdfAttachment.fileUrl };
+      }
+      if (att.name === lessonToSave.practicePdfAttachment?.fileName && lessonToSave.practicePdfAttachment?.fileUrl) {
+        return { ...att, url: lessonToSave.practicePdfAttachment.fileUrl };
+      }
+      if (att.url && att.url.startsWith('data:')) {
+        return { ...att, url: '' };
+      }
+      return att;
+    });
   }
 
   const cleanLesson = cleanForFirestore(lessonToSave);
+  if (!cleanLesson || !cleanLesson.id) {
+    const missingIdError = new Error('Dữ liệu bài học không hợp lệ hoặc thiếu mã định danh (id).');
+    console.error('[dbSaveLesson] Thất bại kiểm tra định danh bài học:', cleanLesson);
+    throw missingIdError;
+  }
 
-  // 1. Lưu lên Server API để đảm bảo giữ nguyên toàn bộ dữ liệu (kể cả file PDF tới 20MB)
-  const serverPromise = fetch('/api/db/lesson/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lesson: cleanLesson }),
-  }).catch((err) => {
-    console.warn('Lỗi dbSaveLesson Server API:', err);
-    return null;
-  });
+  // 4. Lưu lên Server API để lưu trữ bền vững
+  const saveToServer = async () => {
+    try {
+      const serverRes = await fetch('/api/db/lesson/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lesson: cleanLesson }),
+      });
+      if (!serverRes.ok) {
+        const text = await serverRes.text().catch(() => '');
+        throw new Error(`Server API HTTP ${serverRes.status}: ${text || serverRes.statusText}`);
+      }
+      const data = await serverRes.json().catch(() => ({}));
+      console.log(`[dbSaveLesson] Lưu Server API thành công:`, data);
+      return { success: true };
+    } catch (err: any) {
+      console.error('[dbSaveLesson] Lỗi khi lưu Server API /api/db/lesson/save:', err);
+      return { success: false, error: err?.message || String(err) };
+    }
+  };
 
-  // 2. Lưu lên Firestore Real-Time để push tức thời tới mọi thiết bị khác
-  const firestorePromise = (async () => {
+  // 5. Lưu lên Firestore Real-Time để push tức thời tới mọi thiết bị khác
+  const firestorePath = `lessons/${cleanLesson.id}`;
+  const saveToFirestore = async () => {
     try {
       const firestorePayload = sanitizeLessonForFirestore(lessonToSave);
-      await setDoc(doc(db, 'lessons', lessonToSave.id), firestorePayload, { merge: true });
-    } catch (err) {
-      console.warn('Lỗi dbSaveLesson Firestore:', err);
+      console.log(`[dbSaveLesson] Đang ghi Firestore document "${firestorePath}"...`);
+      await setDoc(doc(db, 'lessons', cleanLesson.id), firestorePayload, { merge: true });
+      console.log(`[dbSaveLesson] Ghi Firestore document "${firestorePath}" THÀNH CÔNG!`);
+      return { success: true };
+    } catch (err: any) {
+      console.error(`[dbSaveLesson] THẤT BẠI khi ghi Firestore document "${firestorePath}":`, err);
+      handleFirestoreError(err, OperationType.WRITE, firestorePath);
     }
-  })();
+  };
 
-  await Promise.allSettled([serverPromise, firestorePromise]);
+  const [serverResult, firestoreResult] = await Promise.allSettled([
+    saveToServer(),
+    saveToFirestore(),
+  ]);
+
+  // Nếu Firestore ném lỗi, bắt buộc ném ra để UI hiển thị thông báo lỗi
+  if (firestoreResult.status === 'rejected') {
+    throw firestoreResult.reason;
+  }
+
+  if (serverResult.status === 'fulfilled' && !serverResult.value.success) {
+    console.warn('[dbSaveLesson] Cảnh báo Server API lưu thất bại:', serverResult.value.error);
+  }
+
   return true;
 }
 
@@ -424,7 +569,9 @@ export async function dbDeleteLesson(lessonId: string): Promise<boolean> {
  * Lưu danh sách bài học chuyên đề lớp học đồng bộ Real-Time
  */
 export async function dbSaveLessons(lessons: ClassroomLesson[]): Promise<boolean> {
-  const cleanLessons = cleanForFirestore(lessons);
+  const sanitizedList = lessons.map((les) => sanitizeLessonForFirestore(les));
+  const cleanLessons = cleanForFirestore(sanitizedList);
+  if (!Array.isArray(cleanLessons)) return false;
 
   const serverPromise = fetch('/api/db/lessons', {
     method: 'POST',
@@ -434,9 +581,8 @@ export async function dbSaveLessons(lessons: ClassroomLesson[]): Promise<boolean
 
   const firestorePromise = (async () => {
     try {
-      for (const les of lessons) {
-        const firestorePayload = sanitizeLessonForFirestore(les);
-        await setDoc(doc(db, 'lessons', les.id), firestorePayload, { merge: true });
+      for (const les of cleanLessons) {
+        await setDoc(doc(db, 'lessons', les.id), les, { merge: true });
       }
     } catch (err) {
       console.warn('Lỗi dbSaveLessons Firestore:', err);

@@ -64,6 +64,7 @@ import {
   Minimize2,
   Maximize2,
   MessageCircle,
+  Loader2,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -212,6 +213,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [newLessonPracticePdfFile, setNewLessonPracticePdfFile] = useState<{ fileName: string; fileSize: string; fileData?: string; fileUrl?: string } | null>(null);
   const [newLessonAttachmentName, setNewLessonAttachmentName] = useState('');
   const [newLessonError, setNewLessonError] = useState<string | null>(null);
+  const [isSubmittingLesson, setIsSubmittingLesson] = useState<boolean>(false);
 
   // Form chỉnh sửa bài học đã đăng (Giáo viên)
   const [showEditLessonModal, setShowEditLessonModal] = useState<boolean>(false);
@@ -827,7 +829,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   };
 
   // 3c. Giáo viên tạo / upload Chương học và Bài học mới cho học sinh (Chương -> Bài học -> Ô Bài học & Ô Luyện tập)
-  const handleCreateLessonSubmit = (e: React.FormEvent) => {
+  const handleCreateLessonSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentClass) return;
 
@@ -836,71 +838,152 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       return;
     }
 
-    const attachmentsList: { name: string; type: 'pdf' | 'image' | 'link'; url: string; size?: string }[] = [];
-    if (newLessonPdfFile) {
-      attachmentsList.push({
-        name: newLessonPdfFile.fileName,
-        type: 'pdf' as const,
-        url: newLessonPdfFile.fileUrl || newLessonPdfFile.fileData || '',
-        size: newLessonPdfFile.fileSize,
-      });
-    }
-    if (newLessonPracticePdfFile) {
-      attachmentsList.push({
-        name: newLessonPracticePdfFile.fileName,
-        type: 'pdf' as const,
-        url: newLessonPracticePdfFile.fileUrl || newLessonPracticePdfFile.fileData || '',
-        size: newLessonPracticePdfFile.fileSize,
-      });
-    }
+    setIsSubmittingLesson(true);
+    setNewLessonError(null);
 
-    if (newLessonExternalLink.trim()) {
-      attachmentsList.push({
-        name: 'Link tài liệu trực tuyến',
-        type: 'link' as const,
-        url: newLessonExternalLink.trim(),
-        size: 'Web',
-      });
-    }
+    try {
+      let finalLessonPdf = newLessonPdfFile ? { ...newLessonPdfFile } : null;
+      let finalPracticePdf = newLessonPracticePdfFile ? { ...newLessonPracticePdfFile } : null;
 
-    const newLessonObj: ClassroomLesson = {
-      id: `les_${Date.now()}`,
-      classId: currentClass.id,
-      chapter: newLessonChapter.trim(),
-      title: newLessonTitle.trim(),
-      description: newLessonDesc.trim() || 'Tài liệu lý thuyết và bài tập luyện tập theo chuẩn chương trình GDPT 2018.',
-      theoryContent:
-        newLessonTheory.trim() ||
-        'Nội dung tóm tắt kiến thức trọng tâm, định lý, công thức và phương pháp giải bài tập.',
-      practiceContent:
-        newLessonPractice.trim() ||
-        'Hệ thống ví dụ mẫu minh họa và câu hỏi bài tập rèn luyện cho học sinh.',
-      exercisesContent:
-        newLessonPractice.trim() ||
-        'Hệ thống ví dụ mẫu minh họa và câu hỏi bài tập rèn luyện cho học sinh.',
-      content: newLessonTheory.trim() || newLessonDesc.trim(),
-      teacherName: currentUserName || 'ThS. Trần Văn Minh',
-      createdAt: new Date().toISOString().split('T')[0],
-      exercisesCount: Number(newLessonExercisesCount) || 10,
-      completedStudentIds: [],
-      externalLink: newLessonExternalLink.trim() || undefined,
-      pdfAttachment: newLessonPdfFile || undefined,
-      practicePdfAttachment: newLessonPracticePdfFile || undefined,
-      attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
-    };
+      // 1. Tải lên máy chủ nếu có file PDF bài học mà chưa có URL máy chủ
+      if (finalLessonPdf && !finalLessonPdf.fileUrl && finalLessonPdf.fileData) {
+        try {
+          const uploadRes = await dbUploadPdfFile(finalLessonPdf.fileName, finalLessonPdf.fileData);
+          if (uploadRes.success && uploadRes.fileUrl) {
+            finalLessonPdf.fileUrl = uploadRes.fileUrl;
+            finalLessonPdf.fileSize = uploadRes.fileSize || finalLessonPdf.fileSize;
+          }
+        } catch (uploadErr) {
+          console.warn('Không thể tải file PDF bài học lên máy chủ:', uploadErr);
+        }
+      }
 
-    const updated = [newLessonObj, ...localLessons];
-    setLocalLessons(updated);
-    if (onSaveLesson) {
-      onSaveLesson(newLessonObj);
-    }
-    if (onUpdateLessons) {
-      onUpdateLessons(updated);
-    }
+      // 2. Tải lên máy chủ nếu có file PDF luyện tập mà chưa có URL máy chủ
+      if (finalPracticePdf && !finalPracticePdf.fileUrl && finalPracticePdf.fileData) {
+        try {
+          const uploadRes = await dbUploadPdfFile(finalPracticePdf.fileName, finalPracticePdf.fileData);
+          if (uploadRes.success && uploadRes.fileUrl) {
+            finalPracticePdf.fileUrl = uploadRes.fileUrl;
+            finalPracticePdf.fileSize = uploadRes.fileSize || finalPracticePdf.fileSize;
+          }
+        } catch (uploadErr) {
+          console.warn('Không thể tải file PDF luyện tập lên máy chủ:', uploadErr);
+        }
+      }
 
-    setShowAddLessonModal(false);
-    setLessonActionSuccess(`Đã đăng tải bài học "${newLessonTitle.trim()}" thành công!`);
-    setTimeout(() => setLessonActionSuccess(null), 3500);
+      // 3. Làm nhẹ fileAttachment trước khi lưu vào database (không bao giờ lưu chuỗi base64 khổng lồ)
+      const cleanLessonPdf = finalLessonPdf
+        ? {
+            fileName: finalLessonPdf.fileName,
+            fileSize: finalLessonPdf.fileSize,
+            fileUrl: finalLessonPdf.fileUrl || '',
+            fileData: '',
+          }
+        : undefined;
+
+      const cleanPracticePdf = finalPracticePdf
+        ? {
+            fileName: finalPracticePdf.fileName,
+            fileSize: finalPracticePdf.fileSize,
+            fileUrl: finalPracticePdf.fileUrl || '',
+            fileData: '',
+          }
+        : undefined;
+
+      const attachmentsList: { name: string; type: 'pdf' | 'image' | 'link'; url: string; size?: string }[] = [];
+      if (cleanLessonPdf && cleanLessonPdf.fileUrl) {
+        attachmentsList.push({
+          name: cleanLessonPdf.fileName,
+          type: 'pdf' as const,
+          url: cleanLessonPdf.fileUrl,
+          size: cleanLessonPdf.fileSize,
+        });
+      }
+      if (cleanPracticePdf && cleanPracticePdf.fileUrl) {
+        attachmentsList.push({
+          name: cleanPracticePdf.fileName,
+          type: 'pdf' as const,
+          url: cleanPracticePdf.fileUrl,
+          size: cleanPracticePdf.fileSize,
+        });
+      }
+
+      if (newLessonExternalLink.trim()) {
+        attachmentsList.push({
+          name: 'Link tài liệu trực tuyến',
+          type: 'link' as const,
+          url: newLessonExternalLink.trim(),
+          size: 'Web',
+        });
+      }
+
+      const newLessonObj: ClassroomLesson = {
+        id: `les_${Date.now()}`,
+        classId: currentClass.id,
+        chapter: newLessonChapter.trim(),
+        title: newLessonTitle.trim(),
+        description: newLessonDesc.trim() || 'Tài liệu lý thuyết và bài tập luyện tập theo chuẩn chương trình GDPT 2018.',
+        theoryContent:
+          newLessonTheory.trim() ||
+          'Nội dung tóm tắt kiến thức trọng tâm, định lý, công thức và phương pháp giải bài tập.',
+        practiceContent:
+          newLessonPractice.trim() ||
+          'Hệ thống ví dụ mẫu minh họa và câu hỏi bài tập rèn luyện cho học sinh.',
+        exercisesContent:
+          newLessonPractice.trim() ||
+          'Hệ thống ví dụ mẫu minh họa và câu hỏi bài tập rèn luyện cho học sinh.',
+        content: newLessonTheory.trim() || newLessonDesc.trim(),
+        teacherName: currentUserName || 'ThS. Trần Văn Minh',
+        createdAt: new Date().toISOString().split('T')[0],
+        exercisesCount: Number(newLessonExercisesCount) || 10,
+        completedStudentIds: [],
+        externalLink: newLessonExternalLink.trim() || undefined,
+        pdfAttachment: cleanLessonPdf,
+        practicePdfAttachment: cleanPracticePdf,
+        attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
+      };
+
+      setLocalLessons((prev) => [newLessonObj, ...prev]);
+
+      if (onSaveLesson) {
+        await onSaveLesson(newLessonObj);
+      }
+
+      // Reset form sau khi đăng tải thành công
+      setNewLessonChapter('');
+      setNewLessonTitle('');
+      setNewLessonDesc('');
+      setNewLessonTheory('');
+      setNewLessonPractice('');
+      setNewLessonPdfFile(null);
+      setNewLessonPracticePdfFile(null);
+      setNewLessonExternalLink('');
+      setNewLessonAttachmentName('');
+
+      setShowAddLessonModal(false);
+      setLessonActionSuccess(`Đã đăng tải bài học "${newLessonObj.title}" thành công!`);
+      setTimeout(() => setLessonActionSuccess(null), 3500);
+    } catch (err: any) {
+      console.error('Lỗi khi đăng bài học:', err);
+      // Hoàn tác bài học khỏi state cục bộ nếu đồng bộ thất bại
+      setLocalLessons((prev) => prev.filter((l) => l.chapter !== newLessonChapter || l.title !== newLessonTitle));
+      let errMsg = 'Có lỗi xảy ra khi lưu bài học, vui lòng thử lại!';
+      if (err?.message) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed && (parsed.error || parsed.operationType)) {
+            errMsg = `Lỗi Firestore [${parsed.operationType} ${parsed.path || ''}]: ${parsed.error}`;
+          } else {
+            errMsg = err.message;
+          }
+        } catch {
+          errMsg = err.message;
+        }
+      }
+      setNewLessonError(errMsg);
+    } finally {
+      setIsSubmittingLesson(false);
+    }
   };
 
   // 3c-2. Giáo viên MỞ modal chỉnh sửa bài học đã đăng
@@ -938,78 +1021,142 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   };
 
   // 3c-3. Giáo viên LƯU chỉnh sửa bài học
-  const handleEditLessonSubmit = (e: React.FormEvent) => {
+  const handleEditLessonSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editLessonTitle.trim() || !editLessonChapter.trim()) {
       setEditLessonError('Vui lòng nhập đầy đủ tên Chương học và tên Bài học!');
       return;
     }
 
-    const attachmentsList: { name: string; type: 'pdf' | 'image' | 'link'; url: string; size?: string }[] = [];
-    if (editLessonPdfFile) {
-      attachmentsList.push({
-        name: editLessonPdfFile.fileName,
-        type: 'pdf' as const,
-        url: editLessonPdfFile.fileUrl || editLessonPdfFile.fileData || '',
-        size: editLessonPdfFile.fileSize,
-      });
-    }
-    if (editLessonPracticePdfFile) {
-      attachmentsList.push({
-        name: editLessonPracticePdfFile.fileName,
-        type: 'pdf' as const,
-        url: editLessonPracticePdfFile.fileUrl || editLessonPracticePdfFile.fileData || '',
-        size: editLessonPracticePdfFile.fileSize,
-      });
-    }
-    if (editLessonExternalLink.trim()) {
-      attachmentsList.push({
-        name: 'Link tài liệu trực tuyến',
-        type: 'link' as const,
-        url: editLessonExternalLink.trim(),
-        size: 'Web',
-      });
-    }
+    setIsSubmittingLesson(true);
+    setEditLessonError(null);
 
-    const updated = localLessons.map((l) => {
-      if (l.id === editingLessonId) {
-        const updatedLesson: ClassroomLesson = {
-          ...l,
-          chapter: editLessonChapter.trim(),
-          title: editLessonTitle.trim(),
-          description: editLessonDesc.trim(),
-          theoryContent: editLessonTheory.trim(),
-          practiceContent: editLessonPractice.trim(),
-          exercisesContent: editLessonPractice.trim(),
-          content: editLessonTheory.trim(),
-          updatedAt: new Date().toISOString().split('T')[0],
-          exercisesCount: Number(editLessonExercisesCount) || 10,
-          externalLink: editLessonExternalLink.trim() || undefined,
-          pdfAttachment: editLessonPdfFile || undefined,
-          practicePdfAttachment: editLessonPracticePdfFile || undefined,
-          attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
-        };
+    try {
+      let finalLessonPdf = editLessonPdfFile ? { ...editLessonPdfFile } : null;
+      let finalPracticePdf = editLessonPracticePdfFile ? { ...editLessonPracticePdfFile } : null;
 
-        if (selectedLessonDetail?.id === editingLessonId) {
-          setSelectedLessonDetail(updatedLesson);
+      // 1. Tải lên máy chủ nếu có file PDF bài học mà chưa có URL máy chủ
+      if (finalLessonPdf && !finalLessonPdf.fileUrl && finalLessonPdf.fileData) {
+        try {
+          const uploadRes = await dbUploadPdfFile(finalLessonPdf.fileName, finalLessonPdf.fileData);
+          if (uploadRes.success && uploadRes.fileUrl) {
+            finalLessonPdf.fileUrl = uploadRes.fileUrl;
+            finalLessonPdf.fileSize = uploadRes.fileSize || finalLessonPdf.fileSize;
+          }
+        } catch (uploadErr) {
+          console.warn('Không thể tải file PDF bài học lên máy chủ:', uploadErr);
         }
-        return updatedLesson;
       }
-      return l;
-    });
 
-    setLocalLessons(updated);
-    const updatedLesson = updated.find((l) => l.id === editingLessonId);
-    if (updatedLesson && onSaveLesson) {
-      onSaveLesson(updatedLesson);
-    }
-    if (onUpdateLessons) {
-      onUpdateLessons(updated);
-    }
+      // 2. Tải lên máy chủ nếu có file PDF luyện tập mà chưa có URL máy chủ
+      if (finalPracticePdf && !finalPracticePdf.fileUrl && finalPracticePdf.fileData) {
+        try {
+          const uploadRes = await dbUploadPdfFile(finalPracticePdf.fileName, finalPracticePdf.fileData);
+          if (uploadRes.success && uploadRes.fileUrl) {
+            finalPracticePdf.fileUrl = uploadRes.fileUrl;
+            finalPracticePdf.fileSize = uploadRes.fileSize || finalPracticePdf.fileSize;
+          }
+        } catch (uploadErr) {
+          console.warn('Không thể tải file PDF luyện tập lên máy chủ:', uploadErr);
+        }
+      }
 
-    setShowEditLessonModal(false);
-    setLessonActionSuccess(`Đã cập nhật bài học "${editLessonTitle.trim()}" thành công!`);
-    setTimeout(() => setLessonActionSuccess(null), 3500);
+      // 3. Làm sạch fileAttachment không chứa chuỗi base64 khổng lồ
+      const cleanLessonPdf = finalLessonPdf
+        ? {
+            fileName: finalLessonPdf.fileName,
+            fileSize: finalLessonPdf.fileSize,
+            fileUrl: finalLessonPdf.fileUrl || '',
+            fileData: '',
+          }
+        : undefined;
+
+      const cleanPracticePdf = finalPracticePdf
+        ? {
+            fileName: finalPracticePdf.fileName,
+            fileSize: finalPracticePdf.fileSize,
+            fileUrl: finalPracticePdf.fileUrl || '',
+            fileData: '',
+          }
+        : undefined;
+
+      const attachmentsList: { name: string; type: 'pdf' | 'image' | 'link'; url: string; size?: string }[] = [];
+      if (cleanLessonPdf && cleanLessonPdf.fileUrl) {
+        attachmentsList.push({
+          name: cleanLessonPdf.fileName,
+          type: 'pdf' as const,
+          url: cleanLessonPdf.fileUrl,
+          size: cleanLessonPdf.fileSize,
+        });
+      }
+      if (cleanPracticePdf && cleanPracticePdf.fileUrl) {
+        attachmentsList.push({
+          name: cleanPracticePdf.fileName,
+          type: 'pdf' as const,
+          url: cleanPracticePdf.fileUrl,
+          size: cleanPracticePdf.fileSize,
+        });
+      }
+      if (editLessonExternalLink.trim()) {
+        attachmentsList.push({
+          name: 'Link tài liệu trực tuyến',
+          type: 'link' as const,
+          url: editLessonExternalLink.trim(),
+          size: 'Web',
+        });
+      }
+
+      const existingLesson = localLessons.find((l) => l.id === editingLessonId);
+      const updatedLesson: ClassroomLesson = {
+        ...(existingLesson || ({} as any)),
+        id: editingLessonId,
+        classId: existingLesson?.classId || currentClass?.id || '',
+        chapter: editLessonChapter.trim(),
+        title: editLessonTitle.trim(),
+        description: editLessonDesc.trim(),
+        theoryContent: editLessonTheory.trim(),
+        practiceContent: editLessonPractice.trim(),
+        exercisesContent: editLessonPractice.trim(),
+        content: editLessonTheory.trim(),
+        updatedAt: new Date().toISOString().split('T')[0],
+        exercisesCount: Number(editLessonExercisesCount) || 10,
+        externalLink: editLessonExternalLink.trim() || undefined,
+        pdfAttachment: cleanLessonPdf,
+        practicePdfAttachment: cleanPracticePdf,
+        attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
+      };
+
+      setLocalLessons((prev) => prev.map((l) => (l.id === editingLessonId ? updatedLesson : l)));
+      if (selectedLessonDetail?.id === editingLessonId) {
+        setSelectedLessonDetail(updatedLesson);
+      }
+
+      if (onSaveLesson) {
+        await onSaveLesson(updatedLesson);
+      }
+
+      setShowEditLessonModal(false);
+      setLessonActionSuccess(`Đã cập nhật bài học "${updatedLesson.title}" thành công!`);
+      setTimeout(() => setLessonActionSuccess(null), 3500);
+    } catch (err: any) {
+      console.error('Lỗi khi cập nhật bài học:', err);
+      let errMsg = 'Có lỗi xảy ra khi cập nhật bài học!';
+      if (err?.message) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed && (parsed.error || parsed.operationType)) {
+            errMsg = `Lỗi Firestore [${parsed.operationType} ${parsed.path || ''}]: ${parsed.error}`;
+          } else {
+            errMsg = err.message;
+          }
+        } catch {
+          errMsg = err.message;
+        }
+      }
+      setEditLessonError(errMsg);
+    } finally {
+      setIsSubmittingLesson(false);
+    }
   };
 
   // Helper hiển thị văn bản có công thức Toán KaTeX
@@ -3498,10 +3645,20 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                  disabled={isSubmittingLesson}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <CheckCircle2 size={15} />
-                  <span>Đăng Tải Bài Học Lên Lớp</span>
+                  {isSubmittingLesson ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>Đang Tải & Đăng Bài...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={15} />
+                      <span>Đăng Tải Bài Học Lên Lớp</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -3775,10 +3932,20 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                  disabled={isSubmittingLesson}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <Save size={15} />
-                  <span>Lưu Thay Đổi Bài Học</span>
+                  {isSubmittingLesson ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>Đang Lưu Thay Đổi...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save size={15} />
+                      <span>Lưu Thay Đổi Bài Học</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

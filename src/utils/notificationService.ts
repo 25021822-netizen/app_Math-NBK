@@ -7,7 +7,7 @@ export interface PushNotificationItem {
   id: string;
   title: string;
   message: string;
-  type: 'exam_published' | 'exam_graded' | 'chat_message' | 'system';
+  type: 'exam_published' | 'exam_graded' | 'chat_message' | 'system' | 'error';
   timestamp: string;
   isRead: boolean;
   targetTab?: string;
@@ -16,7 +16,7 @@ export interface PushNotificationItem {
 }
 
 // Phát âm thanh báo hiệu bằng Web Audio API (không cần tải file ngoài)
-export const playNotificationChime = (type: 'published' | 'graded' | 'general' = 'general') => {
+export const playNotificationChime = (type: 'published' | 'graded' | 'error' | 'general' = 'general') => {
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
@@ -91,7 +91,7 @@ export const triggerPushNotification = async (
   title: string,
   options: {
     message: string;
-    type: 'exam_published' | 'exam_graded' | 'chat_message' | 'system';
+    type: 'exam_published' | 'exam_graded' | 'chat_message' | 'system' | 'error';
     targetTab?: string;
     examId?: string;
     score?: number;
@@ -110,7 +110,15 @@ export const triggerPushNotification = async (
   };
 
   // 1. Phát âm thanh chuông báo
-  playNotificationChime(options.type === 'exam_graded' ? 'graded' : options.type === 'exam_published' ? 'published' : 'general');
+  playNotificationChime(
+    options.type === 'exam_graded'
+      ? 'graded'
+      : options.type === 'exam_published'
+      ? 'published'
+      : options.type === 'error'
+      ? 'error'
+      : 'general'
+  );
 
   // 2. Gửi Web Push Notification nếu được cấp quyền
   try {
