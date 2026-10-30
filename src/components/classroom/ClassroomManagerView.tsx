@@ -3,6 +3,7 @@ import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatM
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
+import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import {
   Users,
   UserPlus,
@@ -65,6 +66,11 @@ import {
   Maximize2,
   MessageCircle,
   Loader2,
+  Lock,
+  Unlock,
+  Clock,
+  KeyRound,
+  Shield,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -88,6 +94,7 @@ interface ClassroomManagerViewProps {
   onUpdateLessons?: (updated: ClassroomLesson[]) => void;
   onSaveLesson?: (lesson: ClassroomLesson) => void;
   onDeleteLesson?: (lessonId: string) => void;
+  onDeleteExam?: (examId: string) => void;
 }
 
 export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
@@ -111,8 +118,37 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onUpdateLessons,
   onSaveLesson,
   onDeleteLesson,
+  onDeleteExam,
 }) => {
-  const [selectedClassId, setSelectedClassId] = useState<string>(classrooms[0]?.id || '');
+  // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp (Chỉ người trong nhóm mới được xem nội dung)
+  const isMemberOfClass = (cls: Classroom | undefined | null): boolean => {
+    if (!cls) return false;
+    if (userRole === 'admin') return true;
+    if (userRole === 'teacher') {
+      return cls.teacherId === currentUserId || !cls.teacherId;
+    }
+    // Học sinh bắt buộc phải nằm trong danh sách studentIds đã được phê duyệt
+    return Boolean(cls.studentIds && cls.studentIds.includes(currentUserId));
+  };
+
+  // 2. Kiểm tra học sinh đang ở trạng thái chờ duyệt vào lớp
+  const isPendingApprovalInClass = (cls: Classroom | undefined | null): boolean => {
+    if (!cls || userRole !== 'student') return false;
+    return Boolean(cls.pendingStudentIds && cls.pendingStudentIds.includes(currentUserId));
+  };
+
+  // Khởi tạo selectedClassId: ưu tiên lớp mà người dùng thực sự là thành viên, không tự ý gán lớp lạ
+  const [selectedClassId, setSelectedClassId] = useState<string>(() => {
+    if (userRole === 'student') {
+      const myClasses = classrooms.filter((cls) => cls.studentIds && cls.studentIds.includes(currentUserId));
+      return myClasses[0]?.id || '';
+    }
+    if (userRole === 'teacher') {
+      const myClasses = classrooms.filter((cls) => cls.teacherId === currentUserId);
+      return myClasses[0]?.id || classrooms[0]?.id || '';
+    }
+    return classrooms[0]?.id || '';
+  });
   const [activeRightTab, setActiveRightTab] = useState<'curriculum' | 'chat' | 'students' | 'approvals'>('curriculum');
   const [approvalActionSuccess, setApprovalActionSuccess] = useState<string | null>(null);
   const [localLessons, setLocalLessons] = useState<ClassroomLesson[]>(classroomLessons || SAMPLE_CLASSROOM_LESSONS);
@@ -120,14 +156,44 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [selectedLessonDetail, setSelectedLessonDetail] = useState<ClassroomLesson | null>(null);
   const [lessonActionSuccess, setLessonActionSuccess] = useState<string | null>(null);
 
-  // Tự động chọn lớp đầu tiên nếu chưa chọn hoặc lớp bị thay đổi
+  // Modal xác nhận xóa bài học & xóa đề thi vĩnh viễn (kèm cảnh báo dữ liệu liên quan bị xóa)
+  const [lessonToDelete, setLessonToDelete] = useState<ClassroomLesson | null>(null);
+  const [examToDeletePermanently, setExamToDeletePermanently] = useState<Exam | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState<boolean>(false);
+
+  // Tự động chọn lớp đầu tiên thuộc quyền truy cập của người dùng
   useEffect(() => {
     if (classrooms.length > 0) {
-      if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
-        setSelectedClassId(classrooms[0].id);
+      if (userRole === 'student') {
+        const enrolled = classrooms.filter((cls) => cls.studentIds && cls.studentIds.includes(currentUserId));
+        if (enrolled.length > 0) {
+          if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
+            setSelectedClassId(enrolled[0].id);
+          }
+        } else {
+          // Chưa tham gia lớp nào -> không auto chọn lớp để lộ nội dung
+          if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
+            setSelectedClassId('');
+          }
+        }
+      } else if (userRole === 'teacher') {
+        const myClasses = classrooms.filter((cls) => cls.teacherId === currentUserId);
+        if (myClasses.length > 0) {
+          if (!selectedClassId || !myClasses.some((c) => c.id === selectedClassId)) {
+            setSelectedClassId(myClasses[0].id);
+          }
+        } else {
+          if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
+            setSelectedClassId(classrooms[0].id);
+          }
+        }
+      } else {
+        if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
+          setSelectedClassId(classrooms[0].id);
+        }
       }
     }
-  }, [classrooms, selectedClassId]);
+  }, [classrooms, selectedClassId, currentUserId, userRole]);
 
   // Đồng bộ Real-Time danh sách bài học chuyên đề từ máy khác qua Firestore
   useEffect(() => {
@@ -321,12 +387,14 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     };
   });
 
-  // Lớp học đang chọn
-  const currentClass = classrooms.find((c) => c.id === selectedClassId) || classrooms[0];
+  // Lớp học đang chọn (trả về null nếu chưa chọn hoặc id không tồn tại)
+  const currentClass = selectedClassId ? (classrooms.find((c) => c.id === selectedClassId) || null) : null;
+  const isCurrentClassMember = isMemberOfClass(currentClass);
+  const isCurrentClassPending = isPendingApprovalInClass(currentClass);
 
-  // Danh sách tin nhắn lớp học hiện tại (Hợp nhất tức thời Firestore và Bộ nhớ đệm)
+  // Danh sách tin nhắn lớp học hiện tại (Chỉ tải khi là thành viên hợp lệ)
   const currentClassMessages = useMemo(() => {
-    if (!currentClass) return [];
+    if (!currentClass || !isCurrentClassMember) return [];
     const local = localMessages[currentClass.id] || [];
     const remote = classroomMessages?.[currentClass.id] || [];
     const map = new Map<string, ClassroomChatMessage>();
@@ -335,12 +403,12 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     return Array.from(map.values()).sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
-  }, [currentClass, localMessages, classroomMessages]);
+  }, [currentClass, isCurrentClassMember, localMessages, classroomMessages]);
 
   // Danh sách bài học và chương học thuộc lớp đang chọn (Mục lục lớp)
-  // Tự động hợp nhất cả classroomLessons (từ props / Firestore Sync) và localLessons để cập nhật ngay lập tức
+  // Chỉ tải khi người dùng là thành viên chính thức, và CHỈ hiển thị đúng bài học của lớp này (không dùng loose filter classId === 'all')
   const currentClassLessons = useMemo(() => {
-    if (!currentClass) return [];
+    if (!currentClass || !isCurrentClassMember) return [];
     const all = [...(classroomLessons || []), ...localLessons];
     const uniqueMap = new Map<string, ClassroomLesson>();
     all.forEach((l) => {
@@ -349,11 +417,9 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     return Array.from(uniqueMap.values()).filter(
       (l) =>
         l.classId === currentClass.id ||
-        (currentClass.code && l.classId === currentClass.code) ||
-        !l.classId ||
-        l.classId === 'all'
+        (currentClass.code && l.classId === currentClass.code)
     );
-  }, [currentClass, localLessons, classroomLessons]);
+  }, [currentClass, isCurrentClassMember, localLessons, classroomLessons]);
 
   // Tự động mở rộng các chương khi có bài học mới xuất hiện để học sinh thấy ngay trước mắt
   useEffect(() => {
@@ -379,45 +445,51 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   // Danh sách toàn bộ học sinh đăng ký trong hệ thống
   const registeredStudents: UserProfile[] = (allUsers || []).filter((u) => u.role === 'student');
 
-  // Danh sách học sinh thuộc lớp đang chọn (tra từ allUsers đồng bộ Real-Time)
-  const enrolledStudents: UserProfile[] = (currentClass?.studentIds || []).map((id) => {
-    const user = allUsers.find((u) => u.id === id);
-    if (user) return user;
-    return {
-      id,
-      name: `Học sinh (${id})`,
-      email: `${id}@thpt-nbk.edu.vn`,
-      role: 'student' as UserRole,
-      tier: 'free' as const,
-      xp: 450,
-      streakDays: 1,
-      lastActiveDate: new Date().toISOString().split('T')[0],
-      dailyScanCount: 0,
-      maxDailyScans: 10,
-      grade: currentClass?.grade || 12,
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${id}`,
-    };
-  });
+  // Danh sách học sinh thuộc lớp đang chọn (chỉ trả về danh sách nếu người dùng là thành viên hợp lệ)
+  const enrolledStudents: UserProfile[] = useMemo(() => {
+    if (!currentClass || !isCurrentClassMember) return [];
+    return (currentClass.studentIds || []).map((id) => {
+      const user = allUsers.find((u) => u.id === id);
+      if (user) return user;
+      return {
+        id,
+        name: `Học sinh (${id})`,
+        email: `${id}@thpt-nbk.edu.vn`,
+        role: 'student' as UserRole,
+        tier: 'free' as const,
+        xp: 450,
+        streakDays: 1,
+        lastActiveDate: new Date().toISOString().split('T')[0],
+        dailyScanCount: 0,
+        maxDailyScans: 10,
+        grade: currentClass.grade || 12,
+        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${id}`,
+      };
+    });
+  }, [currentClass, isCurrentClassMember, allUsers]);
 
-  // Danh sách học sinh chờ giáo viên phê duyệt vào lớp
-  const pendingStudents = (currentClass?.pendingStudentIds || []).map((id) => {
-    const existing = allUsers.find((u) => u.id === id);
-    if (existing) return existing;
-    return {
-      id,
-      name: `Học sinh (${id})`,
-      email: `${id}@thpt-nbk.edu.vn`,
-      role: 'student' as UserRole,
-      tier: 'free' as const,
-      xp: 450,
-      streakDays: 1,
-      lastActiveDate: new Date().toISOString().split('T')[0],
-      dailyScanCount: 0,
-      maxDailyScans: 10,
-      grade: currentClass.grade || 12,
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${id}`,
-    };
-  });
+  // Danh sách học sinh chờ giáo viên phê duyệt vào lớp (chỉ giáo viên và admin mới xem)
+  const pendingStudents: UserProfile[] = useMemo(() => {
+    if (!currentClass || (userRole === 'student' && !isCurrentClassMember)) return [];
+    return (currentClass.pendingStudentIds || []).map((id) => {
+      const existing = allUsers.find((u) => u.id === id);
+      if (existing) return existing;
+      return {
+        id,
+        name: `Học sinh (${id})`,
+        email: `${id}@thpt-nbk.edu.vn`,
+        role: 'student' as UserRole,
+        tier: 'free' as const,
+        xp: 450,
+        streakDays: 1,
+        lastActiveDate: new Date().toISOString().split('T')[0],
+        dailyScanCount: 0,
+        maxDailyScans: 10,
+        grade: currentClass.grade || 12,
+        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${id}`,
+      };
+    });
+  }, [currentClass, userRole, isCurrentClassMember, allUsers]);
 
   // Tất cả thành viên trong lớp (giáo viên + học sinh) để tag tên (@mention)
   const classTeacherUser = allUsers.find((u) => u.id === currentClass?.teacherId) || {
@@ -427,20 +499,23 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=TeacherMinh',
   };
 
-  const classMembersForMention = [
-    {
-      id: classTeacherUser.id,
-      name: classTeacherUser.name,
-      role: 'teacher' as UserRole,
-      avatar: (classTeacherUser as any).avatar,
-    },
-    ...enrolledStudents.map((s) => ({
-      id: s.id,
-      name: s.name,
-      role: 'student' as UserRole,
-      avatar: s.avatar,
-    })),
-  ];
+  const classMembersForMention = useMemo(() => {
+    if (!currentClass || !isCurrentClassMember) return [];
+    return [
+      {
+        id: classTeacherUser.id,
+        name: classTeacherUser.name,
+        role: 'teacher' as UserRole,
+        avatar: (classTeacherUser as any).avatar,
+      },
+      ...enrolledStudents.map((s) => ({
+        id: s.id,
+        name: s.name,
+        role: 'student' as UserRole,
+        avatar: s.avatar,
+      })),
+    ];
+  }, [currentClass, isCurrentClassMember, classTeacherUser, enrolledStudents]);
 
   // Danh sách học sinh chưa có trong lớp để giáo viên thêm vào
   const availableStudentsToAdd = registeredStudents.filter(
@@ -1209,18 +1284,50 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     );
   };
 
-  // 3d. Giáo viên xóa bài học khỏi mục lục lớp
-  const handleDeleteLesson = (lessonId: string, lessonTitle: string) => {
-    const updated = localLessons.filter((l) => l.id !== lessonId);
-    setLocalLessons(updated);
-    if (onDeleteLesson) {
-      onDeleteLesson(lessonId);
+  // 3d. Xác nhận xóa bài học và TOÀN BỘ dữ liệu liên quan (Lý thuyết, bài tập, file PDF, tiến độ học sinh)
+  const handleConfirmDeleteLesson = async () => {
+    if (!lessonToDelete) return;
+    setIsDeletingItem(true);
+    try {
+      const id = lessonToDelete.id;
+      const title = lessonToDelete.title;
+      const updated = localLessons.filter((l) => l.id !== id);
+      setLocalLessons(updated);
+      if (onDeleteLesson) {
+        await onDeleteLesson(id);
+      }
+      if (onUpdateLessons) {
+        onUpdateLessons(updated);
+      }
+      setLessonActionSuccess(`Đã xóa vĩnh viễn bài học "${title}" và toàn bộ tài liệu liên quan thành công!`);
+      setTimeout(() => setLessonActionSuccess(null), 3500);
+      setLessonToDelete(null);
+    } catch (err) {
+      console.error('Lỗi khi xóa bài học:', err);
+    } finally {
+      setIsDeletingItem(false);
     }
-    if (onUpdateLessons) {
-      onUpdateLessons(updated);
+  };
+
+  // 3d-2. Xác nhận xóa vĩnh viễn đề thi và TOÀN BỘ dữ liệu liên quan (Bài nộp, Bảng điểm, Cheat Logs, Giao đề)
+  const handleConfirmDeleteExamPermanently = async () => {
+    if (!examToDeletePermanently) return;
+    setIsDeletingItem(true);
+    try {
+      const id = examToDeletePermanently.id;
+      const title = examToDeletePermanently.title;
+      if (onDeleteExam) {
+        await onDeleteExam(id);
+      }
+      setExamActionSuccess(`Đã xóa vĩnh viễn đề thi "${title}" cùng toàn bộ kết quả nộp bài của học sinh!`);
+      setTimeout(() => setExamActionSuccess(null), 4000);
+      setExamToDeletePermanently(null);
+      setExamToRemoveFromClass(null);
+    } catch (err) {
+      console.error('Lỗi khi xóa đề thi:', err);
+    } finally {
+      setIsDeletingItem(false);
     }
-    setLessonActionSuccess(`Đã xóa bài học "${lessonTitle}" khỏi mục lục!`);
-    setTimeout(() => setLessonActionSuccess(null), 3000);
   };
 
   // 3e. Học sinh đánh dấu hoàn thành bài học
@@ -1319,6 +1426,51 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     });
     setJoinCodeInput('');
     setTimeout(() => setJoinMessage(null), 4000);
+  };
+
+  // 4a. Học sinh gửi yêu cầu xin vào lớp trực tiếp từ nút bấm
+  const handleRequestJoinClassById = (classId: string) => {
+    const target = classrooms.find((c) => c.id === classId);
+    if (!target) return;
+    if (target.studentIds.includes(currentUserId)) return;
+
+    if (target.pendingStudentIds?.includes(currentUserId)) {
+      setJoinMessage({
+        text: `Bạn đã gửi yêu cầu tham gia "${target.name}" trước đó. Vui lòng chờ thầy cô duyệt nhé!`,
+        type: 'error',
+      });
+      setTimeout(() => setJoinMessage(null), 4000);
+      return;
+    }
+
+    if (target.requiresApproval !== false) {
+      const updated = classrooms.map((c) => {
+        if (c.id === target.id) {
+          const nextPending = Array.from(new Set([...(c.pendingStudentIds || []), currentUserId]));
+          return { ...c, pendingStudentIds: nextPending };
+        }
+        return c;
+      });
+      onUpdateClassrooms(updated);
+      setJoinMessage({
+        text: `Đã gửi yêu cầu tham gia "${target.name}". Vui lòng chờ giáo viên duyệt!`,
+        type: 'success',
+      });
+      setTimeout(() => setJoinMessage(null), 4500);
+    } else {
+      const updated = classrooms.map((c) => {
+        if (c.id === target.id) {
+          return { ...c, studentIds: [...c.studentIds, currentUserId] };
+        }
+        return c;
+      });
+      onUpdateClassrooms(updated);
+      setJoinMessage({
+        text: `Bạn đã tham gia thành công vào lớp "${target.name}"!`,
+        type: 'success',
+      });
+      setTimeout(() => setJoinMessage(null), 4000);
+    }
   };
 
   // 4b. Giáo viên duyệt học sinh vào lớp (Phê duyệt đơn lẻ)
@@ -1438,7 +1590,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const handleSendChatMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessageText.trim() && !attachedImage) return;
-    if (!currentClass) return;
+    if (!currentClass || !isCurrentClassMember) return;
 
     // Tìm các tag @tên trong nội dung
     const mentions: ChatMention[] = [];
@@ -1479,7 +1631,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
   // Xử lý thả / hủy phản ứng Emoji trên từng tin nhắn
   const handleToggleReaction = (msgId: string, emoji: string) => {
-    if (!currentClass) return;
+    if (!currentClass || !isCurrentClassMember) return;
     setLocalMessages((prev) => {
       const list = prev[currentClass.id] || [];
       const updated = list.map((msg) => {
@@ -1676,6 +1828,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       <div className="flex items-center gap-3 overflow-x-auto pb-2">
         {classrooms.map((cls) => {
           const isSelected = cls.id === currentClass?.id;
+          const isMember = isMemberOfClass(cls);
+          const isPending = isPendingApprovalInClass(cls);
           return (
             <button
               key={cls.id}
@@ -1686,17 +1840,51 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300'
               }`}
             >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${
-                    isSelected ? 'bg-blue-800 text-blue-100' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  Khối {cls.grade}
-                </span>
-                <span className={`text-[11px] font-mono ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
-                  #{cls.code}
-                </span>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${
+                      isSelected ? 'bg-blue-800 text-blue-100' : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    Khối {cls.grade}
+                  </span>
+                  <span className={`text-[11px] font-mono ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
+                    #{cls.code}
+                  </span>
+                </div>
+
+                {userRole === 'student' && (
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                      isMember
+                        ? isSelected
+                          ? 'bg-emerald-500/30 text-emerald-100'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : isPending
+                        ? isSelected
+                          ? 'bg-amber-500/30 text-amber-100'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : isSelected
+                        ? 'bg-slate-800/40 text-slate-200'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {isMember ? (
+                      <>
+                        <Unlock size={10} /> Đã vào
+                      </>
+                    ) : isPending ? (
+                      <>
+                        <Clock size={10} /> Chờ duyệt
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={10} /> Khóa
+                      </>
+                    )}
+                  </span>
+                )}
               </div>
               <h4 className="font-bold text-sm mt-1">{cls.name}</h4>
               <span className={`text-[11px] mt-0.5 block ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
@@ -1707,8 +1895,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         })}
       </div>
 
-      {/* Selected Classroom Details */}
-      {currentClass && (
+      {/* Selected Classroom Details (Chỉ hiển thị khi đã là thành viên chính thức của nhóm lớp) */}
+      {currentClass && isCurrentClassMember && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Classroom Info & Assigned Exams (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
@@ -1895,11 +2083,20 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => setExamToRemoveFromClass(examObj)}
-                                      className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
-                                      title="Xóa đề này khỏi danh sách đề đã giao cho nhóm lớp"
+                                      className="px-2 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
+                                      title="Gỡ đề thi này khỏi danh sách đề đã giao cho nhóm lớp"
                                     >
-                                      <Trash2 size={13} />
-                                      <span>Xóa khỏi lớp</span>
+                                      <X size={12} />
+                                      <span>Gỡ khỏi lớp</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setExamToDeletePermanently(examObj)}
+                                      className="px-2 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
+                                      title="Xóa vĩnh viễn đề thi và toàn bộ dữ liệu bài nộp liên quan"
+                                    >
+                                      <Trash2 size={12} />
+                                      <span>Xóa đề thi</span>
                                     </button>
                                   </div>
                                 )}
@@ -2269,9 +2466,9 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
                                             <button
                                               type="button"
-                                              onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
+                                              onClick={() => setLessonToDelete(lesson)}
                                               className="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors"
-                                              title="Xóa bài học này khỏi mục lục lớp"
+                                              title="Xóa bài học này và toàn bộ dữ liệu liên quan"
                                             >
                                               <Trash2 size={15} />
                                             </button>
@@ -3083,6 +3280,142 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         </div>
       )}
 
+      {/* Màn hình bảo mật khóa lớp học khi người dùng chưa là thành viên */}
+      {currentClass && !isCurrentClassMember && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 shadow-sm text-center max-w-2xl mx-auto space-y-6 animate-in fade-in">
+          <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shadow-xs">
+            {isCurrentClassPending ? <Clock size={38} className="animate-pulse" /> : <Lock size={38} />}
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold font-mono">
+              <span>Mã Lớp: {currentClass.code}</span>
+              <span>·</span>
+              <span>Khối {currentClass.grade}</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+              Lớp {currentClass.name}
+            </h2>
+            <p className="text-slate-500 text-sm max-w-lg mx-auto">
+              {isCurrentClassPending
+                ? 'Yêu cầu gia nhập lớp học của bạn đã được gửi tới giáo viên. Vui lòng chờ thầy cô phê duyệt để truy cập toàn bộ bài học, tài liệu PDF và trao đổi thảo luận!'
+                : 'Nội dung nhóm lớp này được bảo mật riêng tư. Chỉ những học sinh là thành viên chính thức mới có quyền xem bài học, đề thi và tham gia trao đổi thảo luận.'}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left max-w-md mx-auto space-y-2 text-xs">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+              <span className="text-slate-500">Giáo viên phụ trách:</span>
+              <span className="font-bold text-slate-800">{currentClass.teacherName}</span>
+            </div>
+            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+              <span className="text-slate-500">Sĩ số lớp hiện tại:</span>
+              <span className="font-bold text-slate-800">{currentClass.studentIds.length} học sinh</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Trạng thái của bạn:</span>
+              <span
+                className={`font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                  isCurrentClassPending
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-rose-100 text-rose-800'
+                }`}
+              >
+                {isCurrentClassPending ? (
+                  <>
+                    <Clock size={12} /> Đang chờ giáo viên duyệt
+                  </>
+                ) : (
+                  <>
+                    <Lock size={12} /> Chưa là thành viên
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Hành động xin vào lớp */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            {isCurrentClassPending ? (
+              <div className="px-6 py-3 rounded-2xl bg-amber-50 text-amber-800 font-bold text-sm border border-amber-200 flex items-center gap-2">
+                <Clock size={16} />
+                <span>Yêu cầu đang chờ xét duyệt — Vui lòng quay lại sau!</span>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleRequestJoinClassById(currentClass.id)}
+                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all"
+                >
+                  <KeyRound size={16} />
+                  <span>Gửi Yêu Cầu Xin Vào Lớp</span>
+                </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    value={joinCodeInput}
+                    onChange={(e) => setJoinCodeInput(e.target.value)}
+                    placeholder="Hoặc nhập mã lớp..."
+                    className="h-11 px-3.5 rounded-xl border border-slate-300 text-xs font-mono font-bold uppercase focus:border-blue-600 focus:outline-none w-full sm:w-44"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleJoinClassByCode}
+                    className="h-11 px-4 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs shrink-0 shadow-xs transition-colors"
+                  >
+                    Vào Ngay
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Màn hình khi học sinh chưa tham gia lớp nào (hoặc chưa chọn lớp) */}
+      {!currentClass && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 shadow-sm text-center max-w-2xl mx-auto space-y-6 animate-in fade-in">
+          <div className="w-20 h-20 mx-auto rounded-3xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
+            <GraduationCap size={40} />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+              Chào Mừng Bạn Đến Với Không Gian Lớp Học
+            </h2>
+            <p className="text-slate-500 text-sm max-w-md mx-auto">
+              Bạn hiện chưa tham gia nhóm lớp nào. Vui lòng nhập mã lớp do thầy cô cung cấp để vào lớp và bắt đầu học tập.
+            </p>
+          </div>
+
+          <div className="max-w-md mx-auto p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+            <label className="text-xs font-bold text-slate-700 block text-left">
+              Nhập mã tham gia lớp học:
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={joinCodeInput}
+                onChange={(e) => setJoinCodeInput(e.target.value)}
+                placeholder="Ví dụ: NBK-12A1"
+                className="h-11 flex-1 px-4 rounded-xl border border-slate-300 text-sm font-mono font-bold uppercase focus:border-blue-600 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleJoinClassByCode}
+                className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xs transition-colors shrink-0"
+              >
+                Vào Lớp
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 text-left">
+              🔒 Lưu ý bảo mật: Chỉ thành viên chính thức mới có thể xem bài học, tải tài liệu PDF và tham gia thảo luận.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* MODAL: LIGHTBOX PHÓNG TO ẢNH TRONG CHAT                                   */}
       {/* ========================================================================= */}
@@ -3367,25 +3700,67 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setExamToRemoveFromClass(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                className="py-2.5 px-4 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 order-3 sm:order-1"
               >
                 Hủy Bỏ
               </button>
               <button
                 type="button"
                 onClick={handleConfirmRemoveExamFromClass}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs order-1 sm:order-2 flex items-center justify-center gap-1"
               >
-                Xác Nhận Xóa
+                <X size={13} />
+                <span>Chỉ Gỡ Khỏi Lớp Này</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = examToRemoveFromClass;
+                  setExamToRemoveFromClass(null);
+                  setExamToDeletePermanently(target);
+                }}
+                className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs order-2 sm:order-3 flex items-center justify-center gap-1"
+                title="Xóa đề thi vĩnh viễn khỏi toàn bộ hệ thống"
+              >
+                <Trash2 size={13} />
+                <span>Xóa Vĩnh Viễn Đề</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL HỎI LẠI KHI XÓA BÀI HỌC VÀ TOÀN BỘ DỮ LIỆU LIÊN QUAN                */}
+      {/* ========================================================================= */}
+      <DeleteConfirmationModal
+        isOpen={Boolean(lessonToDelete)}
+        itemType="lesson"
+        title="Xác Nhận Xóa Bài Học"
+        itemName={lessonToDelete?.title || ''}
+        itemSubtitle={`Chuyên đề: ${lessonToDelete?.chapter || ''} · Lớp ${currentClass?.name || ''}`}
+        isDeleting={isDeletingItem}
+        onConfirm={handleConfirmDeleteLesson}
+        onCancel={() => setLessonToDelete(null)}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL HỎI LẠI KHI XÓA ĐỀ THI VÀ TOÀN BỘ DỮ LIỆU LIÊN QUAN                */}
+      {/* ========================================================================= */}
+      <DeleteConfirmationModal
+        isOpen={Boolean(examToDeletePermanently)}
+        itemType="exam"
+        title="Xác Nhận Xóa Đề Thi Vĩnh Viễn"
+        itemName={examToDeletePermanently?.title || ''}
+        itemSubtitle={`Khối ${examToDeletePermanently?.grade || 12} · ${examToDeletePermanently?.durationMinutes || 90} phút · ${examToDeletePermanently?.questions?.length || 0} câu hỏi`}
+        isDeleting={isDeletingItem}
+        onConfirm={handleConfirmDeleteExamPermanently}
+        onCancel={() => setExamToDeletePermanently(null)}
+      />
       {/* ========================================================================= */}
       {/* MODAL 5: GIÁO VIÊN ĐĂNG TẢI CHƯƠNG HỌC & BÀI HỌC MỚI (MỤC LỤC LỚP)        */}
       {/* ========================================================================= */}

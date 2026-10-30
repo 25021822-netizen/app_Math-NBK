@@ -478,10 +478,62 @@ export default function App() {
     }
   };
 
-  // Xóa 1 bài học đồng bộ ngay trên Firestore
-  const handleDeleteLesson = (lessonId: string) => {
+  // Xóa 1 bài học và dữ liệu liên quan đồng bộ ngay trên Firestore & Server
+  const handleDeleteLesson = async (lessonId: string) => {
+    const target = classroomLessons.find((l) => l.id === lessonId);
+    const title = target?.title || 'Bài học';
+
     setClassroomLessons((prev) => prev.filter((l) => l.id !== lessonId));
-    dbDeleteLesson(lessonId).catch(console.error);
+    try {
+      await dbDeleteLesson(lessonId);
+      triggerPushNotification('Đã Xóa Bài Học!', {
+        message: `Đã xóa bài học "${title}" và các file tài liệu đính kèm thành công.`,
+        type: 'lesson_published',
+        targetTab: 'classroom',
+      });
+    } catch (err) {
+      console.error('Lỗi khi xóa bài học:', err);
+    }
+  };
+
+  // Xóa 1 đề thi và TOÀN BỘ dữ liệu liên quan (Bài nộp, Bảng điểm, Nhật ký vi phạm, Giao đề lớp)
+  const handleDeleteExam = async (examId: string) => {
+    const target = examsList.find((e) => e.id === examId);
+    const title = target?.title || 'Đề thi';
+
+    // 1. Cập nhật state danh sách đề thi
+    setExamsList((prev) => prev.filter((e) => e.id !== examId));
+
+    // 2. Xóa toàn bộ bài làm / bài nộp của đề thi này trong state
+    setSubmissions((prev) => prev.filter((s) => s.examId !== examId));
+
+    // 3. Xóa toàn bộ nhật ký vi phạm cheatLogs của đề thi này trong state
+    setCheatLogs((prev) => prev.filter((c) => c.examId !== examId));
+
+    // 4. Gỡ đề thi khỏi toàn bộ các nhóm lớp trong state
+    setClassrooms((prev) =>
+      prev.map((cls) => ({
+        ...cls,
+        assignedExamIds: (cls.assignedExamIds || []).filter((id) => id !== examId),
+      }))
+    );
+
+    // 5. Nếu đang kích hoạt đề thi này, chuyển sang đề khác
+    if (activeExamId === examId) {
+      const remaining = examsList.filter((e) => e.id !== examId);
+      setActiveExamId(remaining[0]?.id || '');
+    }
+
+    // 6. Xóa triệt để trên Firestore Database & Server API
+    try {
+      await dbDeleteExam(examId);
+      triggerPushNotification('Đã Xóa Đề Thi!', {
+        message: `Đã xóa đề thi "${title}" cùng toàn bộ bài nộp và dữ liệu liên quan thành công.`,
+        type: 'exam_published',
+      });
+    } catch (err) {
+      console.error('Lỗi khi xóa đề thi:', err);
+    }
   };
 
   // Gửi tin nhắn chat nhóm lớp đồng bộ tức thời qua Firestore & Server
@@ -706,6 +758,7 @@ export default function App() {
             onUpdateLessons={handleUpdateLessons}
             onSaveLesson={handleSaveLesson}
             onDeleteLesson={handleDeleteLesson}
+            onDeleteExam={handleDeleteExam}
           />
         );
       }
@@ -723,6 +776,7 @@ export default function App() {
               setActiveExamId(examId);
               setCurrentTab('exam');
             }}
+            onDeleteExam={handleDeleteExam}
           />
         );
       }
@@ -753,12 +807,18 @@ export default function App() {
         );
       }
 
-      // Default for teacher: Teacher Portal (Tạo đề thi thủ công & Tải PDF)
+      // Default for teacher: Teacher Portal (Tạo đề thi thủ công & Tải PDF & Quản lý đề)
       return (
         <TeacherPortalView
           classrooms={classrooms}
           onPublishExam={handlePublishExam}
           currentUserName={userProfile.name}
+          examsList={examsList}
+          onDeleteExam={handleDeleteExam}
+          onPreviewExam={(exam) => {
+            setActiveExamId(exam.id);
+            setCurrentTab('exam');
+          }}
         />
       );
     }

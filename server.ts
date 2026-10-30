@@ -942,7 +942,7 @@ app.post('/api/db/lesson/save', (req, res) => {
   res.json({ success: true, version: serverDb.version });
 });
 
-// 10c. Xóa 1 bài học khỏi lớp
+// 10c. Xóa 1 bài học khỏi lớp và toàn bộ dữ liệu liên quan
 app.post('/api/db/lesson/delete', (req, res) => {
   const { lessonId } = req.body;
   if (lessonId) {
@@ -977,11 +977,25 @@ app.post('/api/db/exam/save', (req, res) => {
   res.json({ success: true, version: serverDb.version });
 });
 
-// 10f. Xóa 1 đề thi
+// 10f. Xóa 1 đề thi và TOÀN BỘ dữ liệu liên quan (Bài nộp, Bảng điểm, Cheat Logs, Giao đề trong các lớp)
 app.post('/api/db/exam/delete', (req, res) => {
   const { examId } = req.body;
   if (examId) {
+    // 1. Xóa đề thi
     serverDb.exams = (serverDb.exams || []).filter((e: any) => e.id !== examId);
+
+    // 2. Xóa toàn bộ bài làm / bài nộp (submissions) của đề này
+    serverDb.submissions = (serverDb.submissions || []).filter((s: any) => s.examId !== examId);
+
+    // 3. Xóa toàn bộ nhật ký vi phạm quy chế thi (cheatLogs) của đề này
+    serverDb.cheatLogs = (serverDb.cheatLogs || []).filter((c: any) => c.examId !== examId);
+
+    // 4. Gỡ đề thi khỏi danh sách đã giao của toàn bộ các nhóm lớp
+    serverDb.classrooms = (serverDb.classrooms || []).map((cls: any) => ({
+      ...cls,
+      assignedExamIds: (cls.assignedExamIds || []).filter((id: string) => id !== examId),
+    }));
+
     serverDb.version = (serverDb.version || 1) + 1;
     saveDatabase(serverDb);
   }

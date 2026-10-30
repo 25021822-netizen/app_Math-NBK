@@ -639,20 +639,68 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
 }
 
 /**
- * Xóa 1 đề thi khỏi Firestore & Server
+ * Xóa 1 đề thi và TOÀN BỘ dữ liệu liên quan khỏi Firestore & Server
+ * - Xóa bản ghi đề thi (exams)
+ * - Xóa toàn bộ kết quả nộp bài thi (submissions) của học sinh
+ * - Xóa toàn bộ nhật ký vi phạm (cheatLogs) liên quan
+ * - Gỡ mã đề thi khỏi danh sách giao của tất cả các nhóm lớp
  */
 export async function dbDeleteExam(examId: string): Promise<boolean> {
+  // 1. Gửi yêu cầu xóa tới Server API để dọn dẹp file data/database.json
   const serverPromise = fetch('/api/db/exam/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ examId }),
-  }).catch(() => null);
+  }).catch((err) => {
+    console.warn('Lỗi dbDeleteExam Server API:', err);
+    return null;
+  });
 
+  // 2. Xóa triệt để trên Firestore Real-Time Database
   const firestorePromise = (async () => {
     try {
-      await deleteDoc(doc(db, 'exams', examId));
+      // 2a. Xóa document đề thi
+      await deleteDoc(doc(db, 'exams', examId)).catch((e) => console.warn('Lỗi xóa exam doc:', e));
+
+      // 2b. Xóa toàn bộ bài nộp (submissions) của đề thi này
+      try {
+        const subsQuery = query(collection(db, 'submissions'), where('examId', '==', examId));
+        const subsSnap = await getDocs(subsQuery);
+        const subDeletes = subsSnap.docs.map((d) => deleteDoc(d.ref));
+        await Promise.allSettled(subDeletes);
+      } catch (subErr) {
+        console.warn('Lỗi xóa submissions liên quan:', subErr);
+      }
+
+      // 2c. Xóa toàn bộ cheatLogs của đề thi này
+      try {
+        const cheatQuery = query(collection(db, 'cheatLogs'), where('examId', '==', examId));
+        const cheatSnap = await getDocs(cheatQuery);
+        const cheatDeletes = cheatSnap.docs.map((d) => deleteDoc(d.ref));
+        await Promise.allSettled(cheatDeletes);
+      } catch (cheatErr) {
+        console.warn('Lỗi xóa cheatLogs liên quan:', cheatErr);
+      }
+
+      // 2d. Gỡ mã đề thi khỏi danh sách assignedExamIds của các nhóm lớp trên Firestore
+      try {
+        const classSnap = await getDocs(collection(db, 'classrooms'));
+        const classUpdates = classSnap.docs
+          .filter((d) => {
+            const data = d.data();
+            return Array.isArray(data.assignedExamIds) && data.assignedExamIds.includes(examId);
+          })
+          .map((d) => {
+            const data = d.data();
+            const nextAssigned = (data.assignedExamIds || []).filter((id: string) => id !== examId);
+            return updateDoc(d.ref, { assignedExamIds: nextAssigned });
+          });
+        await Promise.allSettled(classUpdates);
+      } catch (clsErr) {
+        console.warn('Lỗi gỡ đề thi khỏi classrooms:', clsErr);
+      }
     } catch (err) {
-      console.warn('Lỗi dbDeleteExam Firestore:', err);
+      console.warn('Lỗi dbDeleteExam Firestore tổng quát:', err);
     }
   })();
 

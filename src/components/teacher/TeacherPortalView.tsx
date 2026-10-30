@@ -32,12 +32,15 @@ import {
   Check,
   Compass,
 } from 'lucide-react';
+import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 
 interface TeacherPortalViewProps {
   onPublishExam?: (newExam: Exam) => void;
   onPreviewExam?: (exam: Exam) => void;
   classrooms?: Classroom[];
   currentUserName?: string;
+  examsList?: Exam[];
+  onDeleteExam?: (examId: string) => void;
 }
 
 export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
@@ -45,9 +48,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   onPreviewExam,
   classrooms = SAMPLE_CLASSROOMS,
   currentUserName = '',
+  examsList = [],
+  onDeleteExam,
 }) => {
-  // Chế độ: 'manual' (Tạo đề thủ công) hoặc 'ai_pdf' (AI Bóc Tách PDF)
-  const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf'>('manual');
+  // Chế độ: 'manual' (Tạo đề thủ công), 'ai_pdf' (AI Bóc Tách PDF) hoặc 'manage_exams' (Quản lý kho đề thi)
+  const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf' | 'manage_exams'>('manual');
+
+  // Modal xác nhận xóa đề thi vĩnh viễn kèm dữ liệu liên quan
+  const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
+  const [isDeletingExam, setIsDeletingExam] = useState<boolean>(false);
 
   // ================= STATE DÀNH CHO TẠO ĐỀ THỦ CÔNG =================
   const [manualTitle, setManualTitle] = useState('');
@@ -377,6 +386,24 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setTimeout(() => setPublishSuccessMessage(null), 3000);
   };
 
+  // Xác nhận xóa vĩnh viễn đề thi và TOÀN BỘ dữ liệu liên quan (Bài nộp, Bảng điểm, Cheat Logs, Giao đề)
+  const handleConfirmDeleteExam = async () => {
+    if (!examToDelete) return;
+    setIsDeletingExam(true);
+    try {
+      if (onDeleteExam) {
+        await onDeleteExam(examToDelete.id);
+      }
+      setPublishSuccessMessage(`Đã xóa vĩnh viễn đề thi "${examToDelete.title}" cùng toàn bộ kết quả nộp bài của học sinh!`);
+      setTimeout(() => setPublishSuccessMessage(null), 4000);
+      setExamToDelete(null);
+    } catch (err) {
+      console.error('Lỗi khi xóa đề thi:', err);
+    } finally {
+      setIsDeletingExam(false);
+    }
+  };
+
   // Tự động phân bổ lại điểm số chuẩn 10.0đ của Bộ GD&ĐT
   const handleAutoNormalizePoints = () => {
     const updated = manualQuestions.map((q) => {
@@ -487,7 +514,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         </div>
 
         {/* Chế độ tạo đề */}
-        <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold w-full md:w-auto">
+        <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold w-full md:w-auto flex-wrap gap-1">
           <button
             onClick={() => setCreationMode('manual')}
             className={`flex-1 md:flex-initial px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
@@ -505,6 +532,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           >
             <FileUp size={15} />
             <span>Tải Lên File PDF AI</span>
+          </button>
+          <button
+            onClick={() => setCreationMode('manage_exams')}
+            className={`flex-1 md:flex-initial px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              creationMode === 'manage_exams' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Layers size={15} />
+            <span>Kho Đề Thi ({examsList.length})</span>
           </button>
         </div>
       </div>
@@ -1597,6 +1633,139 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODE 3: QUẢN LÝ KHO ĐỀ THI ĐÃ XUẤT BẢN                                   */}
+      {/* ========================================================================= */}
+      {creationMode === 'manage_exams' && (
+        <div className="space-y-6 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+              <div>
+                <h3 className="font-extrabold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                  <Layers size={20} className="text-blue-600" />
+                  <span>Danh Sách Đề Thi Đã Xuất Bản ({examsList.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Quản lý kho đề thi, xem thử đề thi và xóa đề thi khỏi hệ thống kèm toàn bộ dữ liệu làm bài.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreationMode('manual')}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto"
+              >
+                <Plus size={15} />
+                <span>Tạo Đề Thi Mới</span>
+              </button>
+            </div>
+
+            {examsList.length === 0 ? (
+              <div className="p-12 text-center space-y-3 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                <FileText size={40} className="mx-auto text-slate-300" />
+                <h4 className="font-bold text-slate-700 text-sm">Chưa có đề thi nào trong kho!</h4>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Hãy nhấn nút "Tự Tạo Đề Thủ Công" hoặc "Tải Lên File PDF AI" để biên soạn đề thi đầu tiên.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {examsList.map((exam) => (
+                  <div
+                    key={exam.id}
+                    className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xs"
+                  >
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-100 text-blue-800">
+                          Khối {exam.grade}
+                        </span>
+                        <h4 className="font-extrabold text-sm text-slate-900 truncate">
+                          {exam.title}
+                        </h4>
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          {exam.totalPoints} điểm
+                        </span>
+                        {exam.maxAttempts && exam.maxAttempts > 0 && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">
+                            Tối đa {exam.maxAttempts} lượt thi
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                        <span>{exam.questions.length} câu hỏi</span>
+                        <span>·</span>
+                        <span>{exam.durationMinutes} phút</span>
+                        <span>·</span>
+                        <span>Người soạn: <strong className="text-slate-700">{exam.createdBy || 'Giáo viên'}</strong></span>
+                        {exam.year && <span>· Năm {exam.year}</span>}
+                      </div>
+
+                      {/* Thông tin phân phối */}
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <span className="font-semibold text-slate-600">Phạm vi giao:</span>
+                        {exam.distributionType === 'repository' ? (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
+                            Kho đề toàn trường
+                          </span>
+                        ) : exam.targetClassIds && exam.targetClassIds.length > 0 ? (
+                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                            Giao cho {exam.targetClassIds.length} lớp (
+                            {classrooms
+                              .filter((c) => exam.targetClassIds?.includes(c.id))
+                              .map((c) => c.name)
+                              .join(', ')}
+                            )
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                            Tất cả lớp học
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                      {onPreviewExam && (
+                        <button
+                          type="button"
+                          onClick={() => onPreviewExam(exam)}
+                          className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+                        >
+                          <Eye size={14} />
+                          <span>Xem Thử Đề</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExamToDelete(exam)}
+                        className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+                        title="Xóa đề thi này và toàn bộ dữ liệu liên quan"
+                      >
+                        <Trash2 size={14} />
+                        <span>Xóa Đề Thi</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL HỎI LẠI KHI XÓA ĐỀ THI VÀ TOÀN BỘ DỮ LIỆU LIÊN QUAN */}
+      <DeleteConfirmationModal
+        isOpen={Boolean(examToDelete)}
+        itemType="exam"
+        title="Xác Nhận Xóa Đề Thi Vĩnh Viễn"
+        itemName={examToDelete?.title || ''}
+        itemSubtitle={`Khối ${examToDelete?.grade || 12} · ${examToDelete?.durationMinutes || 90} phút · ${examToDelete?.questions?.length || 0} câu hỏi`}
+        isDeleting={isDeletingExam}
+        onConfirm={handleConfirmDeleteExam}
+        onCancel={() => setExamToDelete(null)}
+      />
     </div>
   );
 };
