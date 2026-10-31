@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Exam, Question, CheatLog, StudentExamSubmission } from '../../types/math';
-import { SAMPLE_EXAM_BGD } from '../../data/mockData';
 import { gradePart2TrueFalse, validatePart3ShortAnswerFormat, isAnswerEquivalent } from '../../lib/scoringEngine';
 import { MathView } from '../MathView';
 import {
@@ -43,9 +42,22 @@ interface ExamEngineViewProps {
   submissions?: StudentExamSubmission[];
 }
 
+const DUMMY_EMPTY_EXAM: Exam = {
+  id: '',
+  title: 'Chưa có đề thi',
+  grade: 12,
+  year: 2025,
+  durationMinutes: 90,
+  totalPoints: 10,
+  status: 'draft',
+  createdBy: '',
+  createdAt: '',
+  questions: [],
+};
+
 export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   onRecordCheatLog,
-  examsList = [SAMPLE_EXAM_BGD],
+  examsList = [],
   activeExamId,
   onSelectExamId,
   onSubmitExam,
@@ -55,9 +67,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   defaultClassId = 'cls_12a1',
   submissions = [],
 }) => {
-  const currentExam = examsList.find((e) => e.id === activeExamId) || examsList[0] || SAMPLE_EXAM_BGD;
+  const currentExam = examsList.find((e) => e.id === activeExamId) || examsList[0] || DUMMY_EMPTY_EXAM;
   const [exam, setExam] = useState<Exam>(currentExam);
-  const [timeLeft, setTimeLeft] = useState<number>(currentExam.durationMinutes * 60);
+  const [timeLeft, setTimeLeft] = useState<number>((currentExam.durationMinutes || 90) * 60);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [infractionCount, setInfractionCount] = useState<number>(0);
   const [showWarningModal, setShowWarningModal] = useState<boolean>(false);
@@ -412,6 +424,30 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     }
     return true;
   });
+
+  if (examsList.length === 0 || !exam.id) {
+    return (
+      <div className="w-full min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl border border-slate-200 p-8 max-w-md w-full text-center space-y-4 shadow-sm">
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto">
+            <BookOpen size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800">Chưa có đề thi nào trong hệ thống</h2>
+          <p className="text-sm text-slate-500 leading-relaxed">
+            Dữ liệu các đề thi cũ đã được làm sạch hoàn toàn. Thầy cô giáo vui lòng tạo và xuất bản đề thi mới từ mục Tạo Đề Thi hoặc giao đề trong nhóm lớp.
+          </p>
+          {onExitExam && (
+            <button
+              onClick={onExitExam}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              <ArrowLeft size={16} /> Quay lại danh sách lớp học
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-h-screen bg-slate-100 pb-16">

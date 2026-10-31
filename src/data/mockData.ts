@@ -334,120 +334,20 @@ export const SAMPLE_SCAN_RESULTS: ScanResult[] = SAMPLE_OCR_PROBLEMS.map((p) => 
 
 export const SAMPLE_SOCRATIC_MESSAGES: SocraticMessage[] = [];
 
+export const SAMPLE_EXAMS: Exam[] = [];
+
+// Toàn bộ dữ liệu đề thi cũ và câu hỏi mẫu đã được xóa sạch
 export const SAMPLE_EXAM_BGD: Exam = {
-  id: 'exam_bgd_2025_01',
-  title: 'Đề Thi Thử Tốt Nghiệp THPT 2025 - Môn Toán (Mã Đề 101)',
+  id: '',
+  title: '',
   grade: 12,
   year: 2025,
   durationMinutes: 90,
   totalPoints: 10,
-  status: 'approved',
-  createdBy: 'ThS. Trần Văn Minh - Tổ Toán THPT Chuyên',
-  createdAt: '2026-03-15T08:00:00Z',
-  maxAttempts: 2, // Giới hạn tối đa 2 lượt làm bài
-  openTime: '2026-03-01T07:00', // Thời gian mở đề
-  closeTime: '2026-12-31T23:59', // Thời gian đóng đề
-  distributionType: 'both', // Giao cho cả nhóm lớp và kho đề tổng hợp
-  targetClassIds: ['cls_12a1', 'cls_12a2'],
-  questions: [
-    // PHẦN I: TRẮC NGHIỆM 4 PHƯƠNG ÁN (1.5 điểm mỗi câu)
-    {
-      id: 'q1',
-      part: 'part_1_mcq',
-      questionNumber: 1,
-      prompt: 'Cho hàm số y = f(x) có đạo hàm f\'(x) = x(x - 1)²(x + 2). Số điểm cực trị của hàm số đã cho là:',
-      latex: 'f\'(x) = x(x - 1)^2(x + 2)',
-      options: [
-        { key: 'A', text: '1 điểm' },
-        { key: 'B', text: '2 điểm' },
-        { key: 'C', text: '3 điểm' },
-        { key: 'D', text: '4 điểm' },
-      ],
-      correctAnswer: 'B',
-      explanation: 'Đạo hàm đổi dấu khi qua nghiệm bội lẻ x = 0 và x = -2. Nghiệm x = 1 là nghiệm bội chẵn nên không đổi dấu. Vậy có 2 điểm cực trị.',
-      points: 1.5,
-    },
-    {
-      id: 'q2',
-      part: 'part_1_mcq',
-      questionNumber: 2,
-      prompt: 'Họ nguyên hàm của hàm số f(x) = e^(2x) + 3x² là:',
-      latex: '\\int (e^{2x} + 3x^2) \\, dx',
-      options: [
-        { key: 'A', text: '2e^(2x) + 6x + C' },
-        { key: 'B', text: '(1/2)e^(2x) + x³ + C' },
-        { key: 'C', text: 'e^(2x) + x³ + C' },
-        { key: 'D', text: '(1/2)e^(2x) + 6x + C' },
-      ],
-      correctAnswer: 'B',
-      explanation: 'Áp dụng công thức nguyên hàm cơ bản: ∫ e^(ax) dx = (1/a)e^(ax) + C và ∫ x² dx = x³/3 + C.',
-      points: 1.5,
-    },
-
-    // PHẦN II: TRẮC NGHIỆM ĐÚNG/SAI 4 Ý (Tối đa 4.0 điểm)
-    {
-      id: 'q3',
-      part: 'part_2_true_false',
-      questionNumber: 3,
-      prompt: 'Cho hàm số phân thức hữu tỉ y = (x² - 2x + 2) / (x - 1). Xét tính Đúng/Sai của các mệnh đề sau:',
-      latex: 'y = \\frac{x^2 - 2x + 2}{x - 1}',
-      imageAttachment: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600&auto=format&fit=crop&q=80',
-      items: [
-        {
-          id: 'q3_a',
-          subKey: 'a',
-          text: 'Tập xác định của hàm số là D = ℝ \\ {1}.',
-          latex: 'D = \\mathbb{R} \\setminus \\{1\\}',
-          isCorrect: true,
-        },
-        {
-          id: 'q3_b',
-          subKey: 'b',
-          text: 'Đạo hàm của hàm số là y\' = (x² - 2x) / (x - 1)².',
-          latex: 'y\' = \\frac{x^2 - 2x}{(x - 1)^2}',
-          isCorrect: true,
-        },
-        {
-          id: 'q3_c',
-          subKey: 'c',
-          text: 'Hàm số đồng biến trên toàn bộ tập xác định D.',
-          isCorrect: false,
-        },
-        {
-          id: 'q3_d',
-          subKey: 'd',
-          text: 'Đồ thị hàm số có đường tiệm cận xiên là y = x - 1.',
-          latex: 'y = x - 1',
-          isCorrect: true,
-        },
-      ],
-      explanation: 'Ta có y = x - 1 + 1/(x-1). Khi x -> ±∞ thì 1/(x-1) -> 0 => tiệm cận xiên y = x - 1 (Đúng). Đạo hàm y\' > 0 khi x < 0 hoặc x > 2, nên không đồng biến trên toàn D (Sai).',
-      points: 4.0,
-    },
-
-    // PHẦN III: CÂU TRẢ LỜI NGẮN (Tối đa 4 ký tự/chữ số) (1.5 điểm mỗi câu)
-    {
-      id: 'q4',
-      part: 'part_3_short_answer',
-      questionNumber: 4,
-      prompt: 'Tìm giá trị nhỏ nhất của hàm số f(x) = x + 4/x trên khoảng (0; +∞).',
-      latex: 'f(x) = x + \\frac{4}{x}, \\quad x > 0',
-      correctAnswer: '4',
-      explanation: 'Áp dụng bất đẳng thức Cô-si (AM-GM) cho hai số dương x và 4/x: x + 4/x ≥ 2√(x · 4/x) = 4. Dấu "=" xảy ra khi x = 4/x ⇔ x = 2 > 0.',
-      points: 1.5,
-    },
-    {
-      id: 'q5',
-      part: 'part_3_short_answer',
-      questionNumber: 5,
-      prompt: 'Cho khối lăng trụ có diện tích đáy B = 6a² và chiều cao h = 3a. Thể tích V của khối lăng trụ bằng k·a³. Hãy điền giá trị của k:',
-      latex: 'V = B \\cdot h',
-      correctAnswer: '18',
-      explanation: 'V = B · h = 6a² · 3a = 18a³ => k = 18.',
-      points: 1.5,
-      pdfAttachmentName: 'Chuyen_De_Hinh_Lang_Tru.pdf',
-    },
-  ],
+  status: 'draft',
+  createdBy: '',
+  createdAt: '',
+  questions: [],
 };
 
 export const SAMPLE_CHEAT_LOGS: CheatLog[] = [];

@@ -736,6 +736,87 @@ export async function dbSaveExams(exams: Exam[]): Promise<boolean> {
 }
 
 /**
+ * Xóa SẠCH toàn bộ dữ liệu tất cả đề thi cũ trên toàn bộ hệ thống
+ * - Xóa tất cả tài liệu trong Firestore collection 'exams'
+ * - Xóa tất cả bài nộp trong Firestore collection 'submissions'
+ * - Xóa tất cả nhật ký gian lận trong Firestore collection 'cheatLogs'
+ * - Xóa assignedExamIds trong tất cả classrooms trên Firestore
+ * - Gửi yêu cầu dọn dẹp file data/database.json qua /api/db/exams/purge-all
+ * - Xóa toàn bộ bản nháp đề thi cũ trong localStorage
+ */
+export async function dbPurgeAllOldExams(): Promise<boolean> {
+  // 1. Dọn dẹp máy chủ file data/database.json
+  const serverPromise = fetch('/api/db/exams/purge-all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }).catch((err) => {
+    console.warn('Lỗi dbPurgeAllOldExams Server API:', err);
+    return null;
+  });
+
+  // 2. Dọn dẹp Firestore Real-time Database
+  const firestorePromise = (async () => {
+    try {
+      // 2a. Xóa tất cả documents trong collection exams
+      const examDocs = await getDocs(collection(db, 'exams'));
+      await Promise.allSettled(examDocs.docs.map((d) => deleteDoc(d.ref)));
+
+      // Xóa cụ thể ID đề mẫu cũ nếu còn sót
+      await deleteDoc(doc(db, 'exams', 'exam_bgd_2025_01')).catch(() => {});
+
+      // 2b. Xóa tất cả submissions
+      const subDocs = await getDocs(collection(db, 'submissions'));
+      await Promise.allSettled(subDocs.docs.map((d) => deleteDoc(d.ref)));
+
+      // 2c. Xóa tất cả cheatLogs
+      const cheatDocs = await getDocs(collection(db, 'cheatLogs'));
+      await Promise.allSettled(cheatDocs.docs.map((d) => deleteDoc(d.ref)));
+
+      // 2d. Xóa assignedExamIds trong tất cả classrooms
+      const classDocs = await getDocs(collection(db, 'classrooms'));
+      const updatePromises = classDocs.docs.map((d) => {
+        const cdata = d.data();
+        if (cdata.assignedExamIds && cdata.assignedExamIds.length > 0) {
+          return updateDoc(d.ref, { assignedExamIds: [] });
+        }
+        return Promise.resolve();
+      });
+      await Promise.allSettled(updatePromises);
+    } catch (err) {
+      console.warn('Lỗi dbPurgeAllOldExams Firestore:', err);
+    }
+  })();
+
+  // 3. Dọn dẹp cache / draft localStorage
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('math_draft_') || key.includes('exam_bgd'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    }
+  } catch {}
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
+}
+
+let hasAutoPurgedOldExams = false;
+export async function ensureOldExamsPurged() {
+  if (hasAutoPurgedOldExams) return;
+  hasAutoPurgedOldExams = true;
+  try {
+    await dbPurgeAllOldExams();
+  } catch (err) {
+    console.warn('Lỗi tự động xóa sạch đề cũ:', err);
+  }
+}
+
+/**
  * Lưu tin nhắn chat trong nhóm lớp (Đồng bộ tức thời Real-time cả Firestore và Server)
  */
 export async function dbSaveMessage(classId: string, message: ClassroomChatMessage): Promise<boolean> {
@@ -841,6 +922,7 @@ export function startDbPolling(
   intervalMs = 1500
 ): () => void {
   ensureAdminSeeded();
+  ensureOldExamsPurged();
 
   const stateAccumulator: DatabaseState = {
     version: 1,
@@ -936,12 +1018,12 @@ export function startDbPolling(
   const unsubExams = onSnapshot(collection(db, 'exams'), (snapshot) => {
     const list: Exam[] = [];
     snapshot.forEach((d) => {
-      list.push(d.data() as Exam);
+      const data = d.data() as Exam;
+      if (data && data.id && data.id !== 'exam_bgd_2025_01') {
+        list.push(data);
+      }
     });
-    const examMap = new Map<string, Exam>();
-    stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
-    list.forEach((e) => examMap.set(e.id, e));
-    stateAccumulator.exams = Array.from(examMap.values());
+    stateAccumulator.exams = list;
     dispatchUpdate();
   }, (err) => {
     console.warn('Lỗi Firestore exams onSnapshot:', err);

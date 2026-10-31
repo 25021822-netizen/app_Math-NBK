@@ -1007,6 +1007,20 @@ app.get('/api/db/exams', (_req, res) => {
   res.json({ success: true, data: serverDb.exams || [] });
 });
 
+// 10h. Xóa sạch toàn bộ dữ liệu đề thi cũ, bài làm, cheat logs và phân bổ đề thi
+app.post('/api/db/exams/purge-all', (_req, res) => {
+  serverDb.exams = [];
+  serverDb.submissions = [];
+  serverDb.cheatLogs = [];
+  serverDb.classrooms = (serverDb.classrooms || []).map((cls: any) => ({
+    ...cls,
+    assignedExamIds: [],
+  }));
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, message: 'Đã xóa toàn bộ dữ liệu đề thi cũ!', version: serverDb.version });
+});
+
 // 11. Lưu tin nhắn chat lớp học (Thêm mới hoặc cập nhật phản ứng)
 app.post('/api/db/messages', (req, res) => {
   const { classId, message } = req.body;

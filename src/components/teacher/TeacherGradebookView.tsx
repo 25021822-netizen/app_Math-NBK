@@ -33,6 +33,7 @@ interface TeacherGradebookViewProps {
   examsList: Exam[];
   onSelectClassroom?: (classId: string) => void;
   onPreviewExam?: (examId: string) => void;
+  onDeleteExam?: (examId: string) => void;
 }
 
 export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
@@ -41,6 +42,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
   examsList,
   onSelectClassroom,
   onPreviewExam,
+  onDeleteExam,
 }) => {
   // Bộ lọc
   const [selectedClassId, setSelectedClassId] = useState<string>('all');

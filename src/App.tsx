@@ -8,7 +8,6 @@ import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentE
 import {
   INITIAL_USER_PROFILE,
   SAMPLE_CHEAT_LOGS,
-  SAMPLE_EXAM_BGD,
   SAMPLE_CLASSROOMS,
   SAMPLE_SUBMISSIONS,
   SAMPLE_CLASSROOM_LESSONS,
@@ -105,8 +104,8 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>(ALL_INITIAL_USERS);
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [cheatLogs, setCheatLogs] = useState<CheatLog[]>(SAMPLE_CHEAT_LOGS);
-  const [examsList, setExamsList] = useState<Exam[]>([SAMPLE_EXAM_BGD]);
-  const [activeExamId, setActiveExamId] = useState<string>(SAMPLE_EXAM_BGD.id);
+  const [examsList, setExamsList] = useState<Exam[]>([]);
+  const [activeExamId, setActiveExamId] = useState<string>('');
 
   // Nhóm lớp, Bài học & Kết quả bài nộp của học sinh (Đồng bộ qua máy chủ)
   const [classrooms, setClassrooms] = useState<Classroom[]>(SAMPLE_CLASSROOMS);
@@ -171,7 +170,7 @@ export default function App() {
   useEffect(() => {
     let knownPendingIds = new Set<string>();
     let knownLessonIds = new Set<string>(SAMPLE_CLASSROOM_LESSONS.map((l) => l.id));
-    let knownExamIds = new Set<string>([SAMPLE_EXAM_BGD.id]);
+    let knownExamIds = new Set<string>();
 
     const unsubscribe = startDbPolling((remoteData) => {
       if (remoteData.users && Array.isArray(remoteData.users)) {
@@ -248,13 +247,10 @@ export default function App() {
 
       // Đồng bộ Đề thi tức thời giữa các máy (Giáo viên đăng đề -> Học sinh thấy ngay)
       if (remoteData.exams && Array.isArray(remoteData.exams)) {
-        const examMap = new Map<string, Exam>();
-        examMap.set(SAMPLE_EXAM_BGD.id, SAMPLE_EXAM_BGD);
-        remoteData.exams.forEach((ex) => examMap.set(ex.id, ex));
-        const mergedExams = Array.from(examMap.values());
+        const validExams = remoteData.exams.filter((ex) => ex && ex.id && ex.id !== 'exam_bgd_2025_01');
 
         // Nếu có đề thi mới được xuất bản từ máy khác
-        const freshExamArrivals = mergedExams.filter((ex) => !knownExamIds.has(ex.id));
+        const freshExamArrivals = validExams.filter((ex) => !knownExamIds.has(ex.id));
         if (freshExamArrivals.length > 0 && knownExamIds.size > 0) {
           freshExamArrivals.forEach((ex) => {
             triggerPushNotification(`Đề thi mới: ${ex.title}`, {
@@ -265,8 +261,8 @@ export default function App() {
             });
           });
         }
-        knownExamIds = new Set(mergedExams.map((ex) => ex.id));
-        setExamsList(mergedExams);
+        knownExamIds = new Set(validExams.map((ex) => ex.id));
+        setExamsList(validExams);
       }
 
       if (remoteData.classroomMessages) {
@@ -488,7 +484,7 @@ export default function App() {
       await dbDeleteLesson(lessonId);
       triggerPushNotification('Đã Xóa Bài Học!', {
         message: `Đã xóa bài học "${title}" và các file tài liệu đính kèm thành công.`,
-        type: 'lesson_published',
+        type: 'system',
         targetTab: 'classroom',
       });
     } catch (err) {
