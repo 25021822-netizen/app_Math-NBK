@@ -30,6 +30,7 @@ import {
   dbDeleteExam,
   dbSaveExams,
   dbSaveMessage,
+  dbDeleteMessage,
   dbToggleMessageReaction,
 } from './services/dbSyncService';
 import { Navbar } from './components/Navbar';
@@ -283,7 +284,7 @@ export default function App() {
         setCurrentTab('admin_dashboard');
       }
     } else if (userRole === 'teacher') {
-      const allowedTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'geometry', 'ask_ai', 'profile', 'exam', 'three_3d', 'image_studio'];
+      const allowedTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'geometry', 'ask_ai', 'profile', 'exam', 'three_3d', 'image_studio'];
       if (!allowedTeacherTabs.includes(currentTab)) {
         setCurrentTab('classroom');
       }
@@ -532,6 +533,64 @@ export default function App() {
     }
   };
 
+  // Phân phối / Giao đề thi từ kho đề cho các nhóm lớp học
+  const handleAssignExamToClasses = async (
+    examId: string,
+    targetClassIds: string[],
+    distributionType: 'classroom' | 'repository' | 'both',
+    maxAttempts?: number,
+    openTime?: string,
+    closeTime?: string
+  ) => {
+    const targetExam = examsList.find((e) => e.id === examId);
+    if (!targetExam) return;
+
+    const updatedExam: Exam = {
+      ...targetExam,
+      targetClassIds,
+      distributionType,
+      maxAttempts: maxAttempts ?? targetExam.maxAttempts,
+      openTime: openTime ?? targetExam.openTime,
+      closeTime: closeTime ?? targetExam.closeTime,
+    };
+
+    setExamsList((prev) => prev.map((e) => (e.id === examId ? updatedExam : e)));
+
+    // Đồng bộ assignedExamIds vào từng nhóm lớp
+    const updatedClassrooms = classrooms.map((cls) => {
+      const shouldHaveExam = targetClassIds.includes(cls.id);
+      const currentIds = cls.assignedExamIds || [];
+      if (shouldHaveExam && !currentIds.includes(examId)) {
+        return { ...cls, assignedExamIds: [...currentIds, examId] };
+      } else if (!shouldHaveExam && currentIds.includes(examId)) {
+        return { ...cls, assignedExamIds: currentIds.filter((id) => id !== examId) };
+      }
+      return cls;
+    });
+
+    setClassrooms(updatedClassrooms);
+
+    try {
+      await dbSaveExam(updatedExam);
+      await dbSaveClassrooms(updatedClassrooms);
+      triggerPushNotification('Đã Phân Phối Đề Thi!', {
+        message: `Đã giao đề thi "${updatedExam.title}" cho ${targetClassIds.length} nhóm lớp thành công!`,
+        type: 'exam_published',
+      });
+    } catch (err) {
+      console.error('Lỗi khi phân phối đề thi:', err);
+    }
+  };
+
+  // Xóa tin nhắn nhóm lớp
+  const handleDeleteChatMessage = (messageId: string, classId: string) => {
+    setClassroomMessages((prev) => ({
+      ...prev,
+      [classId]: (prev[classId] || []).filter((m) => m.id !== messageId),
+    }));
+    dbDeleteMessage(classId, messageId).catch(console.error);
+  };
+
   // Gửi tin nhắn chat nhóm lớp đồng bộ tức thời qua Firestore & Server
   const handleSendChatMessage = (message: ClassroomChatMessage) => {
     setClassroomMessages((prev) => {
@@ -735,6 +794,7 @@ export default function App() {
             currentUserId={userProfile.id}
             currentUserName={userProfile.name}
             currentUserAvatar={userProfile.avatar}
+            currentUserEmail={userProfile.email}
             classrooms={classrooms}
             onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
@@ -749,6 +809,7 @@ export default function App() {
             allUsers={allUsers}
             classroomMessages={classroomMessages}
             onSendChatMessage={handleSendChatMessage}
+            onDeleteChatMessage={handleDeleteChatMessage}
             onToggleReaction={handleToggleReaction}
             classroomLessons={classroomLessons}
             onUpdateLessons={handleUpdateLessons}
@@ -803,14 +864,34 @@ export default function App() {
         );
       }
 
+      if (currentTab === 'exam_repository') {
+        return (
+          <TeacherPortalView
+            initialMode="manage_exams"
+            classrooms={classrooms}
+            onPublishExam={handlePublishExam}
+            currentUserName={userProfile.name}
+            examsList={examsList}
+            onDeleteExam={handleDeleteExam}
+            onAssignExamToClasses={handleAssignExamToClasses}
+            onPreviewExam={(exam) => {
+              setActiveExamId(exam.id);
+              setCurrentTab('exam');
+            }}
+          />
+        );
+      }
+
       // Default for teacher: Teacher Portal (Tạo đề thi thủ công & Tải PDF & Quản lý đề)
       return (
         <TeacherPortalView
+          initialMode="manual"
           classrooms={classrooms}
           onPublishExam={handlePublishExam}
           currentUserName={userProfile.name}
           examsList={examsList}
           onDeleteExam={handleDeleteExam}
+          onAssignExamToClasses={handleAssignExamToClasses}
           onPreviewExam={(exam) => {
             setActiveExamId(exam.id);
             setCurrentTab('exam');
@@ -828,6 +909,7 @@ export default function App() {
             currentUserId={userProfile.id}
             currentUserName={userProfile.name}
             currentUserAvatar={userProfile.avatar}
+            currentUserEmail={userProfile.email}
             classrooms={classrooms}
             onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
@@ -839,6 +921,7 @@ export default function App() {
             allUsers={allUsers}
             classroomMessages={classroomMessages}
             onSendChatMessage={handleSendChatMessage}
+            onDeleteChatMessage={handleDeleteChatMessage}
             onToggleReaction={handleToggleReaction}
             classroomLessons={classroomLessons}
             onUpdateLessons={handleUpdateLessons}

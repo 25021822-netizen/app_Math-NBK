@@ -41,6 +41,15 @@ interface TeacherPortalViewProps {
   currentUserName?: string;
   examsList?: Exam[];
   onDeleteExam?: (examId: string) => void;
+  initialMode?: 'manual' | 'ai_pdf' | 'manage_exams';
+  onAssignExamToClasses?: (
+    examId: string,
+    targetClassIds: string[],
+    distributionType: 'classroom' | 'repository' | 'both',
+    maxAttempts?: number,
+    openTime?: string,
+    closeTime?: string
+  ) => void;
 }
 
 export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
@@ -50,13 +59,31 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   currentUserName = '',
   examsList = [],
   onDeleteExam,
+  initialMode,
+  onAssignExamToClasses,
 }) => {
   // Chế độ: 'manual' (Tạo đề thủ công), 'ai_pdf' (AI Bóc Tách PDF) hoặc 'manage_exams' (Quản lý kho đề thi)
-  const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf' | 'manage_exams'>('manual');
+  const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf' | 'manage_exams'>(initialMode || 'manual');
+
+  useEffect(() => {
+    if (initialMode) {
+      setCreationMode(initialMode);
+    }
+  }, [initialMode]);
 
   // Modal xác nhận xóa đề thi vĩnh viễn kèm dữ liệu liên quan
   const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
   const [isDeletingExam, setIsDeletingExam] = useState<boolean>(false);
+
+  // Modal & State Giao Đề Cho Các Nhóm Lớp
+  const [examToAssign, setExamToAssign] = useState<Exam | null>(null);
+  const [assignTargetClassIds, setAssignTargetClassIds] = useState<string[]>([]);
+  const [assignDistributionType, setAssignDistributionType] = useState<'classroom' | 'repository' | 'both'>('classroom');
+  const [assignMaxAttempts, setAssignMaxAttempts] = useState<number>(1);
+  const [assignHasTimeWindow, setAssignHasTimeWindow] = useState<boolean>(true);
+  const [assignOpenTime, setAssignOpenTime] = useState<string>('');
+  const [assignCloseTime, setAssignCloseTime] = useState<string>('');
+  const [isSavingAssignment, setIsSavingAssignment] = useState<boolean>(false);
 
   // ================= STATE DÀNH CHO TẠO ĐỀ THỦ CÔNG =================
   const [manualTitle, setManualTitle] = useState('');
@@ -401,6 +428,42 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       console.error('Lỗi khi xóa đề thi:', err);
     } finally {
       setIsDeletingExam(false);
+    }
+  };
+
+  // Mở modal giao đề thi cho các nhóm lớp
+  const handleOpenAssignModal = (exam: Exam) => {
+    setExamToAssign(exam);
+    setAssignTargetClassIds(exam.targetClassIds || classrooms.map((c) => c.id));
+    setAssignDistributionType(exam.distributionType || 'classroom');
+    setAssignMaxAttempts(exam.maxAttempts ?? 1);
+    setAssignHasTimeWindow(Boolean(exam.openTime || exam.closeTime));
+    setAssignOpenTime(exam.openTime || new Date(Date.now() - 3600 * 1000).toISOString().slice(0, 16));
+    setAssignCloseTime(exam.closeTime || new Date(Date.now() + 7 * 86400 * 1000).toISOString().slice(0, 16));
+  };
+
+  // Xác nhận lưu giao đề thi cho các nhóm lớp
+  const handleConfirmAssignExam = async () => {
+    if (!examToAssign) return;
+    setIsSavingAssignment(true);
+    try {
+      if (onAssignExamToClasses) {
+        await onAssignExamToClasses(
+          examToAssign.id,
+          assignDistributionType === 'repository' ? [] : assignTargetClassIds,
+          assignDistributionType,
+          assignMaxAttempts,
+          assignHasTimeWindow ? assignOpenTime : undefined,
+          assignHasTimeWindow ? assignCloseTime : undefined
+        );
+      }
+      setPublishSuccessMessage(`Đã cập nhật giao đề thi "${examToAssign.title}" cho các nhóm lớp thành công!`);
+      setTimeout(() => setPublishSuccessMessage(null), 4000);
+      setExamToAssign(null);
+    } catch (err) {
+      console.error('Lỗi khi giao đề:', err);
+    } finally {
+      setIsSavingAssignment(false);
     }
   };
 
@@ -1726,7 +1789,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                    <div className="flex items-center gap-2 shrink-0 self-end md:self-auto flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAssignModal(exam)}
+                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                        title="Giao đề thi này cho các nhóm lớp học"
+                      >
+                        <Users size={14} />
+                        <span>Giao Cho Lớp</span>
+                      </button>
                       {onPreviewExam && (
                         <button
                           type="button"
@@ -1744,13 +1816,221 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         title="Xóa đề thi này và toàn bộ dữ liệu liên quan"
                       >
                         <Trash2 size={14} />
-                        <span>Xóa Đề Thi</span>
+                        <span>Xóa Đề</span>
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GIAO ĐỀ CHO CÁC NHÓM LỚP KHÁC NHAU */}
+      {examToAssign && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 block">
+                  Phân Phối & Giao Đề Thi
+                </span>
+                <h3 className="font-extrabold text-lg text-slate-900 mt-0.5">
+                  Giao Đề Cho Các Nhóm Lớp
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+                  Đề: <strong className="text-slate-800">{examToAssign.title}</strong> ({examToAssign.questions.length} câu · {examToAssign.durationMinutes} phút)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExamToAssign(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Phạm vi giao đề */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">Phạm vi giao đề thi:</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAssignDistributionType('classroom')}
+                  className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all text-center ${
+                    assignDistributionType === 'classroom'
+                      ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-2xs'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Chỉ nhóm lớp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssignDistributionType('repository')}
+                  className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all text-center ${
+                    assignDistributionType === 'repository'
+                      ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-2xs'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Kho đề chung
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssignDistributionType('both')}
+                  className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all text-center ${
+                    assignDistributionType === 'both'
+                      ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-2xs'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Cả hai
+                </button>
+              </div>
+            </div>
+
+            {/* Danh sách các nhóm lớp để tích chọn */}
+            {assignDistributionType !== 'repository' && (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">
+                    Chọn nhóm lớp nhận đề thi ({assignTargetClassIds.length}/{classrooms.length}):
+                  </label>
+                  <div className="flex gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setAssignTargetClassIds(classrooms.map((c) => c.id))}
+                      className="text-blue-600 font-bold hover:underline"
+                    >
+                      Chọn tất cả
+                    </button>
+                    <span className="text-slate-300">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setAssignTargetClassIds([])}
+                      className="text-slate-500 font-semibold hover:underline"
+                    >
+                      Bỏ chọn
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-48 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-slate-50 border border-slate-200">
+                  {classrooms.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-4">Chưa có nhóm lớp nào. Vui lòng tạo lớp học trước.</p>
+                  ) : (
+                    classrooms.map((cls) => {
+                      const isChecked = assignTargetClassIds.includes(cls.id);
+                      return (
+                        <label
+                          key={cls.id}
+                          className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
+                            isChecked
+                              ? 'bg-blue-50/70 border-blue-200 text-blue-900'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setAssignTargetClassIds((prev) => [...prev, cls.id]);
+                                } else {
+                                  setAssignTargetClassIds((prev) => prev.filter((id) => id !== cls.id));
+                                }
+                              }}
+                              className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                            />
+                            <div>
+                              <span className="font-extrabold text-xs block">{cls.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">#{cls.code} · Khối {cls.grade}</span>
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-500 px-2 py-0.5 rounded-full bg-slate-100">
+                            {cls.studentIds?.length || 0} học sinh
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Cài đặt số lượt làm & thời gian */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Số lượt làm bài tối đa</label>
+                <select
+                  value={assignMaxAttempts}
+                  onChange={(e) => setAssignMaxAttempts(Number(e.target.value))}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white font-semibold focus:border-blue-600 focus:outline-none"
+                >
+                  <option value={1}>1 lượt (Thi chính thức)</option>
+                  <option value={2}>2 lượt thi</option>
+                  <option value={3}>3 lượt thi</option>
+                  <option value={5}>5 lượt thi</option>
+                  <option value={0}>Không giới hạn lượt làm</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700">Khung giờ mở/đóng</label>
+                  <button
+                    type="button"
+                    onClick={() => setAssignHasTimeWindow(!assignHasTimeWindow)}
+                    className="text-[10px] text-blue-600 font-bold hover:underline"
+                  >
+                    {assignHasTimeWindow ? 'Tắt hẹn giờ' : 'Bật hẹn giờ'}
+                  </button>
+                </div>
+                {assignHasTimeWindow ? (
+                  <div className="space-y-1.5">
+                    <input
+                      type="datetime-local"
+                      value={assignOpenTime}
+                      onChange={(e) => setAssignOpenTime(e.target.value)}
+                      className="w-full h-8 px-2 rounded-lg border border-slate-300 font-mono text-[11px]"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={assignCloseTime}
+                      onChange={(e) => setAssignCloseTime(e.target.value)}
+                      className="w-full h-8 px-2 rounded-lg border border-slate-300 font-mono text-[11px]"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-10 flex items-center px-3 rounded-xl bg-slate-100 text-slate-400 font-medium text-[11px]">
+                    Đề thi luôn mở không giới hạn giờ
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setExamToAssign(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAssignExam}
+                disabled={isSavingAssignment}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <CheckCircle2 size={16} />
+                <span>{isSavingAssignment ? 'Đang Lưu...' : 'Lưu & Giao Đề Ngay'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

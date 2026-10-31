@@ -95,6 +95,8 @@ interface ClassroomManagerViewProps {
   onSaveLesson?: (lesson: ClassroomLesson) => void;
   onDeleteLesson?: (lessonId: string) => void;
   onDeleteExam?: (examId: string) => void;
+  currentUserEmail?: string;
+  onDeleteChatMessage?: (messageId: string, classId: string) => void;
 }
 
 export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
@@ -119,16 +121,19 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onSaveLesson,
   onDeleteLesson,
   onDeleteExam,
+  currentUserEmail,
+  onDeleteChatMessage,
 }) => {
-  // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp (Chỉ người trong nhóm mới được xem nội dung)
+  // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp (Admin & Giáo viên có toàn quyền xem và tương tác)
   const isMemberOfClass = (cls: Classroom | undefined | null): boolean => {
     if (!cls) return false;
-    if (userRole === 'admin') return true;
-    if (userRole === 'teacher') {
-      return cls.teacherId === currentUserId || !cls.teacherId;
-    }
+    if (userRole === 'admin' || userRole === 'teacher') return true;
     // Học sinh bắt buộc phải nằm trong danh sách studentIds đã được phê duyệt
-    return Boolean(cls.studentIds && cls.studentIds.includes(currentUserId));
+    return Boolean(
+      cls.studentIds &&
+      (cls.studentIds.includes(currentUserId) ||
+       (currentUserEmail && cls.studentIds.includes(currentUserEmail)))
+    );
   };
 
   // 2. Kiểm tra học sinh đang ở trạng thái chờ duyệt vào lớp
@@ -209,11 +214,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         const next = { ...prev };
         for (const [cId, msgs] of Object.entries(classroomMessages)) {
           if (Array.isArray(msgs)) {
-            const existing = next[cId] || [];
-            const msgMap = new Map<string, ClassroomChatMessage>();
-            existing.forEach((m) => msgMap.set(m.id, m));
-            msgs.forEach((m) => msgMap.set(m.id, m));
-            next[cId] = Array.from(msgMap.values()).sort(
+            next[cId] = [...msgs].sort(
               (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
           }
@@ -336,6 +337,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Tin nhắn lưu cục bộ của các nhóm lớp kèm phản ứng emoji
   const [localMessages, setLocalMessages] = useState<Record<string, ClassroomChatMessage[]>>(() => {
@@ -386,6 +388,13 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       ...classroomMessages,
     };
   });
+
+  // Tự động cuộn xuống tin nhắn mới nhất
+  useEffect(() => {
+    if (activeRightTab === 'chat') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [localMessages, classroomMessages, activeRightTab]);
 
   // Lớp học đang chọn (trả về null nếu chưa chọn hoặc id không tồn tại)
   const currentClass = selectedClassId ? (classrooms.find((c) => c.id === selectedClassId) || null) : null;
@@ -542,7 +551,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       teacherId: currentUserId,
       teacherName: currentUserName,
       studentIds: [],
-      assignedExamIds: [examsList[0]?.id || 'exam_bgd_2025_01'],
+      assignedExamIds: [],
       createdAt: new Date().toISOString().split('T')[0],
       description: newClassDesc.trim() || 'Nhóm lớp bồi dưỡng Toán THPT.',
     };
@@ -1629,6 +1638,21 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setShowEmojiPicker(false);
   };
 
+  // Xóa tin nhắn trong lớp học (Dành cho người gửi hoặc Giáo viên / Admin)
+  const handleDeleteChatMessage = (messageId: string) => {
+    if (!currentClass) return;
+    setLocalMessages((prev) => {
+      const list = prev[currentClass.id] || [];
+      return {
+        ...prev,
+        [currentClass.id]: list.filter((m) => m.id !== messageId),
+      };
+    });
+    if (onDeleteChatMessage) {
+      onDeleteChatMessage(messageId, currentClass.id);
+    }
+  };
+
   // Xử lý thả / hủy phản ứng Emoji trên từng tin nhắn
   const handleToggleReaction = (msgId: string, emoji: string) => {
     if (!currentClass || !isCurrentClassMember) return;
@@ -2633,7 +2657,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                               </span>
 
                               {/* Quick reaction hover toolbar */}
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-white/90 shadow-xs border border-slate-200 rounded-full px-1.5 py-0.5 ml-1">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-white/95 shadow-xs border border-slate-200 rounded-full px-1.5 py-0.5 ml-1">
                                 {['👍', '❤️', '😂', '💡', '🔥'].map((em) => (
                                   <button
                                     key={em}
@@ -2645,6 +2669,16 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                     {em}
                                   </button>
                                 ))}
+                                {(isMe || userRole === 'teacher' || userRole === 'admin') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteChatMessage(msg.id)}
+                                    className="hover:scale-125 transition-transform text-xs p-1 text-slate-400 hover:text-rose-600 rounded-full ml-0.5"
+                                    title="Xóa tin nhắn này"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
                               </div>
                             </div>
 
@@ -2718,6 +2752,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       </p>
                     </div>
                   )}
+                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Mention Picker Autocomplete dropdown */}
@@ -2943,7 +2978,28 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                             handleSendChatMessage(e);
                           }
                         }}
-                        placeholder={`Nhắn tin thảo luận trong ${currentClass?.name || 'nhóm lớp'} (Nhấn Enter để gửi, Shift+Enter xuống dòng)...`}
+                        onPaste={(e) => {
+                          const items = e.clipboardData?.items;
+                          if (items) {
+                            for (let i = 0; i < items.length; i++) {
+                              if (items[i].type.indexOf('image') !== -1) {
+                                const file = items[i].getAsFile();
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    if (event.target?.result) {
+                                      setAttachedImage(event.target.result as string);
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                  e.preventDefault();
+                                  break;
+                                }
+                              }
+                            }
+                          }
+                        }}
+                        placeholder={`Nhắn tin thảo luận trong ${currentClass?.name || 'nhóm lớp'} (Nhấn Enter để gửi, dán ảnh Ctrl+V, Shift+Enter xuống dòng)...`}
                         className="flex-1 w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none resize-none min-h-[46px] max-h-32"
                       />
 

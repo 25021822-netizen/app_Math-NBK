@@ -1091,6 +1091,17 @@ app.post('/api/db/message/reaction', (req, res) => {
   res.json({ success: true, version: serverDb.version });
 });
 
+// 11c. Xóa tin nhắn chat trong nhóm lớp
+app.post('/api/db/message/delete', (req, res) => {
+  const { classId, messageId } = req.body;
+  if (classId && messageId && serverDb.classroomMessages[classId]) {
+    serverDb.classroomMessages[classId] = serverDb.classroomMessages[classId].filter((m: any) => m.id !== messageId);
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+  res.json({ success: true, version: serverDb.version });
+});
+
 // 12. Khởi tạo lại dữ liệu sạch (Chỉ giữ duy nhất 1 tài khoản Admin)
 app.post('/api/db/reset-clean', (_req, res) => {
   serverDb = getCleanInitialDb();

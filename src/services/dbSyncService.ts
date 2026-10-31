@@ -898,6 +898,21 @@ export async function dbToggleMessageReaction(
 }
 
 /**
+ * Xóa tin nhắn chat khỏi Firestore & Server API
+ */
+export async function dbDeleteMessage(classId: string, messageId: string): Promise<boolean> {
+  const firestorePromise = deleteDoc(doc(db, 'messages', messageId)).catch(() => null);
+  const serverPromise = fetch('/api/db/message/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ classId, messageId }),
+  }).catch(() => null);
+
+  await Promise.allSettled([firestorePromise, serverPromise]);
+  return true;
+}
+
+/**
  * Tải danh sách tin nhắn của 1 lớp học từ Server / Firestore (On-demand)
  */
 export async function dbFetchClassMessages(classId: string): Promise<ClassroomChatMessage[]> {

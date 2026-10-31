@@ -195,6 +195,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Tổng Hợp Điểm Thi
                 </button>
                 <button
+                  onClick={() => onSelectTab('exam_repository')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1.5 ${
+                    currentTab === 'exam_repository'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <Layers size={14} className="text-amber-500" />
+                  <span>Kho Đề Thi</span>
+                </button>
+                <button
                   onClick={() => onSelectTab('teacher_portal')}
                   className={`whitespace-nowrap transition-colors py-1 ${
                     currentTab === 'teacher_portal'
@@ -681,6 +692,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </button>
 
                     <button
+                      onClick={() => handleMobileTabSelect('exam_repository')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'exam_repository'
+                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                          <Layers size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Kho Đề Thi & Giao Đề</div>
+                          <div className="text-[10px] text-slate-400">Danh sách đề đã tạo & giao cho các nhóm lớp</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
                       onClick={() => handleMobileTabSelect('teacher_portal')}
                       className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
                         currentTab === 'teacher_portal'
@@ -689,7 +720,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
                           <FileText size={18} />
                         </div>
                         <div>
@@ -925,6 +956,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <BarChart3 size={19} className={currentTab === 'teacher_gradebook' ? 'stroke-[2.5]' : ''} />
                 <span className="text-[10px] mt-0.5">Điểm Thi</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleMobileTabSelect('exam_repository')}
+                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
+                  currentTab === 'exam_repository' ? 'text-blue-600 font-bold scale-105' : 'text-slate-400'
+                }`}
+              >
+                <Layers size={19} className={currentTab === 'exam_repository' ? 'stroke-[2.5]' : ''} />
+                <span className="text-[10px] mt-0.5">Kho Đề</span>
               </button>
 
               <button
