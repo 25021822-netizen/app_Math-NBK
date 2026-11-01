@@ -181,6 +181,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [isDraggingPdf, setIsDraggingPdf] = useState<boolean>(false);
   const pdfExamInputRef = useRef<HTMLInputElement>(null);
 
+  // Cấu hình phân phối đề thi khi xuất bản trực tiếp từ AI / PDF / LaTeX
+  const [aiDistributionType, setAiDistributionType] = useState<'classroom' | 'repository' | 'both'>('repository');
+  const [aiTargetClassIds, setAiTargetClassIds] = useState<string[]>(() => classrooms.map((c) => c.id));
+  const [aiMaxAttempts, setAiMaxAttempts] = useState<number>(1);
+
   // Mẫu mã nguồn LaTeX chuẩn Bộ Giáo dục & Đào tạo 2025 (3 phần)
   const SAMPLE_LATEX_BGD_EXAM = `\\section*{PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn (Mỗi câu 0.25 điểm)}
 \\begin{ex}
@@ -344,6 +349,9 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
     setManualGrade(aiParsedExam.grade);
     setManualDuration(aiParsedExam.durationMinutes);
     setManualQuestions(aiParsedExam.questions);
+    setManualDistributionType(aiDistributionType);
+    setManualTargetClassIds(aiTargetClassIds);
+    setManualMaxAttempts(aiMaxAttempts);
     setCreationMode('manual');
     setPublishSuccessMessage(`Đã chuyển ${aiParsedExam.questions.length} câu hỏi sang Trình Tạo Đề Thủ Công để chỉnh sửa chi tiết!`);
     setTimeout(() => setPublishSuccessMessage(null), 4000);
@@ -352,10 +360,33 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
   // Xuất bản trực tiếp đề thi vừa quét
   const handleDirectPublishAiExam = () => {
     if (!aiParsedExam) return;
+
+    const effectiveTargetIds =
+      aiDistributionType === 'repository'
+        ? undefined
+        : aiTargetClassIds.length > 0
+        ? aiTargetClassIds
+        : classrooms.map((c) => c.id);
+
+    const publishedExam: Exam = {
+      ...aiParsedExam,
+      distributionType: aiDistributionType,
+      targetClassIds: effectiveTargetIds,
+      maxAttempts: aiMaxAttempts > 0 ? aiMaxAttempts : undefined,
+    };
+
     if (onPublishExam) {
-      onPublishExam(aiParsedExam);
+      onPublishExam(publishedExam);
     }
-    setPublishSuccessMessage(`Đã xuất bản thành công đề thi "${aiParsedExam.title}" (${aiParsedExam.questions.length} câu - ${aiParsedExam.totalPoints} điểm)!`);
+
+    const targetDesc =
+      aiDistributionType === 'classroom'
+        ? `cho ${effectiveTargetIds?.length || 0} lớp học`
+        : aiDistributionType === 'repository'
+        ? 'vào Kho Đề Thi'
+        : `cho ${effectiveTargetIds?.length || 0} lớp học và Kho Đề Thi`;
+
+    setPublishSuccessMessage(`Đã xuất bản thành công đề thi "${publishedExam.title}" ${targetDesc} (${publishedExam.questions.length} câu - ${publishedExam.totalPoints} điểm)!`);
     setTimeout(() => setPublishSuccessMessage(null), 5000);
     setCreationMode('manage_exams');
   };
@@ -1722,6 +1753,146 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                     <span>Xuất Bản Ngay</span>
                   </button>
                 </div>
+              </div>
+
+              {/* HỘP CẤU HÌNH PHÂN PHỐI & LƯU TRỮ ĐỀ THI */}
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4 text-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
+                  <div className="flex items-center gap-2 font-bold text-slate-800">
+                    <SlidersHorizontal size={16} className="text-blue-600" />
+                    <span>Cấu Hình Nơi Lưu Trữ & Phân Phối Đề Thi</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Chọn nơi lưu để học sinh có thể truy cập làm bài
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Phạm vi phân phối */}
+                  <div className="md:col-span-8 space-y-2">
+                    <label className="font-bold text-slate-700 block">Phạm vi phân phối đề thi:</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAiDistributionType('repository')}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+                          aiDistributionType === 'repository'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Layers size={13} />
+                        <span>Kho Đề Thi</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAiDistributionType('classroom')}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+                          aiDistributionType === 'classroom'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Users size={13} />
+                        <span>Giao Cho Lớp</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAiDistributionType('both')}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+                          aiDistributionType === 'both'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>Cả Hai</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Số lượt làm bài */}
+                  <div className="md:col-span-4 space-y-2">
+                    <label className="font-bold text-slate-700 block">Số lượt làm bài tối đa:</label>
+                    <select
+                      value={aiMaxAttempts}
+                      onChange={(e) => setAiMaxAttempts(Number(e.target.value))}
+                      className="w-full h-9 px-3 rounded-xl border border-slate-300 bg-white font-semibold focus:border-blue-600 focus:outline-none"
+                    >
+                      <option value={1}>1 lượt (Thi chính thức)</option>
+                      <option value={2}>2 lượt thi</option>
+                      <option value={3}>3 lượt thi</option>
+                      <option value={0}>Không giới hạn lượt làm</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Chọn danh sách lớp nếu phân phối theo lớp */}
+                {aiDistributionType !== 'repository' && (
+                  <div className="space-y-2 pt-2 border-t border-slate-200/60">
+                    <div className="flex items-center justify-between">
+                      <label className="font-bold text-slate-700">Chọn nhóm lớp nhận đề thi:</label>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setAiTargetClassIds(classrooms.map((c) => c.id))}
+                          className="text-blue-600 font-semibold hover:underline"
+                        >
+                          Chọn tất cả
+                        </button>
+                        <span>·</span>
+                        <button
+                          type="button"
+                          onClick={() => setAiTargetClassIds([])}
+                          className="text-slate-500 font-semibold hover:underline"
+                        >
+                          Bỏ chọn
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-white border border-slate-200">
+                      {classrooms.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-2">
+                          Chưa có nhóm lớp nào. Hệ thống sẽ lưu đề vào Kho Đề Thi.
+                        </p>
+                      ) : (
+                        classrooms.map((cls) => {
+                          const isChecked = aiTargetClassIds.includes(cls.id);
+                          return (
+                            <label
+                              key={cls.id}
+                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                                isChecked
+                                  ? 'bg-blue-50/70 border-blue-200 text-blue-900'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setAiTargetClassIds((prev) => [...prev, cls.id]);
+                                    } else {
+                                      setAiTargetClassIds((prev) => prev.filter((id) => id !== cls.id));
+                                    }
+                                  }}
+                                  className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                />
+                                <span className="font-bold text-xs">{cls.name}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono">#{cls.code}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Danh sách các câu hỏi xem trước */}

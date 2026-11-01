@@ -745,13 +745,13 @@ export default function App() {
     });
     setActiveExamId(newExam.id);
 
-    // Xác định các nhóm lớp nhận đề thi
-    const targetClassIds =
-      newExam.targetClassIds && newExam.targetClassIds.length > 0
-        ? newExam.targetClassIds
-        : newExam.distributionType === 'classroom' || newExam.distributionType === 'both'
-        ? classrooms.map((c) => c.id)
-        : [];
+    // Xác định các nhóm lớp nhận đề thi (Nếu chọn Kho đề thì không ép giao cho tất cả lớp)
+    const isRepoOnly = newExam.distributionType === 'repository';
+    const targetClassIds = isRepoOnly
+      ? []
+      : newExam.targetClassIds && newExam.targetClassIds.length > 0
+      ? newExam.targetClassIds
+      : classrooms.map((c) => c.id);
 
     const examWithTargets: Exam = {
       ...newExam,
@@ -759,14 +759,17 @@ export default function App() {
     };
 
     // Đồng bộ tức thời lên Firestore và Server để học sinh các máy khác thấy ngay lập tức
-    dbSaveExam(examWithTargets).catch(console.error);
+    dbSaveExam(examWithTargets).catch((err) => {
+      console.error('Lỗi khi lưu đề thi lên DB:', err);
+    });
 
-    // Cập nhật assignedExamIds của lớp và đồng bộ lên DB
+    // Cập nhật assignedExamIds của lớp và đồng bộ lên DB (Bảo đảm an toàn tuyệt đối với fallback array rỗng)
     if (targetClassIds.length > 0) {
       setClassrooms((prev) => {
         const updated = prev.map((cls) => {
-          if (targetClassIds.includes(cls.id) && !cls.assignedExamIds.includes(newExam.id)) {
-            return { ...cls, assignedExamIds: [...cls.assignedExamIds, newExam.id] };
+          const currentAssigned = cls.assignedExamIds || [];
+          if (targetClassIds.includes(cls.id) && !currentAssigned.includes(newExam.id)) {
+            return { ...cls, assignedExamIds: [...currentAssigned, newExam.id] };
           }
           return cls;
         });
@@ -775,11 +778,15 @@ export default function App() {
       });
     }
 
-    // Kích hoạt thông báo đẩy cho học sinh
+    // Kích hoạt thông báo đẩy theo đúng phạm vi phân phối
+    const notifMsg = isRepoOnly
+      ? `Đã lưu thành công đề thi "${newExam.title}" vào Kho Đề Thi (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Bạn có thể giao cho lớp bất kỳ lúc nào!`
+      : `Thầy cô vừa đăng tải đề thi mới "${newExam.title}" (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Nhấn để vào phòng luyện thi ngay!`;
+
     triggerPushNotification(`Đề thi mới: ${newExam.title}`, {
-      message: `Thầy cô vừa đăng tải đề thi mới (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Nhấn để vào phòng luyện thi ngay!`,
+      message: notifMsg,
       type: 'exam_published',
-      targetTab: 'classroom',
+      targetTab: isRepoOnly ? 'exam_repository' : 'classroom',
       examId: newExam.id,
     });
   };

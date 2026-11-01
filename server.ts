@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import { PDFParse } from 'pdf-parse';
 
 dotenv.config();
 
@@ -590,95 +591,201 @@ app.post('/api/gemini/generate-image', async (req, res) => {
 // =========================================================================
 // HELPER: PARSER DỰ PHÒNG THÔNG MINH CHO MÃ NGUỒN LATEX & VĂN BẢN ĐỀ THI BGD
 // =========================================================================
+
+// Hàm trích xuất các khối ngoặc nhọn { ... } lồng nhau cho công thức LaTeX (tránh lỗi ngắt sớm khi có phân số, căn thức...)
+function extractBalancedBraces(text: string, startIndex: number, maxGroups: number = 4): string[] {
+  const groups: string[] = [];
+  let i = startIndex;
+  while (i < text.length && groups.length < maxGroups) {
+    if (text[i] === '{') {
+      let depth = 1;
+      const start = i + 1;
+      i++;
+      while (i < text.length && depth > 0) {
+        if (text[i] === '{' && (i === 0 || text[i - 1] !== '\\')) {
+          depth++;
+        } else if (text[i] === '}' && (i === 0 || text[i - 1] !== '\\')) {
+          depth--;
+        }
+        i++;
+      }
+      if (depth === 0) {
+        groups.push(text.slice(start, i - 1).trim());
+      }
+    } else {
+      i++;
+    }
+  }
+  return groups;
+}
+
 function parseExamFromLatexOrText(rawInput: string, grade: number = 12, durationMinutes: number = 90, examTitle?: string) {
   const text = (rawInput || '').trim();
   const title = examTitle || (text ? 'Đề Thi Toán THPT (Trích Xuất LaTeX / PDF)' : 'Đề Thi Thử Tốt Nghiệp THPT 2025 Chuẩn BGD');
 
   const questions: any[] = [];
-  let currentPart: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = 'part_1_mcq';
 
-  // 1. Nếu văn bản chứa các khối \begin{ex} ... \end{ex} hoặc Câu 1, Câu 2...
-  if (text.includes('\\begin{ex}') || text.includes('Câu 1') || text.includes('PHẦN I') || text.includes('PHẦN 1')) {
-    // Tách các câu hỏi bằng regex
-    const questionBlocks = text.split(/(?:\\begin\{ex\}|(?:\r?\n)(?=(?:Câu|CÂU|Bài)\s*\d+[:\.])|\$*\\item)/g);
+  // Tách các khối câu hỏi: Ưu tiên bóc theo môi trường \begin{ex} ... \end{ex}
+  const hasExEnv = text.includes('\\begin{ex}');
+  const rawBlocks: string[] = [];
 
-    let qCounter = 1;
-    for (const rawBlock of questionBlocks) {
-      const block = rawBlock.trim();
-      if (!block || block.length < 15) continue;
-
-      const lowerBlock = block.toLowerCase();
-      if (lowerBlock.includes('phần ii') || lowerBlock.includes('phần 2') || lowerBlock.includes('đúng sai') || lowerBlock.includes('trắc nghiệm đúng/sai')) {
-        currentPart = 'part_2_true_false';
-      } else if (lowerBlock.includes('phần iii') || lowerBlock.includes('phần 3') || lowerBlock.includes('trả lời ngắn') || lowerBlock.includes('điền đáp số')) {
-        currentPart = 'part_3_short_answer';
-      } else if (lowerBlock.includes('phần i') || lowerBlock.includes('phần 1') || lowerBlock.includes('nhiều phương án')) {
-        currentPart = 'part_1_mcq';
+  if (hasExEnv) {
+    const exRegex = /\\begin\{ex\}([\s\S]*?)\\end\{ex\}/g;
+    let match;
+    while ((match = exRegex.exec(text)) !== null) {
+      if (match[1] && match[1].trim().length > 10) {
+        rawBlocks.push(match[1].trim());
       }
+    }
+  }
 
-      // Xử lý Part 1: Trắc nghiệm 4 lựa chọn (A, B, C, D hoặc \choice)
-      if (currentPart === 'part_1_mcq') {
-        let prompt = '';
-        let optA = '', optB = '', optC = '', optD = '';
-        let correct: 'A' | 'B' | 'C' | 'D' = 'A';
+  // Nếu không dùng \begin{ex}, tách theo Câu 1, Câu 2... hoặc \item
+  if (rawBlocks.length === 0 && text) {
+    const splitByQuestion = text.split(/(?=(?:\\section\*?\{|PHẦN\s+[I|V|X\d]+|(?:\r?\n)(?:Câu|CÂU|Bài)\s*\d+[:\.]))/gi);
+    for (const b of splitByQuestion) {
+      const trimmed = b.trim();
+      if (trimmed.length > 15) {
+        rawBlocks.push(trimmed);
+      }
+    }
+  }
 
-        // Kiểm tra macro \choice của LaTeX
-        const choiceMatch = block.match(/\\choice\s*\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}]*)\}/s);
-        if (choiceMatch) {
-          prompt = block.split(/\\choice/)[0].replace(/^\\begin\{ex\}/, '').replace(/^Câu\s*\d+[:\.]?\s*/i, '').trim();
-          optA = choiceMatch[1].trim();
-          optB = choiceMatch[2].trim();
-          optC = choiceMatch[3].trim();
-          optD = choiceMatch[4].trim();
+  let qCounter = 1;
+  let activeSectionPart: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = 'part_1_mcq';
+
+  for (const block of rawBlocks) {
+    const lowerBlock = block.toLowerCase();
+
+    // Cập nhật section nếu phát hiện tiêu đề phần
+    if (lowerBlock.includes('phần ii') || lowerBlock.includes('phần 2') || lowerBlock.includes('đúng sai') || lowerBlock.includes('trắc nghiệm đúng/sai')) {
+      activeSectionPart = 'part_2_true_false';
+    } else if (lowerBlock.includes('phần iii') || lowerBlock.includes('phần 3') || lowerBlock.includes('trả lời ngắn') || lowerBlock.includes('điền đáp số')) {
+      activeSectionPart = 'part_3_short_answer';
+    } else if (lowerBlock.includes('phần i') || lowerBlock.includes('phần 1') || lowerBlock.includes('nhiều phương án')) {
+      activeSectionPart = 'part_1_mcq';
+    }
+
+    // Tách phần lời giải \loigiai{...} nếu có
+    let questionBody = block;
+    let explanationText = 'Lời giải chi tiết áp dụng công thức giải tích và hình học chuẩn GDPT 2018.';
+    const loigiaiIdx = block.indexOf('\\loigiai');
+    if (loigiaiIdx !== -1) {
+      const extractedLoigiai = extractBalancedBraces(block, loigiaiIdx, 1);
+      if (extractedLoigiai.length > 0) {
+        explanationText = extractedLoigiai[0];
+      }
+      questionBody = block.slice(0, loigiaiIdx).trim();
+    }
+
+    // Xác định loại câu hỏi dựa trên cấu trúc thực tế của câu hỏi (đảm bảo không bị phân loại sai)
+    const hasChoiceTF = questionBody.includes('\\choiceTF');
+    const hasChoice = /\\choice(?![a-zA-Z])/.test(questionBody) && !hasChoiceTF;
+    const hasSubABCD = /(?:^|\n|\r)[a-d]\s*[\)\.\:]/i.test(questionBody) || questionBody.includes('(Đúng)') || questionBody.includes('(Sai)');
+    const hasMcqABCD = /(?:^|\n|\r)[A-D]\s*[\.\:]/i.test(questionBody);
+    const hasShortAns = questionBody.includes('\\shortans') || /(?:Đáp án|Đáp số|Kết quả|=)\s*[:\.]?\s*[-+]?\d+/i.test(questionBody);
+
+    let determinedPart = activeSectionPart;
+    if (hasChoiceTF || (hasSubABCD && !hasChoice)) {
+      determinedPart = 'part_2_true_false';
+    } else if (hasChoice || (hasMcqABCD && !hasSubABCD)) {
+      determinedPart = 'part_1_mcq';
+    } else if (hasShortAns && !hasChoice && !hasSubABCD) {
+      determinedPart = 'part_3_short_answer';
+    }
+
+    // ==========================================
+    // 1. XỬ LÝ PHẦN 1: MCQ 4 PHƯƠNG ÁN LỰA CHỌN
+    // ==========================================
+    if (determinedPart === 'part_1_mcq') {
+      let prompt = '';
+      let optA = '', optB = '', optC = '', optD = '';
+      let correct: 'A' | 'B' | 'C' | 'D' = 'A';
+
+      if (hasChoice) {
+        const choiceIdx = questionBody.indexOf('\\choice');
+        prompt = questionBody.slice(0, choiceIdx).replace(/^(?:Câu|CÂU|Bài)\s*\d+[:\.]?\s*/i, '').trim();
+        const optionsBraces = extractBalancedBraces(questionBody, choiceIdx, 4);
+        if (optionsBraces.length >= 4) {
+          optA = optionsBraces[0];
+          optB = optionsBraces[1];
+          optC = optionsBraces[2];
+          optD = optionsBraces[3];
+
           if (optA.includes('\\True')) { correct = 'A'; optA = optA.replace('\\True', '').trim(); }
           if (optB.includes('\\True')) { correct = 'B'; optB = optB.replace('\\True', '').trim(); }
           if (optC.includes('\\True')) { correct = 'C'; optC = optC.replace('\\True', '').trim(); }
           if (optD.includes('\\True')) { correct = 'D'; optD = optD.replace('\\True', '').trim(); }
-        } else {
-          // Bóc tách theo A. ... B. ... C. ... D. ...
-          const parts = block.split(/(?=[A-D]\s*[\.\:])/);
-          if (parts.length >= 4) {
-            prompt = parts[0].replace(/^Câu\s*\d+[:\.]?\s*/i, '').trim();
-            for (let i = 1; i < parts.length; i++) {
-              const p = parts[i].trim();
-              if (p.startsWith('A')) optA = p.replace(/^A\s*[\.\:]\s*/, '').trim();
-              else if (p.startsWith('B')) optB = p.replace(/^B\s*[\.\:]\s*/, '').trim();
-              else if (p.startsWith('C')) optC = p.replace(/^C\s*[\.\:]\s*/, '').trim();
-              else if (p.startsWith('D')) optD = p.replace(/^D\s*[\.\:]\s*/, '').trim();
-            }
+        }
+      } else {
+        // Tách A. B. C. D. thông thường
+        const parts = questionBody.split(/(?=[A-D]\s*[\.\:])/);
+        if (parts.length >= 4) {
+          prompt = parts[0].replace(/^(?:Câu|CÂU|Bài)\s*\d+[:\.]?\s*/i, '').trim();
+          for (let i = 1; i < parts.length; i++) {
+            const p = parts[i].trim();
+            if (p.startsWith('A')) optA = p.replace(/^A\s*[\.\:]\s*/, '').trim();
+            else if (p.startsWith('B')) optB = p.replace(/^B\s*[\.\:]\s*/, '').trim();
+            else if (p.startsWith('C')) optC = p.replace(/^C\s*[\.\:]\s*/, '').trim();
+            else if (p.startsWith('D')) optD = p.replace(/^D\s*[\.\:]\s*/, '').trim();
           }
-        }
-
-        const ansMatch = block.match(/(?:Đáp án|Chọn|Key)\s*[:\.]?\s*([A-D])/i);
-        if (ansMatch) {
-          correct = ansMatch[1].toUpperCase() as any;
-        }
-
-        if (prompt && (optA || optB)) {
-          questions.push({
-            id: `q_p1_${Date.now()}_${qCounter}`,
-            part: 'part_1_mcq',
-            questionNumber: qCounter++,
-            prompt: prompt.replace(/\\end\{ex\}/g, '').trim(),
-            options: [
-              { key: 'A', text: optA || 'Phương án A' },
-              { key: 'B', text: optB || 'Phương án B' },
-              { key: 'C', text: optC || 'Phương án C' },
-              { key: 'D', text: optD || 'Phương án D' },
-            ],
-            correctAnswer: correct,
-            explanation: 'Lời giải chi tiết áp dụng công thức giải tích và đại số chuẩn GDPT 2018.',
-            points: 0.25,
-          });
-          continue;
         }
       }
 
-      // Xử lý Part 2: Đúng / Sai (a, b, c, d hoặc \choiceTF)
-      if (currentPart === 'part_2_true_false') {
-        const prompt = block.split(/(?=[a-d]\s*[\)\.\:])/)[0].replace(/^Câu\s*\d+[:\.]?\s*/i, '').trim();
-        const subItems: any[] = [];
-        const subMatches = block.matchAll(/([a-d])\s*[\)\.\:]\s*([^a-d\n\r]*?)(?=(?:[a-d]\s*[\)\.\:]|$))/gi);
+      const ansMatch = questionBody.match(/(?:Đáp án|Chọn|Key)\s*[:\.]?\s*([A-D])/i);
+      if (ansMatch) {
+        correct = ansMatch[1].toUpperCase() as any;
+      }
+
+      if (prompt && (optA || optB)) {
+        questions.push({
+          id: `q_p1_${Date.now()}_${qCounter}`,
+          part: 'part_1_mcq',
+          questionNumber: qCounter++,
+          prompt: prompt.replace(/\\end\{ex\}/g, '').trim(),
+          options: [
+            { key: 'A', text: optA || 'Phương án A' },
+            { key: 'B', text: optB || 'Phương án B' },
+            { key: 'C', text: optC || 'Phương án C' },
+            { key: 'D', text: optD || 'Phương án D' },
+          ],
+          correctAnswer: correct,
+          explanation: explanationText,
+          points: 0.25,
+        });
+        continue;
+      }
+    }
+
+    // ==========================================
+    // 2. XỬ LÝ PHẦN 2: TRẮC NGHIỆM ĐÚNG / SAI (4 Ý)
+    // ==========================================
+    if (determinedPart === 'part_2_true_false') {
+      let prompt = '';
+      const subItems: any[] = [];
+
+      if (hasChoiceTF) {
+        const choiceTfIdx = questionBody.indexOf('\\choiceTF');
+        prompt = questionBody.slice(0, choiceTfIdx).replace(/^(?:Câu|CÂU|Bài)\s*\d+[:\.]?\s*/i, '').trim();
+        const tfBraces = extractBalancedBraces(questionBody, choiceTfIdx, 4);
+        const subKeys = ['a', 'b', 'c', 'd'];
+        tfBraces.forEach((bText, idx) => {
+          let isCorrect = true;
+          let cleanText = bText;
+          if (cleanText.includes('\\False') || cleanText.toLowerCase().includes('sai')) {
+            isCorrect = false;
+          }
+          cleanText = cleanText.replace(/\\(?:True|False)/g, '').replace(/\((?:Đúng|Sai|Đ|S)\)/gi, '').trim();
+          subItems.push({
+            id: `tf_${subKeys[idx]}_${Date.now()}`,
+            subKey: subKeys[idx],
+            text: cleanText || `Mệnh đề ${subKeys[idx].toUpperCase()}`,
+            isCorrect,
+          });
+        });
+      } else {
+        // Tách a) b) c) d)
+        prompt = questionBody.split(/(?=[a-d]\s*[\)\.\:])/i)[0].replace(/^(?:Câu|CÂU|Bài)\s*\d+[:\.]?\s*/i, '').trim();
+        const subMatches = questionBody.matchAll(/([a-d])\s*[\)\.\:]\s*([^a-d\n\r]*?)(?=(?:[a-d]\s*[\)\.\:]|$))/gi);
         for (const sm of subMatches) {
           const subKey = sm[1].toLowerCase();
           let itemText = sm[2].trim();
@@ -696,54 +803,66 @@ function parseExamFromLatexOrText(rawInput: string, grade: number = 12, duration
             });
           }
         }
+      }
 
-        if (prompt && subItems.length > 0) {
-          const presentKeys = subItems.map(s => s.subKey);
-          ['a', 'b', 'c', 'd'].forEach((k) => {
-            if (!presentKeys.includes(k)) {
-              subItems.push({
-                id: `tf_${k}_${Date.now()}`,
-                subKey: k as any,
-                text: `Mệnh đề toán học liên quan đến giả thiết câu hỏi (${k.toUpperCase()}).`,
-                isCorrect: k === 'a' || k === 'b',
-              });
-            }
-          });
+      if (prompt && subItems.length > 0) {
+        const presentKeys = subItems.map((s) => s.subKey);
+        ['a', 'b', 'c', 'd'].forEach((k) => {
+          if (!presentKeys.includes(k)) {
+            subItems.push({
+              id: `tf_${k}_${Date.now()}`,
+              subKey: k as any,
+              text: `Mệnh đề toán học liên quan đến giả thiết câu hỏi (${k.toUpperCase()}).`,
+              isCorrect: k === 'a' || k === 'b',
+            });
+          }
+        });
 
-          questions.push({
-            id: `q_p2_${Date.now()}_${qCounter}`,
-            part: 'part_2_true_false',
-            questionNumber: qCounter++,
-            prompt: prompt || 'Cho hàm số và giả thiết toán học sau. Xét tính đúng sai của các mệnh đề:',
-            items: subItems.slice(0, 4),
-            explanation: 'Phân tích tính Đúng/Sai của từng mệnh đề theo định nghĩa và định lý SGK.',
-            points: 1.0,
-          });
-          continue;
+        questions.push({
+          id: `q_p2_${Date.now()}_${qCounter}`,
+          part: 'part_2_true_false',
+          questionNumber: qCounter++,
+          prompt: prompt || 'Cho hàm số và giả thiết toán học sau. Xét tính đúng sai của các mệnh đề:',
+          items: subItems.slice(0, 4),
+          explanation: explanationText,
+          points: 1.0,
+        });
+        continue;
+      }
+    }
+
+    // ==========================================
+    // 3. XỬ LÝ PHẦN 3: TRẮC NGHIỆM TRẢ LỜI NGẮN
+    // ==========================================
+    if (determinedPart === 'part_3_short_answer') {
+      let prompt = questionBody.replace(/^(?:Câu|CÂU|Bài)\s*\d+[:\.]?\s*/i, '').replace(/\\end\{ex\}/g, '').trim();
+      let ans = '2';
+
+      if (questionBody.includes('\\shortans')) {
+        const shortIdx = questionBody.indexOf('\\shortans');
+        const ansBraces = extractBalancedBraces(questionBody, shortIdx, 1);
+        if (ansBraces.length > 0) {
+          ans = ansBraces[0].trim().slice(0, 4);
+        }
+        prompt = questionBody.slice(0, shortIdx).replace(/^(?:Câu|CÂU|Bài)\s*\d+[:\.]?\s*/i, '').trim();
+      } else {
+        const numMatch = questionBody.match(/(?:Đáp án|Đáp số|Kết quả|=\s*)\s*[:\.]?\s*([-+]?\d+(?:[\.,\/]\d+)?)/i);
+        if (numMatch) {
+          ans = numMatch[1].replace(',', '.').slice(0, 4);
         }
       }
 
-      // Xử lý Part 3: Trả lời ngắn
-      if (currentPart === 'part_3_short_answer') {
-        const prompt = block.replace(/^Câu\s*\d+[:\.]?\s*/i, '').replace(/\\end\{ex\}/g, '').trim();
-        let ans = '2';
-        const numMatch = block.match(/(?:Đáp án|Đáp số|Kết quả|=\s*)\s*[:\.]?\s*([-+]?\d+(?:[\.,\/]\d+)?)/i);
-        if (numMatch) {
-          ans = numMatch[1].replace(',', '.');
-        }
-
-        if (prompt.length > 10) {
-          questions.push({
-            id: `q_p3_${Date.now()}_${qCounter}`,
-            part: 'part_3_short_answer',
-            questionNumber: qCounter++,
-            prompt,
-            correctAnswer: ans,
-            explanation: 'Giải chi tiết để tìm ra giá trị số cuối cùng của đại lượng cần tính.',
-            points: 0.5,
-          });
-          continue;
-        }
+      if (prompt.length > 8) {
+        questions.push({
+          id: `q_p3_${Date.now()}_${qCounter}`,
+          part: 'part_3_short_answer',
+          questionNumber: qCounter++,
+          prompt,
+          correctAnswer: ans,
+          explanation: explanationText,
+          points: 0.5,
+        });
+        continue;
       }
     }
   }
@@ -755,7 +874,7 @@ function parseExamFromLatexOrText(rawInput: string, grade: number = 12, duration
         id: 'q_p1_sample_01',
         part: 'part_1_mcq',
         questionNumber: 1,
-        prompt: 'Cho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng xét dấu của đạo hàm $f\'(x)$ như hình vẽ. Hàm số $y = f(x)$ đồng biến trên khoảng nào sau đây?',
+        prompt: 'Cho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng xét dấu của đạo hàm $f\'(x)$ như sau: $f\'(x) > 0$ trên $(-\\infty; 1)$ và $f\'(x) < 0$ trên $(1; +\\infty)$. Hàm số $y = f(x)$ đồng biến trên khoảng nào sau đây?',
         options: [
           { key: 'A', text: '$(-\\infty; 1)$' },
           { key: 'B', text: '$(1; 3)$' },
@@ -796,28 +915,13 @@ function parseExamFromLatexOrText(rawInput: string, grade: number = 12, duration
         explanation: 'Phương trình chính tắc $(x-a)^2 + (y-b)^2 + (z-c)^2 = R^2 \\implies I(1; -2; 3), R = \\sqrt{16} = 4$.',
         points: 0.25,
       },
-      {
-        id: 'q_p1_sample_04',
-        part: 'part_1_mcq',
-        questionNumber: 4,
-        prompt: 'Họ nguyên hàm của hàm số $f(x) = 3x^2 + \\sin(x)$ trên $\\mathbb{R}$ là:',
-        options: [
-          { key: 'A', text: '$x^3 - \\cos(x) + C$' },
-          { key: 'B', text: '$x^3 + \\cos(x) + C$' },
-          { key: 'C', text: '$6x - \\cos(x) + C$' },
-          { key: 'D', text: '$x^3 - \\sin(x) + C$' },
-        ],
-        correctAnswer: 'A',
-        explanation: 'Ta có $\\int (3x^2 + \\sin x) dx = x^3 - \\cos x + C$.',
-        points: 0.25,
-      },
     ];
 
     const p2Questions = [
       {
         id: 'q_p2_sample_01',
         part: 'part_2_true_false',
-        questionNumber: 5,
+        questionNumber: 4,
         prompt: 'Cho hàm số $y = f(x) = \\frac{2x - 1}{x + 1}$ có đồ thị là $(C)$.',
         items: [
           { id: 'tf_1_a', subKey: 'a', text: 'Tập xác định của hàm số là $D = \\mathbb{R} \\setminus \\{-1\\}$.', isCorrect: true },
@@ -834,7 +938,7 @@ function parseExamFromLatexOrText(rawInput: string, grade: number = 12, duration
       {
         id: 'q_p3_sample_01',
         part: 'part_3_short_answer',
-        questionNumber: 6,
+        questionNumber: 5,
         prompt: 'Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$). Biết vận tốc ban đầu $v(0) = 5$ m/s. Tính vận tốc của vật (m/s) tại thời điểm $t = 2$ giây.',
         correctAnswer: '17',
         explanation: 'Vận tốc $v(t) = \\int a(t)dt = t^3 + t^2 + C$. Với $v(0) = 5 \\implies C = 5$. Vậy $v(2) = 2^3 + 2^2 + 5 = 8 + 4 + 5 = 17$ m/s.',
@@ -864,13 +968,32 @@ app.post('/api/gemini/parse-pdf', async (req, res) => {
   const { pdfText, pdfBase64, latexText, grade = 12, durationMinutes = 90, examTitle } = req.body;
 
   try {
-    const rawContent = latexText || pdfText || '';
+    let extractedPdfText = pdfText || '';
+
+    // 1. Nếu có pdfBase64, trích xuất text nhị phân trực tiếp bằng pdf-parse
+    if (pdfBase64) {
+      try {
+        const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+        const pdfBuffer = Buffer.from(cleanBase64, 'base64');
+        const parser = new PDFParse({ data: pdfBuffer });
+        const textResult = await parser.getText();
+        if (textResult && textResult.text) {
+          extractedPdfText = textResult.text.trim();
+          console.log(`[PDF Parser] Đã trích xuất thành công ${extractedPdfText.length} ký tự từ file PDF.`);
+        }
+        await parser.destroy().catch(() => {});
+      } catch (pdfErr: any) {
+        console.warn('[PDF Parser] Lỗi khi trích xuất text từ PDF bằng PDFParse:', pdfErr?.message);
+      }
+    }
+
+    const rawContent = latexText || extractedPdfText || pdfText || '';
 
     // Nếu không có API Key, chuyển sang sử dụng bộ bóc tách thông minh Regex/LaTeX nội bộ
     if (!apiKey) {
-      console.warn('[Gemini PDF Parser] Không có API Key, sử dụng bộ giải mã LaTeX thông minh');
+      console.warn('[Gemini PDF Parser] Không có API Key, sử dụng bộ giải mã LaTeX/PDF thông minh');
       const fallbackExam = parseExamFromLatexOrText(rawContent, grade, durationMinutes, examTitle);
-      return res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser' });
+      return res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser', textExtracted: Boolean(extractedPdfText) });
     }
 
     const systemPrompt = `Bạn là chuyên gia chuyển đổi và bóc tách đề thi Toán học THPT Việt Nam (Bộ Giáo dục & Đào tạo định dạng mới 2025).
@@ -912,17 +1035,21 @@ Không xuất bất kỳ chữ nào ngoài JSON.`;
 
     if (pdfBase64) {
       const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
-      contentsPayload = [
-        {
-          inlineData: {
-            mimeType: 'application/pdf',
-            data: cleanBase64,
+      contentsPayload = {
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'application/pdf',
+              data: cleanBase64,
+            },
           },
-        },
-        {
-          text: systemPrompt,
-        },
-      ];
+          {
+            text: extractedPdfText
+              ? `${systemPrompt}\n\n(DƯỚI ĐÂY LÀ VĂN BẢN TRÍCH XUẤT TỪ FILE PDF ĐỂ THAM KHẢO THÊM):\n${extractedPdfText.slice(0, 25000)}`
+              : systemPrompt,
+          },
+        ],
+      };
     } else {
       contentsPayload = `${systemPrompt}\n\nNỘI DUNG ĐỀ THI / MÃ NGUỒN LATEX CỦA GIÁO VIÊN:\n${rawContent}`;
     }
@@ -958,13 +1085,13 @@ Không xuất bất kỳ chữ nào ngoài JSON.`;
         totalPoints: Number(total.toFixed(2)),
       };
 
-      return res.json({ success: true, parsedExam, source: 'gemini' });
+      return res.json({ success: true, parsedExam, source: 'gemini', textExtracted: Boolean(extractedPdfText) });
     }
 
     const fallbackExam = parseExamFromLatexOrText(rawContent, grade, durationMinutes, examTitle);
-    res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser' });
+    res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser', textExtracted: Boolean(extractedPdfText) });
   } catch (error: any) {
-    console.warn('[Gemini PDF Parser] Model error or JSON parse issue, using intelligent LaTeX parser:', error?.message);
+    console.warn('[Gemini PDF Parser] Model error or JSON parse issue, using intelligent LaTeX/PDF parser:', error?.message);
     const rawContent = latexText || pdfText || '';
     const fallbackExam = parseExamFromLatexOrText(rawContent, grade, durationMinutes, examTitle);
     res.json({

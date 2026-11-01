@@ -610,12 +610,68 @@ export async function dbFetchLessons(): Promise<ClassroomLesson[]> {
 }
 
 /**
+ * Chuẩn hóa và làm sạch cấu trúc đề thi trước khi lưu lên Firestore
+ */
+function sanitizeExamForFirestore(exam: Exam): any {
+  const sanitized = {
+    ...exam,
+    questions: (exam.questions || []).map((q, idx) => {
+      const cleanQ: any = {
+        id: q.id || `q_${idx + 1}_${Date.now()}`,
+        part: q.part,
+        questionNumber: q.questionNumber || idx + 1,
+        prompt: q.prompt || '',
+        points: typeof q.points === 'number' ? q.points : q.part === 'part_2_true_false' ? 1.0 : q.part === 'part_3_short_answer' ? 0.5 : 0.25,
+      };
+
+      if (q.latex) cleanQ.latex = q.latex;
+      if (q.explanation) cleanQ.explanation = q.explanation;
+      if (q.pdfAttachmentName) cleanQ.pdfAttachmentName = q.pdfAttachmentName;
+
+      // Không lưu ảnh base64 vượt quá 300KB vào trực tiếp tài liệu Firestore để tránh vượt quota document
+      if (q.imageAttachment) {
+        cleanQ.imageAttachment = q.imageAttachment.length > 300000 ? '' : q.imageAttachment;
+      }
+
+      if (q.part === 'part_1_mcq') {
+        cleanQ.options = (q.options || []).map((opt) => ({
+          key: opt.key,
+          text: opt.text || '',
+        }));
+        cleanQ.correctAnswer = q.correctAnswer || 'A';
+      } else if (q.part === 'part_2_true_false') {
+        cleanQ.items = (q.items || []).map((item) => ({
+          id: item.id || `tf_${item.subKey}_${Date.now()}`,
+          subKey: item.subKey,
+          text: item.text || '',
+          isCorrect: Boolean(item.isCorrect),
+        }));
+      } else if (q.part === 'part_3_short_answer') {
+        cleanQ.correctAnswer = String(q.correctAnswer || '').trim().slice(0, 4);
+      }
+
+      return cleanQ;
+    }),
+  };
+
+  return cleanForFirestore(sanitized);
+}
+
+/**
  * Lưu 1 đề thi mới hoặc cập nhật đề thi (Đồng bộ Real-Time cả Firestore và Server)
  * Giúp học sinh thấy đề thi ngay lập tức khi giáo viên đăng bài
  */
 export async function dbSaveExam(exam: Exam): Promise<boolean> {
-  const cleanExam = cleanForFirestore(exam);
+  const cleanExam = sanitizeExamForFirestore(exam);
   if (!cleanExam || !cleanExam.id) return false;
+
+  console.log('[dbSaveExam] Đang đồng bộ đề thi lên Firestore & Server:', {
+    id: cleanExam.id,
+    title: cleanExam.title,
+    grade: cleanExam.grade,
+    questionCount: cleanExam.questions?.length,
+    distributionType: cleanExam.distributionType,
+  });
 
   const serverPromise = fetch('/api/db/exam/save', {
     method: 'POST',
@@ -629,6 +685,7 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
   const firestorePromise = (async () => {
     try {
       await setDoc(doc(db, 'exams', cleanExam.id), cleanExam, { merge: true });
+      console.log('[dbSaveExam] Đã lưu đề thi lên Firestore THÀNH CÔNG:', cleanExam.id);
     } catch (err) {
       console.warn('Lỗi dbSaveExam Firestore:', err);
     }
