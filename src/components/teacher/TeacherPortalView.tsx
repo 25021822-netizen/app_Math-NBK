@@ -31,6 +31,8 @@ import {
   Paperclip,
   Check,
   Compass,
+  Loader2,
+  ArrowRight,
 } from 'lucide-react';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 
@@ -164,12 +166,213 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [showClearAllModal, setShowClearAllModal] = useState<boolean>(false);
   const [showPublishConfirmModal, setShowPublishConfirmModal] = useState<boolean>(false);
 
-  // ================= STATE DÀNH CHO AI PDF PARSER =================
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [isParsing, setIsParsing] = useState<boolean>(false);
-  const [parseStatus, setParseStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [parsedExamData, setParsedExamData] = useState<any | null>(null);
-  const [showRawJson, setShowRawJson] = useState<boolean>(false);
+  // ================= STATE DÀNH CHO AI PDF & LATEX SCANNER =================
+  const [aiInputMethod, setAiInputMethod] = useState<'pdf' | 'latex'>('pdf');
+  const [aiPdfFile, setAiPdfFile] = useState<{ fileName: string; fileSize: string; fileBase64: string } | null>(null);
+  const [aiLatexText, setAiLatexText] = useState<string>('');
+  const [aiExamTitle, setAiExamTitle] = useState<string>('Đề Thi Khảo Sát Toán THPT Chuẩn Bộ GD&ĐT 2025');
+  const [aiGrade, setAiGrade] = useState<10 | 11 | 12>(12);
+  const [aiDuration, setAiDuration] = useState<number>(90);
+  const [isAiScanning, setIsAiScanning] = useState<boolean>(false);
+  const [aiScanError, setAiScanError] = useState<string | null>(null);
+  const [aiParsedExam, setAiParsedExam] = useState<Exam | null>(null);
+  const [aiScanStatusText, setAiScanStatusText] = useState<string>('');
+  const [aiScanSource, setAiScanSource] = useState<string | null>(null);
+  const [isDraggingPdf, setIsDraggingPdf] = useState<boolean>(false);
+  const pdfExamInputRef = useRef<HTMLInputElement>(null);
+
+  // Mẫu mã nguồn LaTeX chuẩn Bộ Giáo dục & Đào tạo 2025 (3 phần)
+  const SAMPLE_LATEX_BGD_EXAM = `\\section*{PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn (Mỗi câu 0.25 điểm)}
+\\begin{ex}
+Câu 1. Cho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng xét dấu đạo hàm $f'(x)$ như sau: $f'(x) > 0$ trên $(-\\infty; 1)$ và $f'(x) < 0$ trên $(1; +\\infty)$. Hàm số $y = f(x)$ đồng biến trên khoảng nào dưới đây?
+\\choice
+{\\True $(-\\infty; 1)$}
+{$(1; +\\infty)$}
+{$(0; 2)$}
+{$(-\\infty; +\\infty)$}
+\\loigiai{Hàm số đồng biến trên khoảng $(-\\infty; 1)$ do đạo hàm $f'(x) > 0$.}
+\\end{ex}
+
+\\begin{ex}
+Câu 2. Trong không gian $Oxyz$, cho mặt cầu $(S): (x-2)^2 + (y+1)^2 + (z-3)^2 = 25$. Tọa độ tâm $I$ và bán kính $R$ của mặt cầu $(S)$ là:
+\\choice
+{\\True $I(2; -1; 3), R = 5$}
+{$I(-2; 1; -3), R = 5$}
+{$I(2; -1; 3), R = 25$}
+{$I(-2; 1; -3), R = 25$}
+\\loigiai{Phương trình chính tắc $(x-a)^2 + (y-b)^2 + (z-c)^2 = R^2 \\implies I(2; -1; 3), R = \\sqrt{25} = 5$.}
+\\end{ex}
+
+\\begin{ex}
+Câu 3. Khối chóp tam giác đều $S.ABC$ có cạnh đáy bằng $a = 2\\sqrt{3}$ và chiều cao $h = 4$. Thể tích của khối chóp đã cho bằng:
+\\choice
+{\\True $4\\sqrt{3}$}
+{$12\\sqrt{3}$}
+{$8\\sqrt{3}$}
+{$6\\sqrt{3}$}
+\\loigiai{Diện tích đáy tam giác đều $B = \\frac{(2\\sqrt{3})^2 \\sqrt{3}}{4} = 3\\sqrt{3}$. Thể tích $V = \\frac{1}{3} B h = \\frac{1}{3} \\cdot 3\\sqrt{3} \\cdot 4 = 4\\sqrt{3}$.}
+\\end{ex}
+
+\\section*{PHẦN II. Câu trắc nghiệm đúng sai (Mỗi câu 1.0 điểm, 4 ý a, b, c, d)}
+\\begin{ex}
+Câu 4. Cho hàm số bậc ba $y = f(x) = x^3 - 3x^2 + 2$ có đồ thị là $(C)$.
+a) Đạo hàm của hàm số là $f'(x) = 3x^2 - 6x$. (Đúng)
+b) Đồ thị hàm số có điểm cực đại là $M(0; 2)$. (Đúng)
+c) Giá trị cực tiểu của hàm số bằng $-2$ đạt tại $x = 2$. (Đúng)
+d) Hàm số luôn đồng biến trên toàn khoảng $(0; 2)$. (Sai)
+\\loigiai{Trên khoảng $(0; 2)$, ta có $f'(x) = 3x(x - 2) < 0$ nên hàm số nghịch biến, do đó mệnh đề d là Sai.}
+\\end{ex}
+
+\\section*{PHẦN III. Câu trắc nghiệm trả lời ngắn (Mỗi câu 0.5 điểm)}
+\\begin{ex}
+Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$). Biết vận tốc ban đầu tại $t = 0$ là $v(0) = 5$ m/s. Vận tốc của vật tại thời điểm $t = 2$ giây bằng bao nhiêu m/s?
+Đáp số: 17
+\\loigiai{Ta có $v(t) = \\int (3t^2 + 2t) dt = t^3 + t^2 + C$. Với $v(0) = 5 \\implies C = 5$. Suy ra $v(2) = 2^3 + 2^2 + 5 = 8 + 4 + 5 = 17$ m/s.}
+\\end{ex}`;
+
+  // Xử lý nạp mã LaTeX mẫu
+  const handleLoadSampleLatex = () => {
+    setAiLatexText(SAMPLE_LATEX_BGD_EXAM);
+    setAiExamTitle('Đề Thi Thử Tốt Nghiệp THPT 2025 (Mã LaTeX Chuẩn BGD)');
+    setAiScanError(null);
+  };
+
+  // Xử lý tải file PDF
+  const handleProcessPdfFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+      setAiScanError('Vui lòng chọn file có định dạng PDF (.pdf)!');
+      return;
+    }
+    const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
+    if (file.size > MAX_SIZE) {
+      setAiScanError(`File PDF quá lớn (${(file.size / (1024 * 1024)).toFixed(2)} MB). Vui lòng chọn file nhỏ hơn 25MB!`);
+      return;
+    }
+
+    setAiScanError(null);
+    const sizeStr = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setAiPdfFile({
+        fileName: file.name,
+        fileSize: sizeStr,
+        fileBase64: base64,
+      });
+      const cleanTitle = file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+      setAiExamTitle(`Đề Thi: ${cleanTitle}`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Quét & Bóc tách đề thi bằng AI hoặc Bộ phân tích cú pháp LaTeX
+  const handleScanExamWithAi = async () => {
+    if (aiInputMethod === 'pdf' && !aiPdfFile) {
+      setAiScanError('Vui lòng chọn hoặc kéo thả tệp PDF đề thi!');
+      return;
+    }
+    if (aiInputMethod === 'latex' && !aiLatexText.trim()) {
+      setAiScanError('Vui lòng dán mã nguồn LaTeX hoặc nhấn "Nạp Mẫu Đề LaTeX Chuẩn" để bắt đầu!');
+      return;
+    }
+
+    setIsAiScanning(true);
+    setAiScanError(null);
+    setAiScanStatusText('Đang nạp dữ liệu đề thi và kết nối mô hình Gemini 3.8 Flash...');
+
+    try {
+      setAiScanStatusText('Đang phân tích cấu trúc 3 phần chuẩn BGD và định dạng công thức KaTeX...');
+
+      const response = await fetch('/api/gemini/parse-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pdfBase64: aiInputMethod === 'pdf' ? aiPdfFile?.fileBase64 : undefined,
+          latexText: aiInputMethod === 'latex' ? aiLatexText : undefined,
+          grade: aiGrade,
+          durationMinutes: aiDuration,
+          examTitle: aiExamTitle.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Máy chủ trả về mã trạng thái HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.success || !data.parsedExam || !data.parsedExam.questions || data.parsedExam.questions.length === 0) {
+        throw new Error('Không thể nhận diện câu hỏi từ dữ liệu đề thi. Vui lòng kiểm tra lại file hoặc cú pháp LaTeX!');
+      }
+
+      const parsed = data.parsedExam;
+      const questions: Question[] = parsed.questions;
+
+      const createdExam: Exam = {
+        id: `exam_ai_${Date.now()}`,
+        title: aiExamTitle.trim() || parsed.metadata?.title || 'Đề Thi Quét AI Chuẩn BGD',
+        grade: (parsed.metadata?.grade || aiGrade) as 10 | 11 | 12,
+        year: parsed.metadata?.year || new Date().getFullYear(),
+        durationMinutes: parsed.metadata?.durationMinutes || aiDuration,
+        totalPoints: parsed.metadata?.totalPoints || Number(questions.reduce((sum, q) => sum + (q.points || 0), 0).toFixed(2)),
+        status: 'approved',
+        createdBy: manualCreatedBy || currentUserName || 'Giáo viên',
+        createdAt: new Date().toISOString(),
+        questions,
+        maxAttempts: manualMaxAttempts,
+        openTime: manualHasTimeWindow && manualOpenTime ? manualOpenTime : undefined,
+        closeTime: manualHasTimeWindow && manualCloseTime ? manualCloseTime : undefined,
+        distributionType: 'classroom',
+        targetClassIds: classrooms.map((c) => c.id),
+        allowViewAnswersAfterSubmit: true,
+      };
+
+      setAiParsedExam(createdExam);
+      setAiScanSource(data.source === 'gemini' ? 'Gemini 3.8 Flash AI' : 'Bộ Phân Tích Cú Pháp LaTeX');
+      setAiScanStatusText('');
+    } catch (err: any) {
+      console.error('Lỗi khi quét đề thi:', err);
+      setAiScanError(err.message || 'Có lỗi xảy ra khi bóc tách đề thi.');
+    } finally {
+      setIsAiScanning(false);
+    }
+  };
+
+  // Chuyển toàn bộ câu hỏi quét được sang Trình tạo đề thủ công để giáo viên chỉnh sửa từng câu
+  const handleTransferToManualEditor = () => {
+    if (!aiParsedExam) return;
+    setManualTitle(aiParsedExam.title);
+    setManualGrade(aiParsedExam.grade);
+    setManualDuration(aiParsedExam.durationMinutes);
+    setManualQuestions(aiParsedExam.questions);
+    setCreationMode('manual');
+    setPublishSuccessMessage(`Đã chuyển ${aiParsedExam.questions.length} câu hỏi sang Trình Tạo Đề Thủ Công để chỉnh sửa chi tiết!`);
+    setTimeout(() => setPublishSuccessMessage(null), 4000);
+  };
+
+  // Xuất bản trực tiếp đề thi vừa quét
+  const handleDirectPublishAiExam = () => {
+    if (!aiParsedExam) return;
+    if (onPublishExam) {
+      onPublishExam(aiParsedExam);
+    }
+    setPublishSuccessMessage(`Đã xuất bản thành công đề thi "${aiParsedExam.title}" (${aiParsedExam.questions.length} câu - ${aiParsedExam.totalPoints} điểm)!`);
+    setTimeout(() => setPublishSuccessMessage(null), 5000);
+    setCreationMode('manage_exams');
+  };
+
+  // Xóa 1 câu hỏi trong danh sách preview của AI
+  const handleDeleteAiQuestion = (questionId: string) => {
+    if (!aiParsedExam) return;
+    const remaining = aiParsedExam.questions.filter((q) => q.id !== questionId);
+    // Đánh lại số thứ tự
+    const renumbered = remaining.map((q, idx) => ({ ...q, questionNumber: idx + 1 }));
+    const newTotal = Number(renumbered.reduce((s, q) => s + (q.points || 0), 0).toFixed(2));
+    setAiParsedExam({
+      ...aiParsedExam,
+      questions: renumbered,
+      totalPoints: newTotal,
+    });
+  };
 
   // Mở modal để tạo câu hỏi mới
   const handleOpenAddQuestion = (partType: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = 'part_1_mcq') => {
@@ -1180,28 +1383,514 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MODE 2: TẢI FILE PDF & AI BÓC TÁCH                                        */}
+      {/* MODE 2: QUÉT ĐỀ BẰNG TỆP PDF HOẶC DÙNG NGÔN NGỮ LATEX BẰNG AI            */}
       {/* ========================================================================= */}
       {creationMode === 'ai_pdf' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 space-y-6 shadow-xs text-center">
-          <div className="w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
-            <FileUp size={32} />
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Hộp cấu hình Nguồn Đề Thi & Bộ Bóc Tách */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+              <div>
+                <h3 className="font-extrabold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                  <Sparkles size={20} className="text-blue-600" />
+                  <span>Quét & Nhận Diện Đề Thi Tự Động (AI Vision & LaTeX)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                  Tải lên tệp PDF đề thi gốc hoặc dán trực tiếp mã nguồn LaTeX chuẩn Bộ GD&ĐT. Hệ thống ứng dụng Gemini 3.8 Flash và bộ phân tích cú pháp để tự động nhận biết câu hỏi, công thức KaTeX và phân loại vào 3 phần chuẩn hóa.
+                </p>
+              </div>
+
+              {/* Chuyển đổi phương thức: File PDF hoặc Mã LaTeX */}
+              <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold shrink-0 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setAiInputMethod('pdf')}
+                  className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                    aiInputMethod === 'pdf' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileUp size={14} />
+                  <span>File PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiInputMethod('latex')}
+                  className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                    aiInputMethod === 'latex' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Code2 size={14} />
+                  <span>Mã LaTeX</span>
+                </button>
+              </div>
+            </div>
+
+            {/* VÙNG NHẬP 1: TẢI FILE PDF (HỖ TRỢ DRAG & DROP) */}
+            {aiInputMethod === 'pdf' && (
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>Tệp tài liệu đề thi PDF *</span>
+                  <span className="text-[11px] font-normal text-slate-400">Định dạng .pdf (Tối đa 25MB)</span>
+                </label>
+
+                {!aiPdfFile ? (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingPdf(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setIsDraggingPdf(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingPdf(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        handleProcessPdfFile(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    onClick={() => pdfExamInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-3 ${
+                      isDraggingPdf
+                        ? 'border-blue-500 bg-blue-50/70 scale-[0.99]'
+                        : 'border-slate-300 hover:border-blue-400 bg-slate-50/60 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      ref={pdfExamInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          handleProcessPdfFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-xs">
+                      <FileUp size={28} />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-800">
+                        Kéo thả file PDF đề thi vào đây hoặc bấm để chọn tệp
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Hỗ trợ đề thi khảo sát, đề tốt nghiệp THPT, đề thi thử các sở GD&ĐT dạng PDF.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                        PDF
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-extrabold text-xs text-slate-900 truncate">
+                          {aiPdfFile.fileName}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Dung lượng: {aiPdfFile.fileSize} · Đã nạp thành công
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => pdfExamInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-xl border border-blue-300 bg-white hover:bg-blue-50 text-blue-700 text-xs font-bold transition-colors"
+                      >
+                        Đổi Tệp Khác
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiPdfFile(null);
+                          if (pdfExamInputRef.current) pdfExamInputRef.current.value = '';
+                        }}
+                        className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-100 transition-colors"
+                        title="Xóa tệp PDF này"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <input
+                      ref={pdfExamInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          handleProcessPdfFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VÙNG NHẬP 2: NHẬP MÃ NGUỒN LATEX */}
+            {aiInputMethod === 'latex' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Code2 size={15} className="text-indigo-600" />
+                    <span>Mã nguồn LaTeX của đề thi (hỗ trợ \begin&#123;ex&#125;, \choice, $...$) *</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleLoadSampleLatex}
+                      className="px-3 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                    >
+                      <Sparkles size={13} className="text-amber-600" />
+                      <span>Nạp Mã LaTeX Mẫu Chuẩn BGD 2025</span>
+                    </button>
+                    {aiLatexText && (
+                      <button
+                        type="button"
+                        onClick={() => setAiLatexText('')}
+                        className="px-2.5 py-1 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-semibold"
+                      >
+                        Xóa Trắng
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <textarea
+                    rows={12}
+                    value={aiLatexText}
+                    onChange={(e) => setAiLatexText(e.target.value)}
+                    placeholder={`% Dán mã nguồn LaTeX đề thi của bạn vào đây. Ví dụ:\n\\section*{PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn}\n\\begin{ex}\nCâu 1. Cho hàm số $y = f(x)$ đồng biến trên khoảng nào?\n\\choice\n{\\True $(-\\infty; 1)$}\n{$(1; 3)$}\n{$(3; +\\infty)$}\n{$(0; 2)$}\n\\end{ex}`}
+                    className="w-full p-4 rounded-2xl border border-slate-300 font-mono text-xs text-slate-800 bg-slate-900/5 focus:bg-white focus:border-blue-600 focus:outline-none leading-relaxed transition-all"
+                  />
+                  <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+                    <span>
+                      💡 Hệ thống tự động nhận diện các môi trường: <code>\begin&#123;ex&#125;</code>, <code>\choice</code>, <code>\choiceTF</code>, <code>Câu 1...</code>, và công thức Toán <code>$...$</code>.
+                    </span>
+                    <span className="font-mono text-slate-400">{aiLatexText.length} ký tự</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* CẤU HÌNH THÔNG SỐ ĐỀ THI QUÉT ĐƯỢC */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs pt-2 border-t border-slate-100">
+              <div className="md:col-span-6 space-y-1">
+                <label className="font-bold text-slate-700">Tên Đề Thi *</label>
+                <input
+                  type="text"
+                  value={aiExamTitle}
+                  onChange={(e) => setAiExamTitle(e.target.value)}
+                  placeholder="Nhập tên đề thi hiển thị..."
+                  className="w-full h-10 px-3.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-3 space-y-1">
+                <label className="font-bold text-slate-700">Khối Lớp *</label>
+                <select
+                  value={aiGrade}
+                  onChange={(e) => setAiGrade(Number(e.target.value) as 10 | 11 | 12)}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-bold focus:border-blue-600 focus:outline-none bg-white cursor-pointer"
+                >
+                  <option value={10}>Lớp 10 (Chương trình mới)</option>
+                  <option value={11}>Lớp 11 (Chương trình mới)</option>
+                  <option value={12}>Lớp 12 (Tốt Nghiệp THPT)</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-3 space-y-1">
+                <label className="font-bold text-slate-700">Thời Gian Làm Bài *</label>
+                <select
+                  value={aiDuration}
+                  onChange={(e) => setAiDuration(Number(e.target.value))}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-bold focus:border-blue-600 focus:outline-none bg-white cursor-pointer"
+                >
+                  <option value={45}>45 Phút (Kiểm tra 1 tiết)</option>
+                  <option value={60}>60 Phút (Kiểm tra giữa kỳ)</option>
+                  <option value={90}>90 Phút (Chuẩn Bộ GD&ĐT)</option>
+                  <option value={120}>120 Phút (Khảo sát chuyên sâu)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* THÔNG BÁO LỖI NẾU CÓ */}
+            {aiScanError && (
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 animate-in fade-in">
+                <AlertTriangle size={18} className="shrink-0 text-rose-600" />
+                <span>{aiScanError}</span>
+              </div>
+            )}
+
+            {/* TRẠNG THÁI ĐANG QUÉT */}
+            {isAiScanning && (
+              <div className="p-5 rounded-2xl bg-blue-50/80 border border-blue-200 text-blue-900 text-xs space-y-2 animate-pulse">
+                <div className="font-bold flex items-center gap-2">
+                  <Loader2 size={16} className="animate-spin text-blue-600" />
+                  <span>Đang xử lý đề thi bằng mô hình Gemini 3.8 Flash...</span>
+                </div>
+                <p className="text-slate-600 text-[11px]">{aiScanStatusText}</p>
+              </div>
+            )}
+
+            {/* NÚT THỰC THI QUÉT ĐỀ */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isAiScanning}
+                onClick={handleScanExamWithAi}
+                className={`w-full sm:w-auto px-6 py-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
+                  isAiScanning
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25 hover:scale-[1.01]'
+                }`}
+              >
+                {isAiScanning ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Đang Phân Tích Đề Thi...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    <span>Quét & Bóc Tách Đề Bằng AI</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-          <h3 className="font-extrabold text-base text-slate-900">
-            Tải Lên Tệp PDF Đề Thi Toán THPT Chuẩn Bộ GD&ĐT
-          </h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto">
-            Hệ thống ứng dụng Gemini Vision và bộ xác thực Zod Schema để tự động phân rã đề thi thành 3 phần chuẩn hóa.
-          </p>
-          <button
-            onClick={() => {
-              setCreationMode('manual');
-              setPublishSuccessMessage('Đã chuyển sang trình tạo đề chuẩn BGD 2025!');
-            }}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs"
-          >
-            Sử Dụng Trình Soạn Đề Thủ Công
-          </button>
+
+          {/* ========================================================================= */}
+          {/* HIỂN THỊ KẾT QUẢ ĐÃ BÓC TÁCH & XEM TRƯỚC BỘ CÂU HỎI                       */}
+          {/* ========================================================================= */}
+          {aiParsedExam && (
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs animate-in fade-in duration-300">
+              {/* Thanh tiêu đề kết quả */}
+              <div className="p-5 rounded-2xl bg-emerald-50/80 border border-emerald-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-600 text-white shadow-xs">
+                      {aiScanSource || 'Đã Bóc Tách Thành Công'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white text-emerald-800 border border-emerald-200">
+                      Khối {aiParsedExam.grade} · {aiParsedExam.durationMinutes} phút
+                    </span>
+                  </div>
+                  <h4 className="font-black text-base sm:text-lg text-emerald-950">
+                    {aiParsedExam.title}
+                  </h4>
+                  <div className="flex items-center gap-2 text-xs text-emerald-800 font-semibold flex-wrap">
+                    <span>Tổng: <strong>{aiParsedExam.questions.length} câu</strong></span>
+                    <span>·</span>
+                    <span>Phần I: <strong>{aiParsedExam.questions.filter(q => q.part === 'part_1_mcq').length} câu</strong></span>
+                    <span>·</span>
+                    <span>Phần II: <strong>{aiParsedExam.questions.filter(q => q.part === 'part_2_true_false').length} câu</strong></span>
+                    <span>·</span>
+                    <span>Phần III: <strong>{aiParsedExam.questions.filter(q => q.part === 'part_3_short_answer').length} câu</strong></span>
+                    <span>·</span>
+                    <span className="font-mono text-emerald-900 font-extrabold text-sm">
+                      Tổng điểm: {aiParsedExam.totalPoints.toFixed(2)}đ
+                    </span>
+                  </div>
+                </div>
+
+                {/* Các nút hành động chính */}
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleTransferToManualEditor}
+                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                    title="Chuyển sang trình tạo đề thủ công để thêm, sửa, xóa chi tiết từng câu"
+                  >
+                    <Edit2 size={14} />
+                    <span>Chỉnh Sửa Chi Tiết</span>
+                    <ArrowRight size={14} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDirectPublishAiExam}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                    title="Xuất bản đề thi trực tiếp vào hệ thống"
+                  >
+                    <CheckCircle2 size={15} />
+                    <span>Xuất Bản Ngay</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Danh sách các câu hỏi xem trước */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <h4 className="font-extrabold text-sm text-slate-800">
+                    Xem Trước Danh Sách Câu Hỏi Đã Quét ({aiParsedExam.questions.length} câu)
+                  </h4>
+                  <span className="text-[11px] text-slate-400">
+                    Công thức toán học hiển thị trực tiếp qua KaTeX
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {aiParsedExam.questions.map((question, index) => (
+                    <div
+                      key={question.id}
+                      className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-blue-300 transition-all space-y-3 shadow-2xs"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 rounded-lg text-xs font-black bg-blue-100 text-blue-800">
+                            Câu {question.questionNumber}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-200 text-slate-700 uppercase">
+                            {question.part === 'part_1_mcq'
+                              ? 'Phần I: 4 Lựa chọn'
+                              : question.part === 'part_2_true_false'
+                              ? 'Phần II: Đúng / Sai'
+                              : 'Phần III: Trả lời ngắn'}
+                          </span>
+                          <span className="text-[11px] font-bold text-blue-600">
+                            +{question.points} điểm
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAiQuestion(question.id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Xóa câu hỏi này khỏi đề thi"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+
+                      {/* Lời dẫn câu hỏi */}
+                      <div className="text-xs text-slate-900 leading-relaxed font-medium">
+                        <MathView latex={question.prompt} block={false} />
+                      </div>
+
+                      {/* PHẦN 1: 4 LỰA CHỌN */}
+                      {question.part === 'part_1_mcq' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
+                          {question.options.map((opt) => {
+                            const isCorrect = opt.key === question.correctAnswer;
+                            return (
+                              <div
+                                key={opt.key}
+                                className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs transition-colors ${
+                                  isCorrect
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
+                                    : 'bg-white border-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <span
+                                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                                    isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'
+                                  }`}
+                                >
+                                  {opt.key}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <MathView latex={opt.text} block={false} />
+                                </div>
+                                {isCorrect && (
+                                  <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.2 rounded-md font-bold uppercase shrink-0">
+                                    Đáp án đúng
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* PHẦN 2: ĐÚNG / SAI 4 Ý */}
+                      {question.part === 'part_2_true_false' && (
+                        <div className="space-y-1.5 pt-1 text-xs">
+                          {question.items.map((item) => (
+                            <div
+                              key={item.id || item.subKey}
+                              className="p-2.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between gap-3"
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className="font-extrabold text-blue-700 text-xs shrink-0 uppercase">
+                                  {item.subKey})
+                                </span>
+                                <div className="min-w-0 text-slate-800">
+                                  <MathView latex={item.text} block={false} />
+                                </div>
+                              </div>
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0 ${
+                                  item.isCorrect
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {item.isCorrect ? 'ĐÚNG' : 'SAI'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* PHẦN 3: TRẢ LỜI NGẮN */}
+                      {question.part === 'part_3_short_answer' && (
+                        <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-xs flex items-center justify-between gap-2">
+                          <span className="text-slate-600 font-semibold">Đáp số chuẩn xác:</span>
+                          <span className="font-mono font-black text-sm bg-white px-3 py-1 rounded-lg border border-blue-200 text-blue-700 shadow-2xs">
+                            {question.correctAnswer}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Lời giải chi tiết nếu có */}
+                      {question.explanation && (
+                        <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/80 text-[11px] text-amber-900 leading-relaxed">
+                          <strong>Lời giải chi tiết: </strong>
+                          <MathView latex={question.explanation} block={false} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Thanh nút cuối trang */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAiParsedExam(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold"
+                >
+                  Quét Lại Đề Khác
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTransferToManualEditor}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <Edit2 size={14} />
+                    <span>Chuyển Sang Trình Soạn Đề Thủ Công</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDirectPublishAiExam}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <CheckCircle2 size={15} />
+                    <span>Xuất Bản Đề Thi Ngay</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

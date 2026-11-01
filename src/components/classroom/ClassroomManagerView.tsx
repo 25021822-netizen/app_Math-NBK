@@ -128,18 +128,26 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const isMemberOfClass = (cls: Classroom | undefined | null): boolean => {
     if (!cls) return false;
     if (userRole === 'admin' || userRole === 'teacher') return true;
-    // Học sinh bắt buộc phải nằm trong danh sách studentIds đã được phê duyệt
+    // Học sinh bắt buộc phải nằm trong danh sách studentIds đã được phê duyệt (kiểm tra không phân biệt hoa thường)
+    const lowerUserId = (currentUserId || '').toLowerCase().trim();
+    const lowerEmail = (currentUserEmail || '').toLowerCase().trim();
     return Boolean(
       cls.studentIds &&
-      (cls.studentIds.includes(currentUserId) ||
-       (currentUserEmail && cls.studentIds.includes(currentUserEmail)))
+      cls.studentIds.some((sId) => {
+        const lowerS = (sId || '').toLowerCase().trim();
+        return lowerS === lowerUserId || (lowerEmail && lowerS === lowerEmail);
+      })
     );
   };
 
   // 2. Kiểm tra học sinh đang ở trạng thái chờ duyệt vào lớp
   const isPendingApprovalInClass = (cls: Classroom | undefined | null): boolean => {
     if (!cls || userRole !== 'student') return false;
-    return Boolean(cls.pendingStudentIds && cls.pendingStudentIds.includes(currentUserId));
+    const lowerUserId = (currentUserId || '').toLowerCase().trim();
+    return Boolean(
+      cls.pendingStudentIds &&
+      cls.pendingStudentIds.some((sId) => (sId || '').toLowerCase().trim() === lowerUserId)
+    );
   };
 
   // Khởi tạo selectedClassId: ưu tiên lớp mà người dùng thực sự là thành viên, không tự ý gán lớp lạ
@@ -405,10 +413,14 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const currentClassMessages = useMemo(() => {
     if (!currentClass || !isCurrentClassMember) return [];
     const local = localMessages[currentClass.id] || [];
+    const localByCode = (currentClass.code && localMessages[currentClass.code]) || [];
     const remote = classroomMessages?.[currentClass.id] || [];
+    const remoteByCode = (currentClass.code && classroomMessages?.[currentClass.code]) || [];
     const map = new Map<string, ClassroomChatMessage>();
     local.forEach((m) => map.set(m.id, m));
+    localByCode.forEach((m) => map.set(m.id, m));
     remote.forEach((m) => map.set(m.id, m));
+    remoteByCode.forEach((m) => map.set(m.id, m));
     return Array.from(map.values()).sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
@@ -1610,12 +1622,12 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     });
 
     const newMsg: ClassroomChatMessage = {
-      id: `msg_${Date.now()}`,
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       classId: currentClass.id,
       senderId: currentUserId,
-      senderName: currentUserName,
+      senderName: currentUserName || 'Thành viên',
       senderRole: userRole,
-      senderAvatar: currentUserAvatar,
+      senderAvatar: currentUserAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUserId || 'student')}`,
       content: chatMessageText.trim(),
       imageUrl: attachedImage || undefined,
       mentions: mentions.length > 0 ? mentions : undefined,

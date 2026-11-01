@@ -48,6 +48,7 @@ interface NavbarProps {
   notifications?: PushNotificationItem[];
   onClearNotifications?: () => void;
   onRequestPushPermission?: () => void;
+  unreadClassroomMessagesCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -68,6 +69,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   notifications = [],
   onClearNotifications,
   onRequestPushPermission,
+  unreadClassroomMessagesCount = 0,
 }) => {
   const [showNotifDropdown, setShowNotifDropdown] = useState<boolean>(false);
   const [showMobileMenu, setShowMobileMenu] = useState<boolean>(false);
@@ -135,7 +137,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                       : 'hover:text-slate-900'
                   }`}
                 >
-                  Nhóm Lớp
+                  <span className="relative inline-flex items-center gap-1.5">
+                    <span>Nhóm Lớp</span>
+                    {unreadClassroomMessagesCount > 0 && (
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-black leading-none text-white bg-rose-500 rounded-full shadow-xs animate-pulse">
+                        {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
+                      </span>
+                    )}
+                  </span>
                 </button>
                 <button
                   onClick={() => onSelectTab('student_history')}
@@ -182,7 +191,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                       : 'hover:text-slate-900'
                   }`}
                 >
-                  Quản Lý Nhóm Lớp
+                  <span className="relative inline-flex items-center gap-1.5">
+                    <span>Quản Lý Nhóm Lớp</span>
+                    {unreadClassroomMessagesCount > 0 && (
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-black leading-none text-white bg-rose-500 rounded-full shadow-xs animate-pulse">
+                        {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
+                      </span>
+                    )}
+                  </span>
                 </button>
                 <button
                   onClick={() => onSelectTab('teacher_gradebook')}
@@ -560,13 +576,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                        <div className={`relative w-9 h-9 rounded-xl flex items-center justify-center ${
                           currentTab === 'classroom' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-600'
                         }`}>
                           <Users size={18} />
+                          {unreadClassroomMessagesCount > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black px-1 rounded-full min-w-[15px] h-4 flex items-center justify-center shadow-xs">
+                              {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
+                            </span>
+                          )}
                         </div>
                         <div>
-                          <div className="text-xs font-extrabold">Nhóm Lớp Trực Tuyến</div>
+                          <div className="text-xs font-extrabold flex items-center gap-2">
+                            <span>Nhóm Lớp Trực Tuyến</span>
+                            {unreadClassroomMessagesCount > 0 && (
+                              <span className="bg-rose-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold">
+                                {unreadClassroomMessagesCount} mới
+                              </span>
+                            )}
+                          </div>
                           <div className={`text-[10px] ${currentTab === 'classroom' ? 'text-blue-100' : 'text-slate-400'}`}>
                             Trao đổi bài tập, lớp học trực tuyến & bài giảng
                           </div>
@@ -891,7 +919,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                     : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
-                <Users size={19} className={currentTab === 'classroom' ? 'stroke-[2.5]' : ''} />
+                <div className="relative">
+                  <Users size={19} className={currentTab === 'classroom' ? 'stroke-[2.5]' : ''} />
+                  {unreadClassroomMessagesCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-black px-1 rounded-full min-w-[15px] h-3.5 flex items-center justify-center shadow-xs animate-pulse">
+                      {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] mt-0.5">Lớp Học</span>
               </button>
 
@@ -943,7 +978,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   currentTab === 'classroom' ? 'text-blue-600 font-bold scale-105' : 'text-slate-400'
                 }`}
               >
-                <Users size={19} className={currentTab === 'classroom' ? 'stroke-[2.5]' : ''} />
+                <div className="relative">
+                  <Users size={19} className={currentTab === 'classroom' ? 'stroke-[2.5]' : ''} />
+                  {unreadClassroomMessagesCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-black px-1 rounded-full min-w-[15px] h-3.5 flex items-center justify-center shadow-xs animate-pulse">
+                      {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] mt-0.5">Lớp Học</span>
               </button>
 

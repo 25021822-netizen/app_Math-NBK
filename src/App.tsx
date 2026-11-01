@@ -3,7 +3,7 @@
  * Bản Quyền: Math&NBK Education Platform
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson, ClassroomChatMessage } from './types/math';
 import {
   INITIAL_USER_PROFILE,
@@ -127,6 +127,76 @@ export default function App() {
     },
   ]);
   const [activeToast, setActiveToast] = useState<PushNotificationItem | null>(null);
+
+  // Theo dõi thời điểm đọc tin nhắn của từng nhóm lớp để tính số tin chưa đọc (Unread badge)
+  const [lastReadChatMap, setLastReadChatMap] = useState<Record<string, number>>(() => {
+    try {
+      const raw = localStorage.getItem('math_nbk_last_read_chat');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Khi người dùng đang ở tab classroom, tự động đánh dấu đã đọc tất cả tin nhắn lớp của mình
+  useEffect(() => {
+    if (currentTab === 'classroom' && isAuthenticated) {
+      const now = Date.now();
+      setLastReadChatMap((prev) => {
+        const next = { ...prev };
+        classrooms.forEach((c) => {
+          next[c.id] = now;
+          if (c.code) next[c.code] = now;
+        });
+        try {
+          localStorage.setItem('math_nbk_last_read_chat', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+  }, [currentTab, classrooms, isAuthenticated]);
+
+  // Tính toán số lượng tin nhắn chưa đọc trong các nhóm lớp mà người dùng tham gia
+  const unreadClassroomMessagesCount = useMemo(() => {
+    if (currentTab === 'classroom' || !isAuthenticated) return 0;
+    let count = 0;
+    const myClassIds = new Set<string>();
+
+    const lowerUserId = (userProfile.id || '').toLowerCase().trim();
+    const lowerEmail = (userProfile.email || '').toLowerCase().trim();
+
+    classrooms.forEach((c) => {
+      const isMember =
+        userProfile.role === 'admin' ||
+        userProfile.role === 'teacher' ||
+        (c.studentIds &&
+          c.studentIds.some((sId) => {
+            const lowerS = (sId || '').toLowerCase().trim();
+            return lowerS === lowerUserId || (lowerEmail && lowerS === lowerEmail);
+          }));
+
+      if (isMember) {
+        myClassIds.add(c.id);
+        if (c.code) myClassIds.add(c.code);
+      }
+    });
+
+    for (const [classId, msgs] of Object.entries(classroomMessages)) {
+      if (!myClassIds.has(classId)) continue;
+      const lastRead = lastReadChatMap[classId] || 0;
+      if (Array.isArray(msgs)) {
+        for (const m of msgs) {
+          if (m && m.senderId !== userProfile.id) {
+            const msgTime = new Date(m.timestamp).getTime();
+            if (msgTime > lastRead) {
+              count++;
+            }
+          }
+        }
+      }
+    }
+    return count;
+  }, [currentTab, classrooms, classroomMessages, userProfile, lastReadChatMap, isAuthenticated]);
 
   // Tự động khôi phục tài khoản học sinh / giáo viên đã lưu (TUYỆT ĐỐI KHÔNG AUTO-LOGIN ADMIN)
   useEffect(() => {
@@ -1031,6 +1101,7 @@ export default function App() {
           notifications={notifications}
           onClearNotifications={() => setNotifications([])}
           onRequestPushPermission={requestNotificationPermission}
+          unreadClassroomMessagesCount={unreadClassroomMessagesCount}
         />
       )}
 
@@ -1073,7 +1144,14 @@ export default function App() {
                   currentTab === 'classroom' ? 'text-blue-600 font-bold' : 'text-slate-400'
                 }`}
               >
-                <Users size={18} />
+                <div className="relative">
+                  <Users size={18} />
+                  {unreadClassroomMessagesCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-black px-1 rounded-full min-w-[15px] h-3.5 flex items-center justify-center shadow-xs animate-pulse">
+                      {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px]">Nhóm Lớp</span>
               </button>
               <button
@@ -1133,7 +1211,14 @@ export default function App() {
                   currentTab === 'classroom' ? 'text-blue-600 font-bold' : 'text-slate-400'
                 }`}
               >
-                <Users size={18} />
+                <div className="relative">
+                  <Users size={18} />
+                  {unreadClassroomMessagesCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-black px-1 rounded-full min-w-[15px] h-3.5 flex items-center justify-center shadow-xs animate-pulse">
+                      {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px]">Nhóm lớp</span>
               </button>
               <button

@@ -820,7 +820,16 @@ export async function ensureOldExamsPurged() {
  * Lưu tin nhắn chat trong nhóm lớp (Đồng bộ tức thời Real-time cả Firestore và Server)
  */
 export async function dbSaveMessage(classId: string, message: ClassroomChatMessage): Promise<boolean> {
-  const payload = { ...message, classId };
+  const payload = cleanForFirestore({
+    ...message,
+    classId,
+    content: message.content || '',
+    senderAvatar: message.senderAvatar || '',
+    imageUrl: message.imageUrl || '',
+    mentions: Array.isArray(message.mentions) ? message.mentions : [],
+    reactions: Array.isArray(message.reactions) ? message.reactions : [],
+    timestamp: message.timestamp || new Date().toISOString(),
+  });
 
   // 1. Lưu lên Firestore Real-time để đẩy ngay lập tức cho các máy khác đang mở app
   const firestorePromise = setDoc(doc(db, 'messages', message.id), payload, { merge: true })
@@ -887,7 +896,7 @@ export async function dbToggleMessageReaction(
       } else {
         nextReactions = [...reactions, { emoji, count: 1, userIds: [userId] }];
       }
-      await updateDoc(msgRef, { reactions: nextReactions });
+      await updateDoc(msgRef, { reactions: cleanForFirestore(nextReactions) });
     } catch (err) {
       console.warn('Lỗi dbToggleMessageReaction Firestore:', err);
     }
@@ -916,16 +925,42 @@ export async function dbDeleteMessage(classId: string, messageId: string): Promi
  * Tải danh sách tin nhắn của 1 lớp học từ Server / Firestore (On-demand)
  */
 export async function dbFetchClassMessages(classId: string): Promise<ClassroomChatMessage[]> {
+  const resultMessages = new Map<string, ClassroomChatMessage>();
+
+  // 1. Truy vấn từ Firestore theo classId
   try {
-    const res = await fetch(`/api/db/messages?classId=${encodeURIComponent(classId)}`);
+    const q = query(collection(db, 'messages'), where('classId', '==', classId));
+    const snap = await getDocs(q);
+    snap.forEach((d) => {
+      const msg = d.data() as ClassroomChatMessage;
+      if (msg && msg.id) {
+        resultMessages.set(msg.id, msg);
+      }
+    });
+  } catch (err) {
+    console.warn('[dbFetchClassMessages] Lỗi truy vấn Firestore:', err);
+  }
+
+  // 2. Truy vấn từ Server API
+  try {
+    const res = await fetch(`/api/db/messages?classId=${encodeURIComponent(classId)}`, {
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     if (res.ok) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data;
+        json.data.forEach((m: ClassroomChatMessage) => {
+          if (m && m.id) {
+            resultMessages.set(m.id, m);
+          }
+        });
       }
     }
   } catch {}
-  return [];
+
+  return Array.from(resultMessages.values()).sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
 }
 
 /**
@@ -1046,20 +1081,43 @@ export function startDbPolling(
 
   // 6. Lắng nghe Tin nhắn chat nhóm lớp trên Firestore Real-time (Đồng bộ tức thời mọi máy)
   const unsubMessages = onSnapshot(collection(db, 'messages'), (snapshot) => {
-    const map: Record<string, ClassroomChatMessage[]> = {};
+    const map: Record<string, Map<string, ClassroomChatMessage>> = {};
+
+    // Giữ lại các tin nhắn hiện có từ stateAccumulator
+    for (const [cId, msgs] of Object.entries(stateAccumulator.classroomMessages || {})) {
+      if (!map[cId]) map[cId] = new Map();
+      msgs.forEach((m) => map[cId].set(m.id, m));
+    }
+
+    // Nạp tin nhắn từ snapshot Firestore
     snapshot.forEach((d) => {
       const data = d.data() as ClassroomChatMessage & { classId?: string };
+      if (!data || !data.id) return;
       const cId = data.classId || 'cls_12a1';
       if (!map[cId]) {
-        map[cId] = [];
+        map[cId] = new Map();
       }
-      map[cId].push(data);
+      map[cId].set(data.id, data);
     });
-    // Sắp xếp tin nhắn theo thời gian tăng dần
-    for (const k in map) {
-      map[k].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // Nếu có tài liệu bị xóa trên Firestore thì gỡ khỏi danh sách
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        const removedMsg = change.doc.data() as ClassroomChatMessage & { classId?: string };
+        const cId = removedMsg?.classId || 'cls_12a1';
+        if (cId && map[cId]) {
+          map[cId].delete(change.doc.id);
+        }
+      }
+    });
+
+    const nextMessages: Record<string, ClassroomChatMessage[]> = {};
+    for (const cId in map) {
+      nextMessages[cId] = Array.from(map[cId].values()).sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
     }
-    stateAccumulator.classroomMessages = map;
+    stateAccumulator.classroomMessages = nextMessages;
     dispatchUpdate();
   }, (err) => {
     console.warn('Lỗi Firestore messages onSnapshot:', err);
