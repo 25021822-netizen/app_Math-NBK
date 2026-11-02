@@ -93,9 +93,9 @@ export const DEFAULT_ADMIN_PROFILE: UserProfile = {
   maxDailyScans: 9999,
   grade: 12,
   avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin25021822',
-  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
+  schoolName: 'Toán Học LIKI',
   phone: '024 3858 1234',
-  bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
+  bio: 'Quản trị viên toàn quyền hệ thống Toán Học LIKI.',
   password: 'Anhhungxom8@',
   status: 'active',
 };
@@ -302,6 +302,54 @@ export async function dbSaveClassrooms(classrooms: Classroom[]): Promise<boolean
     console.warn('Lỗi dbSaveClassrooms Firestore:', err);
     return false;
   }
+}
+
+/**
+ * Giải tán / Xóa nhóm lớp và TOÀN BỘ dữ liệu liên quan (Bài học, Tin nhắn, Danh sách giao đề)
+ */
+export async function dbDisbandClassroom(classId: string): Promise<boolean> {
+  // 1. Gửi lệnh xóa tới Server API để dọn dẹp file data/database.json
+  const serverPromise = fetch('/api/db/classroom/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ classId }),
+  }).catch((err) => {
+    console.warn('Lỗi dbDisbandClassroom Server API:', err);
+    return null;
+  });
+
+  // 2. Xóa triệt để trên Firestore Real-Time Database
+  const firestorePromise = (async () => {
+    try {
+      // 2a. Xóa document nhóm lớp
+      await deleteDoc(doc(db, 'classrooms', classId)).catch((e) => console.warn('Lỗi xóa classroom doc:', e));
+
+      // 2b. Xóa toàn bộ bài học thuộc lớp này
+      try {
+        const lessonsQuery = query(collection(db, 'lessons'), where('classId', '==', classId));
+        const lessonsSnap = await getDocs(lessonsQuery);
+        const lessonDeletes = lessonsSnap.docs.map((d) => deleteDoc(d.ref));
+        await Promise.allSettled(lessonDeletes);
+      } catch (lesErr) {
+        console.warn('Lỗi xóa lessons liên quan:', lesErr);
+      }
+
+      // 2c. Xóa toàn bộ tin nhắn chat thuộc lớp này
+      try {
+        const msgsQuery = query(collection(db, 'messages'), where('classId', '==', classId));
+        const msgsSnap = await getDocs(msgsQuery);
+        const msgDeletes = msgsSnap.docs.map((d) => deleteDoc(d.ref));
+        await Promise.allSettled(msgDeletes);
+      } catch (msgErr) {
+        console.warn('Lỗi xóa messages liên quan:', msgErr);
+      }
+    } catch (err) {
+      console.warn('Lỗi dbDisbandClassroom Firestore:', err);
+    }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
@@ -862,15 +910,9 @@ export async function dbPurgeAllOldExams(): Promise<boolean> {
   return true;
 }
 
-let hasAutoPurgedOldExams = false;
 export async function ensureOldExamsPurged() {
-  if (hasAutoPurgedOldExams) return;
-  hasAutoPurgedOldExams = true;
-  try {
-    await dbPurgeAllOldExams();
-  } catch (err) {
-    console.warn('Lỗi tự động xóa sạch đề cũ:', err);
-  }
+  // Không tự động xóa đề nữa để giữ nguyên đề thi giáo viên đã đăng và giao vào nhóm lớp
+  return;
 }
 
 /**
@@ -1029,7 +1071,6 @@ export function startDbPolling(
   intervalMs = 1500
 ): () => void {
   ensureAdminSeeded();
-  ensureOldExamsPurged();
 
   const stateAccumulator: DatabaseState = {
     version: 1,

@@ -105,10 +105,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
               <div className="flex flex-col">
                 <span className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 leading-none">
-                  Math<span className="text-blue-600">&</span>NBK
+                  Toán Học <span className="text-blue-600">LIKI</span>
                 </span>
                 <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium tracking-wide">
-                  Toán Thầy Nguyễn Bá Kỳ
+                  Hệ Thống Học & Thi Toán THPT
                 </span>
               </div>
             </a>

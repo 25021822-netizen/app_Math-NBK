@@ -216,7 +216,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
               <span>Trợ Lý & Gia Sư Toán AI Liki</span>
             </span>
             <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
-              Toán Thầy Nguyễn Bá Kỳ
+              Toán Học LIKI
             </span>
             <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
               Tích Hợp: 3D Three.js · Tạo Ảnh AI · Search Grounding

@@ -1130,9 +1130,9 @@ const DEFAULT_ADMIN_USER = {
   maxDailyScans: 9999,
   grade: 12,
   avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin25021822',
-  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
+  schoolName: 'Toán Học LIKI',
   phone: '024 3858 1234',
-  bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
+  bio: 'Quản trị viên toàn quyền hệ thống Toán Học LIKI.',
   password: 'Anhhungxom8@',
   status: 'active',
 };
@@ -1337,6 +1337,21 @@ app.post('/api/db/classrooms', (req, res) => {
   serverDb.classrooms = req.body.classrooms || [];
   serverDb.version = (serverDb.version || 1) + 1;
   saveDatabase(serverDb);
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 7b. Giải tán / Xóa nhóm lớp (Xóa lớp học, bài học của lớp và toàn bộ tin nhắn nhóm)
+app.post('/api/db/classroom/delete', (req, res) => {
+  const { classId } = req.body;
+  if (classId) {
+    serverDb.classrooms = (serverDb.classrooms || []).filter((cls: any) => cls.id !== classId);
+    serverDb.classroomLessons = (serverDb.classroomLessons || []).filter((l: any) => l.classId !== classId);
+    if (serverDb.classroomMessages && serverDb.classroomMessages[classId]) {
+      delete serverDb.classroomMessages[classId];
+    }
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
   res.json({ success: true, version: serverDb.version });
 });
 

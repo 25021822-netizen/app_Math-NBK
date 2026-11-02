@@ -26,9 +26,9 @@ export const SAMPLE_ADMIN: UserProfile = {
   maxDailyScans: 9999,
   grade: 12,
   avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin25021822',
-  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
+  schoolName: 'Toán Học LIKI',
   phone: '024 3858 1234',
-  bio: 'Quản trị viên toàn quyền hệ thống Math&NBK.',
+  bio: 'Quản trị viên toàn quyền hệ thống Toán Học LIKI.',
   password: 'Anhhungxom8@',
   status: 'active',
 };
@@ -46,7 +46,7 @@ export const DEFAULT_GUEST_USER: UserProfile = {
   maxDailyScans: 10,
   grade: 12,
   avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=GuestNBK',
-  schoolName: 'Toán Thầy Nguyễn Bá Kỳ',
+  schoolName: 'Toán Học LIKI',
   status: 'active',
 };
 

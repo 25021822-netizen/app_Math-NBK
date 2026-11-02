@@ -752,7 +752,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Báo Cáo Điểm Số - Toán Thầy Nguyễn Bá Kỳ</title>
+          <title>Báo Cáo Điểm Số - Toán Học LIKI</title>
           <meta charset="utf-8" />
           <script src="https://cdn.tailwindcss.com"></script>
           <style>

@@ -97,6 +97,7 @@ interface ClassroomManagerViewProps {
   onDeleteExam?: (examId: string) => void;
   currentUserEmail?: string;
   onDeleteChatMessage?: (messageId: string, classId: string) => void;
+  onDisbandClassroom?: (classId: string) => void | Promise<void>;
 }
 
 export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
@@ -123,6 +124,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onDeleteExam,
   currentUserEmail,
   onDeleteChatMessage,
+  onDisbandClassroom,
 }) => {
   // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp (Admin & Giáo viên có toàn quyền xem và tương tác)
   const isMemberOfClass = (cls: Classroom | undefined | null): boolean => {
@@ -682,7 +684,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     const safeTitle = (title || 'Tai_Lieu_Toan').replace(/[()\\]/g, '');
     const dateStr = new Date().toLocaleDateString('vi-VN');
 
-    const streamContent = `BT\n/F1 18 Tf\n50 770 Td\n(HE THONG TOAN MATH&NBK - TAI LIEU CHINH THUC) Tj\n/F1 14 Tf\n0 -35 Td\n(Tai lieu: ${safeTitle}) Tj\n/F1 11 Tf\n0 -25 Td\n(Ngay cap nhat: ${dateStr}) Tj\n0 -22 Td\n(Giao vien: Toan Thay Nguyen Ba Ky) Tj\n0 -35 Td\n(Chuc cac em hoc sinh hoc tap tot va dat ket qua cao nhat!) Tj\nET`;
+    const streamContent = `BT\n/F1 18 Tf\n50 770 Td\n(HE THONG TOAN HOC LIKI - TAI LIEU CHINH THUC) Tj\n/F1 14 Tf\n0 -35 Td\n(Tai lieu: ${safeTitle}) Tj\n/F1 11 Tf\n0 -25 Td\n(Ngay cap nhat: ${dateStr}) Tj\n0 -22 Td\n(He Thong Toan Hoc LIKI) Tj\n0 -35 Td\n(Chuc cac em hoc sinh hoc tap tot va dat ket qua cao nhat!) Tj\nET`;
 
     const streamLength = streamContent.length;
 
@@ -1348,6 +1350,27 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       console.error('Lỗi khi xóa đề thi:', err);
     } finally {
       setIsDeletingItem(false);
+    }
+  };
+
+  // 3d-3. Quản trị viên / Giáo viên giải tán nhóm lớp và toàn bộ bài học, tin nhắn liên quan
+  const [classToDisband, setClassToDisband] = useState<Classroom | null>(null);
+  const [isDisbandingClass, setIsDisbandingClass] = useState<boolean>(false);
+
+  const handleConfirmDisbandClass = async () => {
+    if (!classToDisband || !onDisbandClassroom) return;
+    setIsDisbandingClass(true);
+    try {
+      const disbandedName = classToDisband.name;
+      await onDisbandClassroom(classToDisband.id);
+      setClassToDisband(null);
+      setSelectedClassId('');
+      setExamActionSuccess(`Đã giải tán thành công nhóm lớp "${disbandedName}" cùng toàn bộ dữ liệu liên quan!`);
+      setTimeout(() => setExamActionSuccess(null), 4000);
+    } catch (err) {
+      console.error('Lỗi khi giải tán nhóm lớp:', err);
+    } finally {
+      setIsDisbandingClass(false);
     }
   };
 
@@ -2017,6 +2040,20 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   >
                     <BarChart3 size={16} />
                     <span>Xem Bảng Điểm & Phổ Điểm Lớp Này</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Nút Giải Tán Nhóm Lớp dành cho Giáo Viên / Quản Trị Viên */}
+              {(userRole === 'teacher' || userRole === 'admin') && onDisbandClassroom && (
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setClassToDisband(currentClass)}
+                    className="w-full py-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center justify-center gap-2 border border-rose-200 transition-colors shadow-2xs group"
+                  >
+                    <Trash2 size={15} className="text-rose-500 group-hover:scale-110 transition-transform" />
+                    <span>Giải Tán Nhóm Lớp</span>
                   </button>
                 </div>
               )}
@@ -3828,6 +3865,27 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         isDeleting={isDeletingItem}
         onConfirm={handleConfirmDeleteExamPermanently}
         onCancel={() => setExamToDeletePermanently(null)}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL HỎI LẠI KHI GIẢI TÁN NHÓM LỚP VÀ TOÀN BỘ DỮ LIỆU LIÊN QUAN          */}
+      {/* ========================================================================= */}
+      <DeleteConfirmationModal
+        isOpen={Boolean(classToDisband)}
+        itemType="custom"
+        title="Xác Nhận Giải Tán Nhóm Lớp Học"
+        itemName={classToDisband?.name || ''}
+        itemSubtitle={`Mã lớp: ${classToDisband?.code || ''} · Khối ${classToDisband?.grade || ''} (${classToDisband?.studentIds.length || 0} học sinh)`}
+        impactDetails={[
+          'Toàn bộ nhóm lớp học sẽ bị giải tán và xóa vĩnh viễn khỏi hệ thống.',
+          'Toàn bộ bài học chuyên đề, bài tập và tài liệu PDF đính kèm của lớp này sẽ bị xóa sạch.',
+          'Toàn bộ tin nhắn trao đổi, biểu cảm và thảo luận giữa các thành viên trong lớp sẽ bị dọn dẹp sạch sẽ.',
+          'Học sinh sẽ không còn truy cập hoặc tìm thấy nhóm lớp này trong danh sách lớp học nữa.',
+          'Dữ liệu sẽ bị xóa hoàn toàn khỏi cơ sở dữ liệu và không thể khôi phục sau khi giải tán.',
+        ]}
+        isDeleting={isDisbandingClass}
+        onConfirm={handleConfirmDisbandClass}
+        onCancel={() => setClassToDisband(null)}
       />
       {/* ========================================================================= */}
       {/* MODAL 5: GIÁO VIÊN ĐĂNG TẢI CHƯƠNG HỌC & BÀI HỌC MỚI (MỤC LỤC LỚP)        */}

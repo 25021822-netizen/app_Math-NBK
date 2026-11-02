@@ -1,14 +1,14 @@
 {
-  "version": 16,
-  "lastUpdated": "2026-11-01T12:30:29.209Z",
+  "version": 20,
+  "lastUpdated": "2026-11-02T09:55:19.547Z",
   "users": [
     {
-      "schoolName": "Toán Thầy Nguyễn Bá Kỳ",
+      "schoolName": "Toán Học LIKI",
       "id": "25021822",
       "dailyScanCount": 0,
-      "lastActiveDate": "2026-11-01",
+      "lastActiveDate": "2026-11-02",
       "streakDays": 1,
-      "bio": "Quản trị viên toàn quyền hệ thống Math&NBK.",
+      "bio": "Quản trị viên toàn quyền hệ thống Toán Học LIKI.",
       "grade": 12,
       "tier": "premium",
       "xp": 15000,

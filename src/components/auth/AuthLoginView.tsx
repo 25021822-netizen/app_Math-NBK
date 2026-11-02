@@ -50,7 +50,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   const [regName, setRegName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
   const [regGrade, setRegGrade] = useState<10 | 11 | 12>(12);
-  const [regSchool, setRegSchool] = useState<string>('Toán Thầy Nguyễn Bá Kỳ');
+  const [regSchool, setRegSchool] = useState<string>('Toán Học LIKI');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
   const [regError, setRegError] = useState<string | null>(null);
@@ -176,8 +176,8 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       maxDailyScans: 10,
       grade: regGrade,
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(regName.trim())}`,
-      schoolName: regSchool.trim() || 'Toán Thầy Nguyễn Bá Kỳ',
-      bio: `${regRole === 'teacher' ? 'Giáo viên THPT' : `Học sinh lớp ${regGrade} THPT`}, tài khoản đăng ký mới trên nền tảng Math&NBK.`,
+      schoolName: regSchool.trim() || 'Toán Học LIKI',
+      bio: `${regRole === 'teacher' ? 'Giáo viên THPT' : `Học sinh lớp ${regGrade} THPT`}, tài khoản đăng ký mới trên nền tảng Toán Học LIKI.`,
       subject: 'Toán Học THPT',
       password: regPassword,
       status: 'pending_approval',
@@ -234,10 +234,10 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
           </div>
           <div className="flex flex-col">
             <span className="text-2xl font-black tracking-tight text-white leading-none">
-              Math<span className="text-cyan-400">&</span>NBK
+              Toán Học <span className="text-cyan-400">LIKI</span>
             </span>
             <span className="text-[11px] text-blue-200 font-semibold tracking-wide">
-              Nền Tảng Toán THPT Thông Minh
+              Hệ Thống Học & Thi Toán THPT
             </span>
           </div>
         </div>

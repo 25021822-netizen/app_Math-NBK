@@ -32,6 +32,7 @@ import {
   dbSaveMessage,
   dbDeleteMessage,
   dbToggleMessageReaction,
+  dbDisbandClassroom,
 } from './services/dbSyncService';
 import { Navbar } from './components/Navbar';
 import { AIMathStudioView } from './components/student/AIMathStudioView';
@@ -118,7 +119,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<PushNotificationItem[]>([
     {
       id: 'notif_welcome',
-      title: 'Chào mừng bạn đến với Math&NBK',
+      title: 'Chào mừng bạn đến với Toán Học LIKI',
       message: 'Hệ thống học Toán THPT thông minh GDPT 2018 tích hợp AI và phòng thi chuẩn Bộ GD&ĐT.',
       type: 'system',
       timestamp: new Date().toISOString(),
@@ -603,6 +604,46 @@ export default function App() {
     }
   };
 
+  // Quản trị viên / Giáo viên giải tán nhóm lớp và toàn bộ dữ liệu liên quan
+  const handleDisbandClassroom = async (classId: string) => {
+    const targetClass = classrooms.find((c) => c.id === classId);
+    const className = targetClass?.name || 'Nhóm lớp';
+
+    // 1. Cập nhật state local ngay lập tức
+    setClassrooms((prev) => prev.filter((c) => c.id !== classId));
+    setClassroomLessons((prev) => prev.filter((l) => l.classId !== classId));
+    setClassroomMessages((prev) => {
+      const next = { ...prev };
+      delete next[classId];
+      return next;
+    });
+
+    // 2. Gỡ mã lớp khỏi targetClassIds của các đề thi
+    setExamsList((prev) =>
+      prev.map((ex) => {
+        if (ex.targetClassIds && ex.targetClassIds.includes(classId)) {
+          return {
+            ...ex,
+            targetClassIds: ex.targetClassIds.filter((cid) => cid !== classId),
+          };
+        }
+        return ex;
+      })
+    );
+
+    // 3. Đồng bộ xóa vĩnh viễn trên Firestore Database & Server API
+    try {
+      await dbDisbandClassroom(classId);
+      triggerPushNotification('Giải Tán Nhóm Lớp Thành Công', {
+        message: `Đã giải tán thành công nhóm lớp "${className}" cùng toàn bộ bài học và tin nhắn liên quan.`,
+        type: 'system',
+        targetTab: 'classroom',
+      });
+    } catch (err) {
+      console.error('Lỗi khi giải tán nhóm lớp:', err);
+    }
+  };
+
   // Phân phối / Giao đề thi từ kho đề cho các nhóm lớp học
   const handleAssignExamToClasses = async (
     examId: string,
@@ -893,6 +934,7 @@ export default function App() {
             onSaveLesson={handleSaveLesson}
             onDeleteLesson={handleDeleteLesson}
             onDeleteExam={handleDeleteExam}
+            onDisbandClassroom={handleDisbandClassroom}
           />
         );
       }
@@ -1004,6 +1046,7 @@ export default function App() {
             onUpdateLessons={handleUpdateLessons}
             onSaveLesson={handleSaveLesson}
             onDeleteLesson={handleDeleteLesson}
+            onDisbandClassroom={handleDisbandClassroom}
           />
         );
       case 'student_history':
