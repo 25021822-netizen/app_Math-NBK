@@ -13,17 +13,78 @@ export interface PushNotificationItem {
   targetTab?: string;
   examId?: string;
   score?: number;
+  isMuted?: boolean;
 }
 
+const NOTIFICATION_ENABLED_STORAGE_KEY = 'math_nbk_notifications_enabled';
+const NOTIFICATION_SOUND_ENABLED_STORAGE_KEY = 'math_nbk_notification_sound_enabled';
+
+// Kiểm tra trạng thái cần gạt BẬT / TẮT thông báo (mặc định BẬT - true)
+export const isNotificationsEnabled = (): boolean => {
+  try {
+    const val = localStorage.getItem(NOTIFICATION_ENABLED_STORAGE_KEY);
+    return val === null ? true : val === 'true';
+  } catch {
+    return true;
+  }
+};
+
+// Thiết lập trạng thái cần gạt BẬT / TẮT thông báo
+export const setNotificationsEnabled = (enabled: boolean): void => {
+  try {
+    localStorage.setItem(NOTIFICATION_ENABLED_STORAGE_KEY, String(enabled));
+    window.dispatchEvent(new CustomEvent('math_nbk_notifications_toggle', { detail: { enabled } }));
+  } catch {}
+};
+
+// Kiểm tra trạng thái âm thanh chuông báo
+export const isNotificationSoundEnabled = (): boolean => {
+  try {
+    const val = localStorage.getItem(NOTIFICATION_SOUND_ENABLED_STORAGE_KEY);
+    return val === null ? true : val === 'true';
+  } catch {
+    return true;
+  }
+};
+
+// Thiết lập trạng thái âm thanh chuông báo
+export const setNotificationSoundEnabled = (enabled: boolean): void => {
+  try {
+    localStorage.setItem(NOTIFICATION_SOUND_ENABLED_STORAGE_KEY, String(enabled));
+    window.dispatchEvent(new CustomEvent('math_nbk_sound_toggle', { detail: { enabled } }));
+  } catch {}
+};
+
 // Phát âm thanh báo hiệu bằng Web Audio API (không cần tải file ngoài)
-export const playNotificationChime = (type: 'published' | 'graded' | 'error' | 'general' = 'general') => {
+export const playNotificationChime = (
+  type: 'published' | 'graded' | 'chat' | 'error' | 'general' = 'general'
+) => {
+  if (!isNotificationsEnabled() || !isNotificationSoundEnabled()) {
+    return;
+  }
+
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
 
-    if (type === 'graded') {
-      // Âm thanh chúc mừng điểm số (2 nốt vui tươi C5 -> E5 -> G5)
+    if (type === 'chat') {
+      // Âm thanh chuông báo tin nhắn chat & tag tên @mention (2 nốt trong trẻo E5 -> A5)
+      const now = ctx.currentTime;
+      [659.25, 880.0].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.12, now + idx * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.1);
+        osc.stop(now + idx * 0.1 + 0.26);
+      });
+    } else if (type === 'graded') {
+      // Âm thanh chúc mừng điểm số (3 nốt vui tươi C5 -> E5 -> G5)
       const now = ctx.currentTime;
       [523.25, 659.25, 783.99].forEach((freq, idx) => {
         const osc = ctx.createOscillator();
@@ -38,7 +99,7 @@ export const playNotificationChime = (type: 'published' | 'graded' | 'error' | '
         osc.stop(now + idx * 0.12 + 0.35);
       });
     } else if (type === 'published') {
-      // Âm thanh thông báo bài thi mới (nốt cao vui F5 -> A5)
+      // Âm thanh thông báo bài thi mới / bài học mới (nốt cao vui F5 -> A5)
       const now = ctx.currentTime;
       [698.46, 880.0].forEach((freq, idx) => {
         const osc = ctx.createOscillator();
@@ -97,6 +158,8 @@ export const triggerPushNotification = async (
     score?: number;
   }
 ): Promise<PushNotificationItem> => {
+  const enabled = isNotificationsEnabled();
+
   const newNotification: PushNotificationItem = {
     id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
     title,
@@ -107,34 +170,41 @@ export const triggerPushNotification = async (
     targetTab: options.targetTab,
     examId: options.examId,
     score: options.score,
+    isMuted: !enabled,
   };
 
-  // 1. Phát âm thanh chuông báo
-  playNotificationChime(
-    options.type === 'exam_graded'
-      ? 'graded'
-      : options.type === 'exam_published'
-      ? 'published'
-      : options.type === 'error'
-      ? 'error'
-      : 'general'
-  );
-
-  // 2. Gửi Web Push Notification nếu được cấp quyền
-  try {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
-        body: options.message,
-        icon: 'https://api.dicebear.com/7.x/bottts/svg?seed=MathNBK',
-        badge: 'https://api.dicebear.com/7.x/bottts/svg?seed=MathNBK',
-        tag: newNotification.id,
-      });
-    }
-  } catch (e) {
-    // Fallback in iframe or unsupported browsers
+  // 1. Chỉ phát âm thanh chuông báo khi cần gạt thông báo đang BẬT (ON)
+  if (enabled) {
+    playNotificationChime(
+      options.type === 'chat_message'
+        ? 'chat'
+        : options.type === 'exam_graded'
+        ? 'graded'
+        : options.type === 'exam_published'
+        ? 'published'
+        : options.type === 'error'
+        ? 'error'
+        : 'general'
+    );
   }
 
-  // 3. Dispatch Custom Event để các component UI (Toast, Bell) phản hồi tức thì
+  // 2. Chỉ gửi Web Push Notification lên trình duyệt khi cần gạt thông báo đang BẬT (ON)
+  if (enabled) {
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, {
+          body: options.message,
+          icon: 'https://api.dicebear.com/7.x/bottts/svg?seed=MathNBK',
+          badge: 'https://api.dicebear.com/7.x/bottts/svg?seed=MathNBK',
+          tag: newNotification.id,
+        });
+      }
+    } catch (e) {
+      // Fallback in iframe or unsupported browsers
+    }
+  }
+
+  // 3. Dispatch Custom Event để các component UI (Toast, Bell) phản hồi
   try {
     const event = new CustomEvent('math_nbk_push_notification', { detail: newNotification });
     window.dispatchEvent(event);

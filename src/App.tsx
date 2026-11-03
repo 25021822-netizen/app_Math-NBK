@@ -3,7 +3,7 @@
  * Bản Quyền: Math&NBK Education Platform
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson, ClassroomChatMessage } from './types/math';
 import {
   INITIAL_USER_PROFILE,
@@ -221,17 +221,31 @@ export default function App() {
     }
   }, []);
 
+  // Tham chiếu người dùng và nhóm lớp hiện tại cho bộ xử lý Real-Time Polling
+  const userProfileRef = useRef(userProfile);
+  useEffect(() => {
+    userProfileRef.current = userProfile;
+  }, [userProfile]);
+
+  const classroomsRef = useRef(classrooms);
+  useEffect(() => {
+    classroomsRef.current = classrooms;
+  }, [classrooms]);
+
   // Lắng nghe sự kiện thông báo đẩy trong hệ thống
   useEffect(() => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent<PushNotificationItem>;
       if (customEvent.detail) {
         setNotifications((prev) => [customEvent.detail, ...prev]);
-        setActiveToast(customEvent.detail);
-        const timer = setTimeout(() => {
-          setActiveToast((curr) => (curr?.id === customEvent.detail.id ? null : curr));
-        }, 6000);
-        return () => clearTimeout(timer);
+        // Chỉ hiển thị popup Toast khi người dùng ĐANG BẬT thông báo (!isMuted)
+        if (!customEvent.detail.isMuted) {
+          setActiveToast(customEvent.detail);
+          const timer = setTimeout(() => {
+            setActiveToast((curr) => (curr?.id === customEvent.detail.id ? null : curr));
+          }, 6000);
+          return () => clearTimeout(timer);
+        }
       }
     };
     window.addEventListener('math_nbk_push_notification', handler);
@@ -243,6 +257,8 @@ export default function App() {
     let knownPendingIds = new Set<string>();
     let knownLessonIds = new Set<string>(SAMPLE_CLASSROOM_LESSONS.map((l) => l.id));
     let knownExamIds = new Set<string>();
+    let knownChatMessageIds = new Set<string>();
+    let isInitialMessageLoad = true;
 
     const unsubscribe = startDbPolling((remoteData) => {
       if (remoteData.users && Array.isArray(remoteData.users)) {
@@ -295,19 +311,19 @@ export default function App() {
         setCheatLogs(remoteData.cheatLogs);
       }
 
-      // Đồng bộ Bài học chuyên đề tức thời giữa các máy
+      // Đồng bộ Bài học chuyên đề tức thời giữa các máy (Giáo viên đăng bài -> Học sinh nhận thông báo)
       if (remoteData.classroomLessons && Array.isArray(remoteData.classroomLessons)) {
         const lessonMap = new Map<string, ClassroomLesson>();
         SAMPLE_CLASSROOM_LESSONS.forEach((l) => lessonMap.set(l.id, l));
         remoteData.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
         const mergedLessons = Array.from(lessonMap.values());
 
-        // Nếu có bài học mới được đăng tải từ máy giáo viên khác
+        // Nếu có bài học mới được đăng tải từ máy giáo viên
         const freshLessonArrivals = mergedLessons.filter((l) => !knownLessonIds.has(l.id));
         if (freshLessonArrivals.length > 0 && knownLessonIds.size > 0) {
           freshLessonArrivals.forEach((l) => {
-            triggerPushNotification(`Bài học mới: ${l.title}`, {
-              message: `Thầy cô vừa đăng tải bài học mới (${l.chapter}). Nhấn để mở xem ngay!`,
+            triggerPushNotification(`Giáo viên vừa đăng bài học mới: ${l.title}`, {
+              message: `Thầy cô vừa đăng tải bài học "${l.title}" (${l.chapter}). Nhấn để mở xem ngay!`,
               type: 'system',
               targetTab: 'classroom',
             });
@@ -317,7 +333,7 @@ export default function App() {
         setClassroomLessons(mergedLessons);
       }
 
-      // Đồng bộ Đề thi tức thời giữa các máy (Giáo viên đăng đề -> Học sinh thấy ngay)
+      // Đồng bộ Đề thi tức thời giữa các máy (Giáo viên đăng đề -> Học sinh nhận thông báo & vào làm ngay)
       if (remoteData.exams && Array.isArray(remoteData.exams)) {
         const validExams = remoteData.exams.filter((ex) => ex && ex.id && ex.id !== 'exam_bgd_2025_01');
 
@@ -325,7 +341,7 @@ export default function App() {
         const freshExamArrivals = validExams.filter((ex) => !knownExamIds.has(ex.id));
         if (freshExamArrivals.length > 0 && knownExamIds.size > 0) {
           freshExamArrivals.forEach((ex) => {
-            triggerPushNotification(`Đề thi mới: ${ex.title}`, {
+            triggerPushNotification(`Giáo viên vừa đăng đề thi mới: ${ex.title}`, {
               message: `Thầy cô vừa đăng tải đề thi mới (${ex.durationMinutes} phút - ${ex.questions.length} câu). Nhấn để vào làm bài ngay!`,
               type: 'exam_published',
               targetTab: 'classroom',
@@ -337,7 +353,67 @@ export default function App() {
         setExamsList(validExams);
       }
 
+      // Đồng bộ Tin nhắn chat tức thời & Bắn thông báo khi được nhắc tên (@mention) hoặc giáo viên đăng tin
       if (remoteData.classroomMessages) {
+        const curUser = userProfileRef.current;
+        const currentClasses = classroomsRef.current;
+
+        // Trích xuất toàn bộ tin nhắn thành một danh sách phẳng
+        const allRemoteMsgs: ClassroomChatMessage[] = [];
+        if (Array.isArray(remoteData.classroomMessages)) {
+          allRemoteMsgs.push(...remoteData.classroomMessages);
+        } else if (typeof remoteData.classroomMessages === 'object') {
+          Object.values(remoteData.classroomMessages).forEach((list) => {
+            if (Array.isArray(list)) allRemoteMsgs.push(...list);
+          });
+        }
+
+        if (isInitialMessageLoad) {
+          allRemoteMsgs.forEach((m) => knownChatMessageIds.add(m.id));
+          isInitialMessageLoad = false;
+        } else {
+          const freshMessages = allRemoteMsgs.filter((m) => !knownChatMessageIds.has(m.id));
+          freshMessages.forEach((m) => {
+            knownChatMessageIds.add(m.id);
+            if (curUser && curUser.id && m.senderId !== curUser.id) {
+              const matchedClass = currentClasses.find((c) => c.id === m.classId);
+              const className = matchedClass ? matchedClass.name : 'Nhóm lớp';
+
+              // Kiểm tra xem người dùng có phải thành viên của nhóm lớp này không
+              const isMember = matchedClass
+                ? matchedClass.teacherId === curUser.id || matchedClass.studentIds.includes(curUser.id)
+                : true;
+
+              if (isMember) {
+                // Kiểm tra xem có được nhắc tên (@mention hoặc @Cả Lớp / @all / @everyone)
+                const mentionsUser = m.mentions && m.mentions.some(
+                  (mention) => mention.userId === curUser.id || mention.userId === 'all'
+                );
+                const textMentionsUser =
+                  (curUser.name && m.content.toLowerCase().includes(`@${curUser.name.toLowerCase()}`)) ||
+                  m.content.includes('@Cả Lớp') ||
+                  m.content.toLowerCase().includes('@all') ||
+                  m.content.toLowerCase().includes('@everyone');
+
+                if (mentionsUser || textMentionsUser) {
+                  triggerPushNotification(`${m.senderName} đã nhắc đến bạn trong ${className}`, {
+                    message: `"${m.content.slice(0, 120)}${m.content.length > 120 ? '...' : ''}"`,
+                    type: 'chat_message',
+                    targetTab: 'classroom',
+                  });
+                } else if (m.senderRole === 'teacher' && curUser.role === 'student') {
+                  // Thông báo tin nhắn quan trọng từ giáo viên tới học sinh trong lớp
+                  triggerPushNotification(`Giáo viên ${m.senderName} gửi tin nhắn trong ${className}`, {
+                    message: `"${m.content.slice(0, 120)}${m.content.length > 120 ? '...' : ''}"`,
+                    type: 'chat_message',
+                    targetTab: 'classroom',
+                  });
+                }
+              }
+            }
+          });
+        }
+
         setClassroomMessages(remoteData.classroomMessages);
       }
     });
@@ -501,6 +577,13 @@ export default function App() {
         throw new Error('Hệ thống cơ sở dữ liệu không phản hồi trạng thái thành công.');
       }
       console.log('[handleSaveLesson] Đồng bộ bài học lên Firestore & Server THÀNH CÔNG:', lesson.id);
+      const targetClass = classrooms.find((c) => c.id === lesson.classId);
+      const className = targetClass ? targetClass.name : 'Nhóm lớp';
+      triggerPushNotification(`Giáo viên vừa đăng bài học mới: ${lesson.title}`, {
+        message: `Đã xuất bản bài học "${lesson.title}" (${lesson.chapter}) trong ${className}.`,
+        type: 'system',
+        targetTab: 'classroom',
+      });
     } catch (error: any) {
       console.error('[handleSaveLesson] LỖI ĐỒNG BỘ BÀI HỌC LÊN FIRESTORE HOẶC SERVER:', {
         lessonId: lesson.id,
@@ -1333,6 +1416,8 @@ export default function App() {
           className={`fixed bottom-5 right-5 z-50 max-w-sm w-full text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md cursor-pointer animate-in slide-in-from-bottom-5 duration-300 hover:scale-[1.02] transition-transform flex items-start gap-3 ${
             activeToast.type === 'error'
               ? 'bg-slate-950/95 border border-rose-500/60 ring-1 ring-rose-500/30'
+              : activeToast.type === 'chat_message'
+              ? 'bg-slate-900/95 border border-cyan-500/40 ring-1 ring-cyan-500/20'
               : 'bg-slate-900/95 border border-blue-500/30'
           }`}
         >
@@ -1340,6 +1425,8 @@ export default function App() {
             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
               activeToast.type === 'error'
                 ? 'bg-gradient-to-br from-rose-600 to-red-700 text-white'
+                : activeToast.type === 'chat_message'
+                ? 'bg-gradient-to-br from-cyan-600 to-blue-700 text-white'
                 : activeToast.type === 'exam_graded'
                 ? 'bg-gradient-to-br from-blue-600 to-indigo-600'
                 : 'bg-gradient-to-br from-blue-600 to-indigo-600'
@@ -1347,6 +1434,8 @@ export default function App() {
           >
             {activeToast.type === 'error' ? (
               <AlertTriangle size={20} className="text-white animate-pulse" />
+            ) : activeToast.type === 'chat_message' ? (
+              <MessageSquare size={20} className="text-cyan-200" />
             ) : activeToast.type === 'exam_graded' ? (
               <FileCheck size={20} className="text-emerald-300" />
             ) : (
@@ -1357,11 +1446,17 @@ export default function App() {
             <div className="flex items-center justify-between">
               <span
                 className={`text-[10px] font-black uppercase tracking-wider ${
-                  activeToast.type === 'error' ? 'text-rose-400' : 'text-blue-400'
+                  activeToast.type === 'error'
+                    ? 'text-rose-400'
+                    : activeToast.type === 'chat_message'
+                    ? 'text-cyan-400'
+                    : 'text-blue-400'
                 }`}
               >
                 {activeToast.type === 'error'
                   ? 'Cảnh báo lỗi'
+                  : activeToast.type === 'chat_message'
+                  ? 'Tin nhắn & Nhắc tên'
                   : activeToast.type === 'exam_graded'
                   ? 'Kết quả chấm thi'
                   : 'Thông báo mới'}
@@ -1400,7 +1495,7 @@ export default function App() {
               </div>
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Xác Nhận Đăng Xuất</h3>
-                <p className="text-xs text-slate-500">Hệ thống học toán Math&NBK</p>
+                <p className="text-xs text-slate-500">Hệ thống học toán LIKI</p>
               </div>
             </div>
 

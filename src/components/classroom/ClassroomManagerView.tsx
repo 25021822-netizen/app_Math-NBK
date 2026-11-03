@@ -4,6 +4,7 @@ import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
+import { isNotificationsEnabled, setNotificationsEnabled } from '../../utils/notificationService';
 import {
   Users,
   UserPlus,
@@ -60,6 +61,7 @@ import {
   UserX,
   Bell,
   BellRing,
+  BellOff,
   Volume2,
   VolumeX,
   Minimize2,
@@ -349,6 +351,22 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Trạng thái cần gạt BẬT / TẮT thông báo (Bài đăng giáo viên & Nhắc tên trong chat)
+  const [chatNotifsEnabled, setChatNotifsEnabled] = useState<boolean>(() => isNotificationsEnabled());
+
+  useEffect(() => {
+    const handleToggle = (e: Event) => {
+      const customEvent = e as CustomEvent<{ enabled: boolean }>;
+      if (customEvent.detail && typeof customEvent.detail.enabled === 'boolean') {
+        setChatNotifsEnabled(customEvent.detail.enabled);
+      } else {
+        setChatNotifsEnabled(isNotificationsEnabled());
+      }
+    };
+    window.addEventListener('math_nbk_notifications_toggle', handleToggle);
+    return () => window.removeEventListener('math_nbk_notifications_toggle', handleToggle);
+  }, []);
+
   // Tin nhắn lưu cục bộ của các nhóm lớp kèm phản ứng emoji
   const [localMessages, setLocalMessages] = useState<Record<string, ClassroomChatMessage[]>>(() => {
     return {
@@ -525,6 +543,12 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const classMembersForMention = useMemo(() => {
     if (!currentClass || !isCurrentClassMember) return [];
     return [
+      {
+        id: 'all',
+        name: 'Cả Lớp',
+        role: 'student' as UserRole,
+        avatar: '',
+      },
       {
         id: classTeacherUser.id,
         name: classTeacherUser.name,
@@ -1644,6 +1668,16 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       }
     });
 
+    if (
+      chatMessageText.includes('@Cả Lớp') ||
+      chatMessageText.toLowerCase().includes('@all') ||
+      chatMessageText.toLowerCase().includes('@everyone')
+    ) {
+      if (!mentions.some((m) => m.userId === 'all')) {
+        mentions.push({ userId: 'all', userName: 'Cả Lớp' });
+      }
+    }
+
     const newMsg: ClassroomChatMessage = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       classId: currentClass.id,
@@ -2631,7 +2665,46 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <span>Đồng bộ tức thời đa máy (&lt;100ms)</span>
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Cần gạt ON/OFF thông báo ngay tại Header Chat */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200">
+                      <div className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
+                        {chatNotifsEnabled ? (
+                          <BellRing size={13} className="text-blue-600 animate-pulse" />
+                        ) : (
+                          <BellOff size={13} className="text-slate-400" />
+                        )}
+                        <span className="hidden sm:inline">Thông báo:</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !chatNotifsEnabled;
+                          setChatNotifsEnabled(next);
+                          setNotificationsEnabled(next);
+                        }}
+                        role="switch"
+                        aria-checked={chatNotifsEnabled}
+                        title={chatNotifsEnabled ? 'Nhấp để TẮT thông báo bài đăng và nhắc tên' : 'Nhấp để BẬT thông báo bài đăng và nhắc tên'}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                          chatNotifsEnabled ? 'bg-blue-600' : 'bg-slate-300'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out mt-0.5 ${
+                            chatNotifsEnabled ? 'translate-x-4 ml-0.5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                      <span
+                        className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                          chatNotifsEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {chatNotifsEnabled ? 'BẬT' : 'TẮT'}
+                      </span>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -2823,14 +2896,22 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                         >
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800">@{member.name}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">({member.id})</span>
+                            {member.id === 'all' ? (
+                              <span className="text-[10px] text-blue-600 font-semibold">(Toàn bộ lớp học)</span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-mono">({member.id})</span>
+                            )}
                           </div>
                           <span
-                            className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                              member.role === 'teacher' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                              member.id === 'all'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : member.role === 'teacher'
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
                             }`}
                           >
-                            {member.role === 'teacher' ? 'Giáo viên' : 'Học sinh'}
+                            {member.id === 'all' ? 'Tất cả' : member.role === 'teacher' ? 'Giáo viên' : 'Học sinh'}
                           </span>
                         </button>
                       ))}

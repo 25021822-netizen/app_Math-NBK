@@ -1,6 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserRole, AccountTier } from '../types/math';
-import { PushNotificationItem } from '../utils/notificationService';
+import {
+  PushNotificationItem,
+  isNotificationsEnabled,
+  setNotificationsEnabled,
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled,
+  playNotificationChime,
+} from '../utils/notificationService';
 import {
   BookOpen,
   Flame,
@@ -11,6 +18,10 @@ import {
   Compass,
   User,
   Bell,
+  BellOff,
+  BellRing,
+  Volume2,
+  VolumeX,
   LogOut,
   Check,
   CheckCircle2,
@@ -73,6 +84,47 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [showNotifDropdown, setShowNotifDropdown] = useState<boolean>(false);
   const [showMobileMenu, setShowMobileMenu] = useState<boolean>(false);
+  const [notificationsEnabled, setNotificationsEnabledState] = useState<boolean>(() => isNotificationsEnabled());
+  const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => isNotificationSoundEnabled());
+
+  useEffect(() => {
+    const handleToggle = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail?.enabled === 'boolean') {
+        setNotificationsEnabledState(detail.enabled);
+      }
+    };
+    const handleSoundToggle = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail?.enabled === 'boolean') {
+        setSoundEnabledState(detail.enabled);
+      }
+    };
+    window.addEventListener('math_nbk_notifications_toggle', handleToggle);
+    window.addEventListener('math_nbk_sound_toggle', handleSoundToggle);
+    return () => {
+      window.removeEventListener('math_nbk_notifications_toggle', handleToggle);
+      window.removeEventListener('math_nbk_sound_toggle', handleSoundToggle);
+    };
+  }, []);
+
+  const handleToggleNotifications = () => {
+    const next = !notificationsEnabled;
+    setNotificationsEnabledState(next);
+    setNotificationsEnabled(next);
+    if (next) {
+      playNotificationChime('general');
+    }
+  };
+
+  const handleToggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabledState(next);
+    setNotificationSoundEnabled(next);
+    if (next) {
+      playNotificationChime('general');
+    }
+  };
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -322,11 +374,25 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="relative">
               <button
                 onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-                title="Thông báo hệ thống & bài thi mới"
-                className="relative p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 transition-colors cursor-pointer"
+                title={
+                  notificationsEnabled
+                    ? 'Thông báo hệ thống, bài mới & chat (Đang BẬT)'
+                    : 'Thông báo đang TẮT (Bấm để mở cài đặt)'
+                }
+                className={`relative p-2 rounded-xl border transition-all cursor-pointer ${
+                  !notificationsEnabled
+                    ? 'text-slate-400 bg-slate-50 border-slate-200 hover:text-slate-600'
+                    : unreadCount > 0
+                    ? 'text-blue-600 bg-blue-50/80 border-blue-200 hover:bg-blue-100 shadow-2xs'
+                    : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50 border-slate-200'
+                }`}
               >
-                <Bell size={18} />
-                {unreadCount > 0 && (
+                {notificationsEnabled ? (
+                  <Bell size={18} />
+                ) : (
+                  <BellOff size={18} />
+                )}
+                {notificationsEnabled && unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white font-mono font-bold text-[10px] flex items-center justify-center animate-pulse shadow-xs">
                     {unreadCount}
                   </span>
@@ -335,11 +401,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Notification Dropdown Panel */}
               {showNotifDropdown && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl border border-slate-200 shadow-2xl p-4 z-50 animate-in fade-in space-y-3">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl border border-slate-200 shadow-2xl p-4 z-50 animate-in fade-in space-y-3.5">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      <Bell size={16} className="text-blue-600" />
-                      <span className="font-extrabold text-xs text-slate-900">Thông Báo Đẩy ({notifications.length})</span>
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                          notificationsEnabled ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'
+                        }`}
+                      >
+                        {notificationsEnabled ? <BellRing size={15} /> : <BellOff size={15} />}
+                      </div>
+                      <span className="font-extrabold text-xs text-slate-900">
+                        Thông Báo ({notifications.length})
+                      </span>
                     </div>
                     {notifications.length > 0 && onClearNotifications && (
                       <button
@@ -351,18 +425,99 @@ export const Navbar: React.FC<NavbarProps> = ({
                     )}
                   </div>
 
-                  {/* Browser Push Permission Request Button */}
-                  {onRequestPushPermission && (
+                  {/* CẦN GẠT ON / OFF THÔNG BÁO (THEO YÊU CẦU NGƯỜI DÙNG) */}
+                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    {/* Cần gạt chính: Bật / Tắt tất cả thông báo */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            notificationsEnabled
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-slate-200 text-slate-500'
+                          }`}
+                        >
+                          {notificationsEnabled ? <Bell size={16} /> : <BellOff size={16} />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-xs text-slate-900">Nhận Thông Báo</span>
+                            <span
+                              className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                notificationsEnabled
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {notificationsEnabled ? 'ON' : 'OFF'}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 block truncate">
+                            {notificationsEnabled
+                              ? 'Báo khi đăng bài, đăng đề & nhắc tên trong chat'
+                              : 'Đang tạm dừng nhận thông báo'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Cần gạt Toggle Switch ON / OFF */}
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={notificationsEnabled}
+                        onClick={handleToggleNotifications}
+                        title={notificationsEnabled ? 'Gạt để TẮT thông báo' : 'Gạt để BẬT thông báo'}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner ${
+                          notificationsEnabled ? 'bg-blue-600' : 'bg-slate-300'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                            notificationsEnabled ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Cần gạt phụ: Bật / Tắt Âm thanh chuông báo */}
+                    {notificationsEnabled && (
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-200/70 text-xs">
+                        <div className="flex items-center gap-2 text-slate-600">
+                          {soundEnabled ? (
+                            <Volume2 size={14} className="text-blue-600" />
+                          ) : (
+                            <VolumeX size={14} className="text-slate-400" />
+                          )}
+                          <span className="text-[11px] font-semibold">Âm thanh chuông báo:</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleToggleSound}
+                          className={`px-2 py-0.5 rounded-lg font-bold text-[10px] transition-colors cursor-pointer ${
+                            soundEnabled
+                              ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                              : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                          }`}
+                        >
+                          {soundEnabled ? 'Chuông: BẬT' : 'Chuông: TẮT'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Browser Push Permission Request Button (nếu đang BẬT) */}
+                  {notificationsEnabled && onRequestPushPermission && (
                     <div className="p-2.5 rounded-2xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-2 text-xs">
-                      <span className="text-[11px] font-semibold text-blue-900">Nhận thông báo khi giáo viên đăng bài thi mới?</span>
+                      <span className="text-[11px] font-semibold text-blue-900">
+                        Nhận báo đẩy trình duyệt ngoài màn hình?
+                      </span>
                       <button
                         onClick={() => {
                           onRequestPushPermission();
-                          setShowNotifDropdown(false);
                         }}
                         className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
                       >
-                        Bật
+                        Cấp quyền
                       </button>
                     </div>
                   )}
