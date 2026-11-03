@@ -209,9 +209,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     return () => clearInterval(saveTimer);
   }, [answers, exam.id, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
 
-  // 4. Cơ chế chống gian lận đa tầng: Bắt sự kiện rời màn hình / đổi tab
+  // Cấu hình kiểm soát màn hình từ đề thi (mặc định bật trừ khi giáo viên chọn Tắt)
+  const isScreenMonitoringEnabled = exam.enableScreenMonitoring !== false;
+  const maxAllowedInfractions = exam.maxInfractions && exam.maxInfractions > 0 ? exam.maxInfractions : 3;
+
+  // 4. Cơ chế chống gian lận đa tầng: Bắt sự kiện rời màn hình / đổi tab (chỉ khi BẬT kiểm soát màn hình)
   useEffect(() => {
-    if (isSubmitted || isDisqualified || isMaxAttemptsReached || !isExamTimeActive) return;
+    if (!isScreenMonitoringEnabled || isSubmitted || isDisqualified || isMaxAttemptsReached || !isExamTimeActive) return;
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
@@ -230,9 +234,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [infractionCount, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
+  }, [isScreenMonitoringEnabled, infractionCount, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
 
   const registerInfraction = (reason: string) => {
+    if (!isScreenMonitoringEnabled) return;
+
     const nextCount = infractionCount + 1;
     setInfractionCount(nextCount);
 
@@ -243,47 +249,48 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       studentId: studentId,
       studentName: studentProfile?.name || 'Nguyễn Văn An (12A1)',
       timestamp: new Date().toISOString(),
-      infractionNumber: Math.min(nextCount, 3),
+      infractionNumber: Math.min(nextCount, maxAllowedInfractions),
       event: 'window_unfocus',
       reason,
       actionTaken:
-        nextCount === 1 ? 'warning_1' : nextCount === 2 ? 'warning_2' : 'auto_submitted_disqualified',
+        nextCount >= maxAllowedInfractions
+          ? 'auto_submitted_disqualified'
+          : nextCount === 1
+          ? 'warning_1'
+          : 'warning_2',
     };
 
     onRecordCheatLog(newLog);
 
-    if (nextCount === 1) {
-      setWarningMessage('Cảnh báo lần 1: Hệ thống phát hiện bạn vừa rời khỏi màn hình bài thi. Hãy tập trung làm bài!');
-      setShowWarningModal(true);
-    } else if (nextCount === 2) {
+    if (nextCount < maxAllowedInfractions) {
       setWarningMessage(
-        'Cảnh báo nghiêm trọng lần 2: Bạn đã rời màn hình 2 lần! Nếu tái phạm lần 3, bài thi sẽ bị đình chỉ và nộp tự động ngay lập tức.'
+        `Cảnh báo lần ${nextCount}: Hệ thống phát hiện bạn vừa rời khỏi màn hình bài thi (${nextCount}/${maxAllowedInfractions}). Vui lòng tập trung làm bài thi!`
       );
       setShowWarningModal(true);
-    } else if (nextCount >= 3) {
+    } else {
       setIsDisqualified(true);
       setShowWarningModal(false);
-      handleSubmitExam('Đình chỉ bài thi: Vi phạm quy chế thi quá 3 lần!');
+      handleSubmitExam(`Đình chỉ bài thi: Vi phạm quy chế thi quá ${maxAllowedInfractions} lần!`);
     }
   };
 
-  // 5. Tự động yêu cầu vào chế độ toàn màn hình khi làm bài & dọn dẹp khi unmount
+  // 5. Tự động yêu cầu vào chế độ toàn màn hình khi làm bài & dọn dẹp khi unmount (chỉ khi BẬT kiểm soát)
   useEffect(() => {
-    if (!isSubmitted && !isDisqualified && isExamTimeActive && !isMaxAttemptsReached) {
+    if (isScreenMonitoringEnabled && !isSubmitted && !isDisqualified && isExamTimeActive && !isMaxAttemptsReached) {
       enterFullscreen();
     }
 
     return () => {
       exitFullscreen();
     };
-  }, [exam.id, isSubmitted, isDisqualified, isExamTimeActive, isMaxAttemptsReached]);
+  }, [isScreenMonitoringEnabled, exam.id, isSubmitted, isDisqualified, isExamTimeActive, isMaxAttemptsReached]);
 
   // 6. Theo dõi sự kiện thay đổi toàn màn hình & phát hiện học sinh thoát toàn màn hình (chống gian lận)
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isFull = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
       setIsFullscreen(isFull);
-      if (!isFull && !isSubmitted && !isDisqualified && isExamTimeActive && !isMaxAttemptsReached) {
+      if (isScreenMonitoringEnabled && !isFull && !isSubmitted && !isDisqualified && isExamTimeActive && !isMaxAttemptsReached) {
         registerInfraction('Thoát khỏi chế độ toàn màn hình khi đang làm bài thi');
       }
     };
@@ -295,7 +302,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
-  }, [isSubmitted, isDisqualified, isExamTimeActive, isMaxAttemptsReached, infractionCount]);
+  }, [isScreenMonitoringEnabled, isSubmitted, isDisqualified, isExamTimeActive, isMaxAttemptsReached, infractionCount]);
 
   // 7. Chấm điểm bài thi tự động (CHỈ 3 PHẦN: MCQ, Đúng/Sai, Trả lời ngắn - KHÔNG CÓ TỰ LUẬN)
   // Tổng điểm bài thi dựa hoàn toàn trên tổng điểm từng câu hỏi của bài
@@ -514,19 +521,26 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               <span className="font-mono font-black text-base tabular-nums">{formatTimer(timeLeft)}</span>
             </div>
 
-            {/* Anti-Cheat Infraction Indicator */}
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold ${
-                infractionCount === 0
-                  ? 'bg-slate-100 text-slate-600 border-slate-200'
-                  : infractionCount === 1
-                  ? 'bg-amber-50 text-amber-700 border-amber-300'
-                  : 'bg-red-50 text-red-700 border-red-300 animate-pulse'
-              }`}
-            >
-              <ShieldAlert size={15} />
-              <span>Vi phạm: {infractionCount}/3</span>
-            </div>
+            {/* Anti-Cheat Infraction Indicator or Free Practice Badge */}
+            {isScreenMonitoringEnabled ? (
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold ${
+                  infractionCount === 0
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                    : infractionCount < maxAllowedInfractions - 1
+                    ? 'bg-amber-50 text-amber-700 border-amber-300'
+                    : 'bg-red-50 text-red-700 border-red-300 animate-pulse'
+                }`}
+              >
+                <ShieldAlert size={15} />
+                <span>Giám sát màn hình: {infractionCount}/{maxAllowedInfractions}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-bold">
+                <BookOpen size={15} className="text-slate-500" />
+                <span>Luyện tập tự do</span>
+              </div>
+            )}
 
             {/* Fullscreen Button */}
             <button
@@ -558,8 +572,8 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       </div>
 
       <div className="max-w-5xl mx-auto px-4 pt-6 space-y-6">
-        {/* Banner nhắc nhở & chuyển nhanh sang Toàn Màn Hình */}
-        {!isFullscreen && !isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
+        {/* Banner nhắc nhở & chuyển nhanh sang Toàn Màn Hình (Chỉ khi BẬT kiểm soát màn hình) */}
+        {!isFullscreen && isScreenMonitoringEnabled && !isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
           <div className="p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in">
             <div className="flex items-center gap-2.5">
               <Maximize size={18} className="text-indigo-600 shrink-0" />

@@ -33,8 +33,12 @@ import {
   Compass,
   Loader2,
   ArrowRight,
+  ShieldAlert,
+  Monitor,
+  ClipboardPaste,
 } from 'lucide-react';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
+import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
 
 interface TeacherPortalViewProps {
   onPublishExam?: (newExam: Exam) => void;
@@ -50,7 +54,9 @@ interface TeacherPortalViewProps {
     distributionType: 'classroom' | 'repository' | 'both',
     maxAttempts?: number,
     openTime?: string,
-    closeTime?: string
+    closeTime?: string,
+    enableScreenMonitoring?: boolean,
+    maxInfractions?: number
   ) => void;
 }
 
@@ -85,6 +91,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [assignHasTimeWindow, setAssignHasTimeWindow] = useState<boolean>(true);
   const [assignOpenTime, setAssignOpenTime] = useState<string>('');
   const [assignCloseTime, setAssignCloseTime] = useState<string>('');
+  const [assignScreenMonitoring, setAssignScreenMonitoring] = useState<boolean>(true);
+  const [assignMaxInfractions, setAssignMaxInfractions] = useState<number>(3);
   const [isSavingAssignment, setIsSavingAssignment] = useState<boolean>(false);
 
   // ================= STATE DÀNH CHO TẠO ĐỀ THỦ CÔNG =================
@@ -119,6 +127,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // 4. Cho phép học sinh xem đáp án & lời giải chi tiết khi làm xong
   const [manualAllowViewAnswers, setManualAllowViewAnswers] = useState<boolean>(true);
+
+  // 5. Ô kiểm soát màn hình & Chống gian lận khi thi (bắt buộc toàn màn hình, cấm chuyển tab)
+  const [manualScreenMonitoring, setManualScreenMonitoring] = useState<boolean>(true);
+  const [manualMaxInfractions, setManualMaxInfractions] = useState<number>(3);
 
   // Danh sách câu hỏi trong đề thi (Khởi tạo rỗng, không chứa câu hỏi mẫu)
   const [manualQuestions, setManualQuestions] = useState<Question[]>([]);
@@ -185,6 +197,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [aiDistributionType, setAiDistributionType] = useState<'classroom' | 'repository' | 'both'>('repository');
   const [aiTargetClassIds, setAiTargetClassIds] = useState<string[]>(() => classrooms.map((c) => c.id));
   const [aiMaxAttempts, setAiMaxAttempts] = useState<number>(1);
+  const [aiScreenMonitoring, setAiScreenMonitoring] = useState<boolean>(true);
+  const [aiMaxInfractions, setAiMaxInfractions] = useState<number>(3);
 
   // Mẫu mã nguồn LaTeX chuẩn Bộ Giáo dục & Đào tạo 2025 (3 phần)
   const SAMPLE_LATEX_BGD_EXAM = `\\section*{PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn (Mỗi câu 0.25 điểm)}
@@ -242,19 +256,86 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
     setAiScanError(null);
   };
 
-  // Xử lý tải file PDF
-  const handleProcessPdfFile = (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-      setAiScanError('Vui lòng chọn file có định dạng PDF (.pdf)!');
+  // Xử lý dán mã nguồn LaTeX nhanh từ bộ nhớ tạm (Clipboard)
+  const handlePasteClipboardToLatex = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          setAiLatexText(text);
+          setAiScanError(null);
+          setPublishSuccessMessage(`Đã dán thành công ${text.length} ký tự mã LaTeX từ clipboard!`);
+          setTimeout(() => setPublishSuccessMessage(null), 3500);
+          return;
+        }
+      }
+      alert('Không tìm thấy nội dung văn bản trong clipboard. Bạn có thể nhấn Ctrl + V vào ô văn bản bên dưới!');
+    } catch {
+      alert('Vui lòng click vào ô văn bản bên dưới và bấm tổ hợp phím Ctrl + V để dán mã LaTeX!');
+    }
+  };
+
+  // Xử lý dán tệp hoặc dán mã LaTeX (Ctrl + V) trên toàn vùng quét đề
+  const handleAiTabPaste = (e: React.ClipboardEvent) => {
+    // 1. Nếu dán file từ clipboard (ví dụ copy file PDF, file .tex hoặc ảnh)
+    if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
+      const file = e.clipboardData.files[0];
+      handleProcessPdfFile(file);
       return;
     }
+    // 2. Nếu đang focus trong textarea hoặc input thông thường thì để phần tử tự xử lý
+    const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+    if (targetTag === 'textarea' || targetTag === 'input') {
+      return;
+    }
+    // 3. Nếu dán chuỗi văn bản (ví dụ copy mã LaTeX từ trang web khác)
+    const text = e.clipboardData?.getData('text');
+    if (text && text.trim()) {
+      setAiLatexText(text);
+      setAiInputMethod('latex');
+      setAiScanError(null);
+      setPublishSuccessMessage(`Đã dán thành công ${text.length} ký tự mã LaTeX từ clipboard và chuyển sang tab LaTeX!`);
+      setTimeout(() => setPublishSuccessMessage(null), 3500);
+    }
+  };
+
+  // Xử lý tải file (Hỗ trợ PDF, TEX, TXT, LaTeX)
+  const handleProcessPdfFile = (file: File) => {
+    if (!file) return;
+    const lowerName = file.name.toLowerCase();
+    const isPdf = lowerName.endsWith('.pdf') || file.type === 'application/pdf';
+    const isTexOrTxt = lowerName.endsWith('.tex') || lowerName.endsWith('.txt') || lowerName.endsWith('.latex') || file.type.startsWith('text/');
+
+    if (!isPdf && !isTexOrTxt) {
+      setAiScanError('Vui lòng chọn tệp định dạng PDF (.pdf) hoặc mã nguồn LaTeX (.tex, .txt)!');
+      return;
+    }
+
     const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
     if (file.size > MAX_SIZE) {
-      setAiScanError(`File PDF quá lớn (${(file.size / (1024 * 1024)).toFixed(2)} MB). Vui lòng chọn file nhỏ hơn 25MB!`);
+      setAiScanError(`Tệp quá lớn (${(file.size / (1024 * 1024)).toFixed(2)} MB). Vui lòng chọn tệp nhỏ hơn 25MB!`);
       return;
     }
 
     setAiScanError(null);
+
+    // Nếu là file mã nguồn LaTeX (.tex hoặc .txt) -> đọc dạng text và chuyển sang tab LaTeX
+    if (isTexOrTxt) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const textContent = (reader.result as string) || '';
+        setAiLatexText(textContent);
+        setAiInputMethod('latex');
+        const cleanTitle = file.name.replace(/\.(tex|txt|latex)$/i, '').replace(/[-_]/g, ' ');
+        setAiExamTitle(`Đề Thi: ${cleanTitle}`);
+        setPublishSuccessMessage(`Đã nạp thành công mã nguồn LaTeX từ tệp "${file.name}"!`);
+        setTimeout(() => setPublishSuccessMessage(null), 3500);
+      };
+      reader.readAsText(file, 'UTF-8');
+      return;
+    }
+
+    // Nếu là file PDF (.pdf)
     const sizeStr = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
     const reader = new FileReader();
     reader.onload = () => {
@@ -264,6 +345,7 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
         fileSize: sizeStr,
         fileBase64: base64,
       });
+      setAiInputMethod('pdf');
       const cleanTitle = file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
       setAiExamTitle(`Đề Thi: ${cleanTitle}`);
     };
@@ -288,28 +370,47 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
     try {
       setAiScanStatusText('Đang phân tích cấu trúc 3 phần chuẩn BGD và định dạng công thức KaTeX...');
 
-      const response = await fetch('/api/gemini/parse-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pdfBase64: aiInputMethod === 'pdf' ? aiPdfFile?.fileBase64 : undefined,
-          latexText: aiInputMethod === 'latex' ? aiLatexText : undefined,
-          grade: aiGrade,
-          durationMinutes: aiDuration,
-          examTitle: aiExamTitle.trim() || undefined,
-        }),
-      });
+      let parsed: any = null;
+      let scanSource = '';
 
-      if (!response.ok) {
-        throw new Error(`Máy chủ trả về mã trạng thái HTTP ${response.status}`);
+      // Bước 1: Gửi yêu cầu lên Server Gemini API
+      try {
+        const response = await fetch('/api/gemini/parse-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pdfBase64: aiInputMethod === 'pdf' ? aiPdfFile?.fileBase64 : undefined,
+            latexText: aiInputMethod === 'latex' ? aiLatexText : undefined,
+            grade: aiGrade,
+            durationMinutes: aiDuration,
+            examTitle: aiExamTitle.trim() || undefined,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.parsedExam && Array.isArray(data.parsedExam.questions) && data.parsedExam.questions.length > 0) {
+            parsed = data.parsedExam;
+            scanSource = data.source === 'gemini' ? 'Gemini 3.8 Flash AI' : 'Bộ Phân Tích Cú Pháp LaTeX';
+          }
+        }
+      } catch (serverErr) {
+        console.warn('Lỗi kết nối máy chủ phân tích đề thi, sử dụng bộ giải mã cục bộ:', serverErr);
       }
 
-      const data = await response.json();
-      if (!data.success || !data.parsedExam || !data.parsedExam.questions || data.parsedExam.questions.length === 0) {
-        throw new Error('Không thể nhận diện câu hỏi từ dữ liệu đề thi. Vui lòng kiểm tra lại file hoặc cú pháp LaTeX!');
+      // Bước 2: Dự phòng thông minh - Nếu server chưa trả về câu hỏi và có mã nguồn LaTeX, chạy bộ giải mã trực tiếp trên trình duyệt
+      if ((!parsed || !parsed.questions || parsed.questions.length === 0) && aiLatexText.trim()) {
+        const localParsed = parseExamFromLatexOrText(aiLatexText, aiGrade, aiDuration, aiExamTitle);
+        if (localParsed && localParsed.questions && localParsed.questions.length > 0) {
+          parsed = localParsed;
+          scanSource = 'Bộ Phân Tích Cú Pháp LaTeX Nội Bộ';
+        }
       }
 
-      const parsed = data.parsedExam;
+      if (!parsed || !parsed.questions || parsed.questions.length === 0) {
+        throw new Error('Không thể nhận diện câu hỏi từ tệp đề thi hoặc mã LaTeX đã nhập. Vui lòng kiểm tra lại cấu trúc câu hỏi (Câu 1, \\begin{ex}, \\choice)!');
+      }
+
       const questions: Question[] = parsed.questions;
 
       const createdExam: Exam = {
@@ -323,16 +424,18 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
         createdBy: manualCreatedBy || currentUserName || 'Giáo viên',
         createdAt: new Date().toISOString(),
         questions,
-        maxAttempts: manualMaxAttempts,
+        maxAttempts: aiMaxAttempts > 0 ? aiMaxAttempts : undefined,
         openTime: manualHasTimeWindow && manualOpenTime ? manualOpenTime : undefined,
         closeTime: manualHasTimeWindow && manualCloseTime ? manualCloseTime : undefined,
-        distributionType: 'classroom',
-        targetClassIds: classrooms.map((c) => c.id),
+        distributionType: aiDistributionType,
+        targetClassIds: aiDistributionType === 'repository' ? undefined : (aiTargetClassIds.length > 0 ? aiTargetClassIds : classrooms.map((c) => c.id)),
         allowViewAnswersAfterSubmit: true,
+        enableScreenMonitoring: aiScreenMonitoring,
+        maxInfractions: aiMaxInfractions,
       };
 
       setAiParsedExam(createdExam);
-      setAiScanSource(data.source === 'gemini' ? 'Gemini 3.8 Flash AI' : 'Bộ Phân Tích Cú Pháp LaTeX');
+      setAiScanSource(scanSource || 'Đã Bóc Tách Thành Công');
       setAiScanStatusText('');
     } catch (err: any) {
       console.error('Lỗi khi quét đề thi:', err);
@@ -352,6 +455,8 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
     setManualDistributionType(aiDistributionType);
     setManualTargetClassIds(aiTargetClassIds);
     setManualMaxAttempts(aiMaxAttempts);
+    setManualScreenMonitoring(aiScreenMonitoring);
+    setManualMaxInfractions(aiMaxInfractions);
     setCreationMode('manual');
     setPublishSuccessMessage(`Đã chuyển ${aiParsedExam.questions.length} câu hỏi sang Trình Tạo Đề Thủ Công để chỉnh sửa chi tiết!`);
     setTimeout(() => setPublishSuccessMessage(null), 4000);
@@ -373,6 +478,8 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
       distributionType: aiDistributionType,
       targetClassIds: effectiveTargetIds,
       maxAttempts: aiMaxAttempts > 0 ? aiMaxAttempts : undefined,
+      enableScreenMonitoring: aiScreenMonitoring,
+      maxInfractions: aiMaxInfractions,
     };
 
     if (onPublishExam) {
@@ -674,6 +781,8 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
     setAssignHasTimeWindow(Boolean(exam.openTime || exam.closeTime));
     setAssignOpenTime(exam.openTime || new Date(Date.now() - 3600 * 1000).toISOString().slice(0, 16));
     setAssignCloseTime(exam.closeTime || new Date(Date.now() + 7 * 86400 * 1000).toISOString().slice(0, 16));
+    setAssignScreenMonitoring(exam.enableScreenMonitoring !== false);
+    setAssignMaxInfractions(exam.maxInfractions || 3);
   };
 
   // Xác nhận lưu giao đề thi cho các nhóm lớp
@@ -688,7 +797,9 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
           assignDistributionType,
           assignMaxAttempts,
           assignHasTimeWindow ? assignOpenTime : undefined,
-          assignHasTimeWindow ? assignCloseTime : undefined
+          assignHasTimeWindow ? assignCloseTime : undefined,
+          assignScreenMonitoring,
+          assignMaxInfractions
         );
       }
       setPublishSuccessMessage(`Đã cập nhật giao đề thi "${examToAssign.title}" cho các nhóm lớp thành công!`);
@@ -767,6 +878,8 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
       distributionType: manualDistributionType,
       targetClassIds: effectiveTargetIds,
       allowViewAnswersAfterSubmit: manualAllowViewAnswers,
+      enableScreenMonitoring: manualScreenMonitoring,
+      maxInfractions: manualMaxInfractions,
     };
 
     if (onPublishExam) {
@@ -1129,6 +1242,61 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                 {manualAllowViewAnswers ? 'Đang Bật' : 'Đang Tắt'}
               </span>
             </div>
+
+            {/* Hàng 5: Ô KIỂM SOÁT MÀN HÌNH & CHỐNG GIAN LẬN */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border-2 border-indigo-200/80 space-y-3 text-xs shadow-2xs">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <label className="flex items-center gap-2.5 font-bold text-indigo-950 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={manualScreenMonitoring}
+                    onChange={(e) => setManualScreenMonitoring(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                  />
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <ShieldAlert size={16} />
+                  </div>
+                  <div>
+                    <span className="text-sm font-black text-indigo-950 block">Ô Kiểm Soát Màn Hình & Chống Gian Lận</span>
+                    <span className="text-[11px] font-normal text-indigo-800">
+                      Bắt buộc toàn màn hình, giám sát chuyển tab và ghi nhật ký vi phạm
+                    </span>
+                  </div>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                    manualScreenMonitoring ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {manualScreenMonitoring ? 'ĐANG BẬT GIÁM SÁT' : 'LUYỆN TẬP TỰ DO'}
+                  </span>
+                </div>
+              </div>
+
+              {manualScreenMonitoring && (
+                <div className="pt-2 border-t border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-indigo-900 font-semibold text-[11px]">
+                    <Monitor size={14} className="text-indigo-600 shrink-0" />
+                    <span>Số lần rời màn hình tối đa trước khi tự động nộp bài:</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {[1, 2, 3, 5].map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setManualMaxInfractions(cnt)}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all ${
+                          manualMaxInfractions === cnt
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs scale-105'
+                            : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {cnt} lần
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Statistics Bar: Chỉ hiển thị 3 phần (Phần 4 tự luận đã xóa) */}
@@ -1419,7 +1587,10 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
       {creationMode === 'ai_pdf' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Hộp cấu hình Nguồn Đề Thi & Bộ Bóc Tách */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs">
+          <div
+            onPaste={handleAiTabPaste}
+            className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs"
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
               <div>
                 <h3 className="font-extrabold text-base sm:text-lg text-slate-900 flex items-center gap-2">
@@ -1441,7 +1612,7 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                   }`}
                 >
                   <FileUp size={14} />
-                  <span>File PDF</span>
+                  <span>File PDF / LaTeX</span>
                 </button>
                 <button
                   type="button"
@@ -1456,12 +1627,12 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
               </div>
             </div>
 
-            {/* VÙNG NHẬP 1: TẢI FILE PDF (HỖ TRỢ DRAG & DROP) */}
+            {/* VÙNG NHẬP 1: TẢI FILE PDF HOẶC LATEX (HỖ TRỢ DRAG & DROP & PASTE) */}
             {aiInputMethod === 'pdf' && (
               <div className="space-y-3">
                 <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                  <span>Tệp tài liệu đề thi PDF *</span>
-                  <span className="text-[11px] font-normal text-slate-400">Định dạng .pdf (Tối đa 25MB)</span>
+                  <span>Tệp tài liệu đề thi PDF hoặc Mã nguồn LaTeX *</span>
+                  <span className="text-[11px] font-normal text-slate-400">Định dạng .pdf, .tex, .txt (Tối đa 25MB)</span>
                 </label>
 
                 {!aiPdfFile ? (
@@ -1491,7 +1662,7 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                     <input
                       ref={pdfExamInputRef}
                       type="file"
-                      accept=".pdf,application/pdf"
+                      accept=".pdf,.tex,.txt,.latex,text/plain,application/pdf"
                       className="hidden"
                       onChange={(e) => {
                         if (e.target.files && e.target.files[0]) {
@@ -1504,10 +1675,10 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                     </div>
                     <div>
                       <h4 className="font-extrabold text-sm text-slate-800">
-                        Kéo thả file PDF đề thi vào đây hoặc bấm để chọn tệp
+                        Kéo thả file PDF hoặc mã nguồn LaTeX (.tex, .txt) vào đây
                       </h4>
                       <p className="text-xs text-slate-500 mt-1">
-                        Hỗ trợ đề thi khảo sát, đề tốt nghiệp THPT, đề thi thử các sở GD&ĐT dạng PDF.
+                        Hỗ trợ đề thi dạng <strong>.pdf, .tex, .txt, .latex</strong>. Thầy/Cô cũng có thể bấm <strong>Ctrl + V</strong> để dán trực tiếp.
                       </p>
                     </div>
                   </div>
@@ -1549,7 +1720,7 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                     <input
                       ref={pdfExamInputRef}
                       type="file"
-                      accept=".pdf,application/pdf"
+                      accept=".pdf,.tex,.txt,.latex,text/plain,application/pdf"
                       className="hidden"
                       onChange={(e) => {
                         if (e.target.files && e.target.files[0]) {
@@ -1570,14 +1741,23 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                     <Code2 size={15} className="text-indigo-600" />
                     <span>Mã nguồn LaTeX của đề thi (hỗ trợ \begin&#123;ex&#125;, \choice, $...$) *</span>
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handlePasteClipboardToLatex}
+                      className="px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                      title="Dán nhanh mã LaTeX từ bộ nhớ tạm (Clipboard)"
+                    >
+                      <ClipboardPaste size={13} className="text-indigo-600" />
+                      <span>Dán Từ Bộ Nhớ Tạm</span>
+                    </button>
                     <button
                       type="button"
                       onClick={handleLoadSampleLatex}
                       className="px-3 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
                     >
                       <Sparkles size={13} className="text-amber-600" />
-                      <span>Nạp Mã LaTeX Mẫu Chuẩn BGD 2025</span>
+                      <span>Nạp Mã LaTeX Mẫu BGD 2025</span>
                     </button>
                     {aiLatexText && (
                       <button
@@ -1648,6 +1828,61 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                   <option value={120}>120 Phút (Khảo sát chuyên sâu)</option>
                 </select>
               </div>
+            </div>
+
+            {/* Ô KIỂM SOÁT MÀN HÌNH & CHỐNG GIAN LẬN (QUÉT ĐỀ) */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border-2 border-indigo-200/80 space-y-3 text-xs shadow-2xs">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <label className="flex items-center gap-2.5 font-bold text-indigo-950 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aiScreenMonitoring}
+                    onChange={(e) => setAiScreenMonitoring(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                  />
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <ShieldAlert size={16} />
+                  </div>
+                  <div>
+                    <span className="text-sm font-black text-indigo-950 block">Ô Kiểm Soát Màn Hình & Chống Gian Lận</span>
+                    <span className="text-[11px] font-normal text-indigo-800">
+                      Bắt buộc toàn màn hình, giám sát chuyển tab và ghi nhật ký vi phạm
+                    </span>
+                  </div>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                    aiScreenMonitoring ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {aiScreenMonitoring ? 'ĐANG BẬT GIÁM SÁT' : 'LUYỆN TẬP TỰ DO'}
+                  </span>
+                </div>
+              </div>
+
+              {aiScreenMonitoring && (
+                <div className="pt-2 border-t border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-indigo-900 font-semibold text-[11px]">
+                    <Monitor size={14} className="text-indigo-600 shrink-0" />
+                    <span>Số lần rời màn hình tối đa trước khi tự động nộp bài:</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {[1, 2, 3, 5].map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setAiMaxInfractions(cnt)}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all ${
+                          aiMaxInfractions === cnt
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs scale-105'
+                            : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {cnt} lần
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* THÔNG BÁO LỖI NẾU CÓ */}
@@ -2871,6 +3106,52 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Ô KIỂM SOÁT MÀN HÌNH & CHỐNG GIAN LẬN TRONG MODAL GIAO ĐỀ */}
+            <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5 text-xs shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-2 font-bold text-indigo-950 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={assignScreenMonitoring}
+                    onChange={(e) => setAssignScreenMonitoring(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <ShieldAlert size={16} className="text-indigo-600 shrink-0" />
+                  <span>Ô Kiểm Soát Màn Hình & Chống Gian Lận</span>
+                </label>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                  assignScreenMonitoring ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {assignScreenMonitoring ? 'Đang Bật' : 'Tắt'}
+                </span>
+              </div>
+
+              {assignScreenMonitoring && (
+                <div className="pt-2 border-t border-indigo-100 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-indigo-900 font-semibold flex items-center gap-1.5">
+                    <Monitor size={13} className="text-indigo-600" />
+                    <span>Rời màn hình tối đa:</span>
+                  </span>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 5].map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setAssignMaxInfractions(cnt)}
+                        className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border transition-all ${
+                          assignMaxInfractions === cnt
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {cnt} lần
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2.5 pt-2">

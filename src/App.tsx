@@ -734,7 +734,9 @@ export default function App() {
     distributionType: 'classroom' | 'repository' | 'both',
     maxAttempts?: number,
     openTime?: string,
-    closeTime?: string
+    closeTime?: string,
+    enableScreenMonitoring?: boolean,
+    maxInfractions?: number
   ) => {
     const targetExam = examsList.find((e) => e.id === examId);
     if (!targetExam) return;
@@ -746,6 +748,8 @@ export default function App() {
       maxAttempts: maxAttempts ?? targetExam.maxAttempts,
       openTime: openTime ?? targetExam.openTime,
       closeTime: closeTime ?? targetExam.closeTime,
+      enableScreenMonitoring: enableScreenMonitoring !== undefined ? enableScreenMonitoring : targetExam.enableScreenMonitoring,
+      maxInfractions: maxInfractions ?? targetExam.maxInfractions,
     };
 
     setExamsList((prev) => prev.map((e) => (e.id === examId ? updatedExam : e)));

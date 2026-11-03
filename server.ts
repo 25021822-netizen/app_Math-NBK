@@ -963,13 +963,58 @@ function parseExamFromLatexOrText(rawInput: string, grade: number = 12, duration
   };
 }
 
+// Hàm trích xuất an toàn JSON chứa công thức toán học LaTeX từ Gemini AI
+function safeParseJsonWithLatex(jsonStr: string): any {
+  if (!jsonStr) return null;
+  let clean = jsonStr.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  try {
+    return JSON.parse(clean);
+  } catch (e1) {
+    try {
+      let inString = false;
+      let escaped = false;
+      let out = '';
+      for (let i = 0; i < clean.length; i++) {
+        const char = clean[i];
+        if (char === '"' && !escaped) {
+          inString = !inString;
+          out += char;
+        } else if (inString && char === '\\') {
+          const next = clean[i + 1] || '';
+          if (next === '"' || next === '\\' || next === '/') {
+            out += '\\' + next;
+            i++;
+          } else if (next === 'b' || next === 'f' || next === 'n' || next === 'r' || next === 't') {
+            const nextWord = clean.slice(i + 1, i + 8);
+            if (/^(frac|text|times|theta|tau|nabla|ne|neq|right|rho|rangle|binom|bar|beta|bf|sqrt|sum|prod)/.test(nextWord)) {
+              out += '\\\\';
+            } else {
+              out += '\\';
+            }
+          } else if (next === 'u' && /^[0-9a-fA-F]{4}/.test(clean.slice(i + 2, i + 6))) {
+            out += '\\';
+          } else {
+            out += '\\\\';
+          }
+        } else {
+          out += char;
+        }
+        escaped = inString && char === '\\' && !escaped;
+      }
+      return JSON.parse(out);
+    } catch (e2) {
+      console.warn('[safeParseJsonWithLatex] Lỗi parse JSON:', (e1 as Error).message);
+      return null;
+    }
+  }
+}
+
 // API 3: AI PDF & LATEX EXAM PARSER (3 PHẦN CHUẨN BGD 2025)
 app.post('/api/gemini/parse-pdf', async (req, res) => {
   const { pdfText, pdfBase64, latexText, grade = 12, durationMinutes = 90, examTitle } = req.body;
+  let extractedPdfText = pdfText || '';
 
   try {
-    let extractedPdfText = pdfText || '';
-
     // 1. Nếu có pdfBase64, trích xuất text nhị phân trực tiếp bằng pdf-parse
     if (pdfBase64) {
       try {
@@ -1063,9 +1108,8 @@ Không xuất bất kỳ chữ nào ngoài JSON.`;
     });
 
     let rawText = response.text || '';
-    rawText = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsedExam = safeParseJsonWithLatex(rawText);
 
-    const parsedExam = JSON.parse(rawText);
     if (parsedExam && Array.isArray(parsedExam.questions) && parsedExam.questions.length > 0) {
       parsedExam.questions.forEach((q: any, idx: number) => {
         if (!q.id) q.id = `q_ai_${idx + 1}_${Date.now()}`;
@@ -1092,12 +1136,13 @@ Không xuất bất kỳ chữ nào ngoài JSON.`;
     res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser', textExtracted: Boolean(extractedPdfText) });
   } catch (error: any) {
     console.warn('[Gemini PDF Parser] Model error or JSON parse issue, using intelligent LaTeX/PDF parser:', error?.message);
-    const rawContent = latexText || pdfText || '';
-    const fallbackExam = parseExamFromLatexOrText(rawContent, grade, durationMinutes, examTitle);
+    const rawFallbackContent = latexText || extractedPdfText || pdfText || '';
+    const fallbackExam = parseExamFromLatexOrText(rawFallbackContent, grade, durationMinutes, examTitle);
     res.json({
       success: true,
       parsedExam: fallbackExam,
       source: 'latex_parser',
+      textExtracted: Boolean(extractedPdfText),
     });
   }
 });

@@ -131,6 +131,8 @@ export interface Exam {
   distributionType?: 'classroom' | 'repository' | 'both'; // Giao cho nhóm lớp hoặc đưa vào kho tổng hợp
   targetClassIds?: string[]; // Danh sách nhóm lớp được giao đề
   allowViewAnswersAfterSubmit?: boolean; // Bật/tắt cho phép xem đáp án & lời giải chi tiết khi làm xong
+  enableScreenMonitoring?: boolean; // Bật/tắt ô kiểm soát màn hình: bắt buộc toàn màn hình, cấm chuyển tab, ghi nhật ký rời màn hình
+  maxInfractions?: number; // Số lần vi phạm tối đa trước khi tự động nộp bài (mặc định: 3)
 }
 
 export interface ExamAttempt {
