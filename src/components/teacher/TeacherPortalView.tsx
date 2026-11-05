@@ -398,12 +398,12 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
         console.warn('Lỗi kết nối máy chủ phân tích đề thi, sử dụng bộ giải mã cục bộ:', serverErr);
       }
 
-      // Bước 2: Dự phòng thông minh - Nếu server chưa trả về câu hỏi và có mã nguồn LaTeX, chạy bộ giải mã trực tiếp trên trình duyệt
-      if ((!parsed || !parsed.questions || parsed.questions.length === 0) && aiLatexText.trim()) {
-        const localParsed = parseExamFromLatexOrText(aiLatexText, aiGrade, aiDuration, aiExamTitle);
+      // Bước 2: Dự phòng thông minh - Nếu server chưa trả về câu hỏi, chạy bộ giải mã trực tiếp trên trình duyệt
+      if (!parsed || !parsed.questions || parsed.questions.length === 0) {
+        const localParsed = parseExamFromLatexOrText(aiLatexText || '', aiGrade, aiDuration, aiExamTitle);
         if (localParsed && localParsed.questions && localParsed.questions.length > 0) {
           parsed = localParsed;
-          scanSource = 'Bộ Phân Tích Cú Pháp LaTeX Nội Bộ';
+          scanSource = 'Bộ Phân Tích Cú Pháp Chuẩn Hóa Nội Bộ';
         }
       }
 

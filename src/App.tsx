@@ -106,11 +106,25 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>(ALL_INITIAL_USERS);
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [cheatLogs, setCheatLogs] = useState<CheatLog[]>(SAMPLE_CHEAT_LOGS);
-  const [examsList, setExamsList] = useState<Exam[]>([]);
+  const [examsList, setExamsList] = useState<Exam[]>(() => {
+    try {
+      const s = localStorage.getItem('math_liki_exams');
+      return s ? JSON.parse(s) : [];
+    } catch {
+      return [];
+    }
+  });
   const [activeExamId, setActiveExamId] = useState<string>('');
 
-  // Nhóm lớp, Bài học & Kết quả bài nộp của học sinh (Đồng bộ qua máy chủ)
-  const [classrooms, setClassrooms] = useState<Classroom[]>(SAMPLE_CLASSROOMS);
+  // Nhóm lớp, Bài học & Kết quả bài nộp của học sinh (Đồng bộ qua máy chủ và localStorage)
+  const [classrooms, setClassrooms] = useState<Classroom[]>(() => {
+    try {
+      const s = localStorage.getItem('math_liki_classrooms');
+      return s ? JSON.parse(s) : SAMPLE_CLASSROOMS;
+    } catch {
+      return SAMPLE_CLASSROOMS;
+    }
+  });
   const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
   const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
   const [classroomMessages, setClassroomMessages] = useState<Record<string, ClassroomChatMessage[]>>({});

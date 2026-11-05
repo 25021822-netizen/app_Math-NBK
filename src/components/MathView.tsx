@@ -38,6 +38,36 @@ function isPureLatexFormula(str: string): boolean {
   return false;
 }
 
+// Bổ sung các Macro toán học đặc thù của giáo viên Việt Nam (Hệ phương trình \heva, \hoac, vi phân, vector...)
+const VIETNAMESE_MATH_MACROS = {
+  '\\heva': '\\begin{cases}#1\\end{cases}',
+  '\\hoac': '\\left[\\begin{array}{l}#1\\end{array}\\right.',
+  '\\dd': '\\mathrm{d}',
+  '\\dx': '\\mathrm{d}x',
+  '\\dy': '\\mathrm{d}y',
+  '\\dt': '\\mathrm{d}t',
+  '\\dz': '\\mathrm{d}z',
+  '\\ds': '\\displaystyle',
+  '\\True': '',
+  '\\False': '',
+  '\\TrueTF': '',
+  '\\FalseTF': '',
+  '\\vt': '\\overrightarrow{#1}',
+  '\\vect': '\\overrightarrow{#1}',
+  '\\vv': '\\overrightarrow{#1}',
+  '\\degree': '^\\circ',
+  '\\deg': '^\\circ',
+};
+
+function cleanMathFormula(f: string): string {
+  return f
+    .replace(/\\True(?![a-zA-Z])/g, '')
+    .replace(/\\False(?![a-zA-Z])/g, '')
+    .replace(/\\TrueTF(?![a-zA-Z])/g, '')
+    .replace(/\\FalseTF(?![a-zA-Z])/g, '')
+    .trim();
+}
+
 // Render an toàn hỗn hợp văn bản tiếng Việt và công thức toán học KaTeX
 export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean = false): string {
   if (!rawInput) return '';
@@ -50,15 +80,17 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
     (normalized.startsWith('$$') && normalized.endsWith('$$') && normalized.length >= 4) ||
     (normalized.startsWith('\\[') && normalized.endsWith('\\]') && normalized.length >= 4)
   ) {
-    const formula = normalized.startsWith('$$')
+    const rawFormula = normalized.startsWith('$$')
       ? normalized.slice(2, -2).trim()
       : normalized.slice(2, -2).trim();
+    const formula = cleanMathFormula(rawFormula);
     try {
       return katex.renderToString(formula, {
         displayMode: true,
         throwOnError: false,
         strict: false,
         trust: true,
+        macros: VIETNAMESE_MATH_MACROS,
       });
     } catch {
       return `<div class="katex-fallback font-mono text-xs my-2">${escapeHtml(formula)}</div>`;
@@ -70,15 +102,17 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
     (normalized.startsWith('$') && normalized.endsWith('$') && normalized.length >= 2 && !normalized.slice(1, -1).includes('$')) ||
     (normalized.startsWith('\\(') && normalized.endsWith('\\)') && normalized.length >= 4)
   ) {
-    const formula = normalized.startsWith('$')
+    const rawFormula = normalized.startsWith('$')
       ? normalized.slice(1, -1).trim()
       : normalized.slice(2, -2).trim();
+    const formula = cleanMathFormula(rawFormula);
     try {
       return katex.renderToString(formula, {
         displayMode: defaultBlock,
         throwOnError: false,
         strict: false,
         trust: true,
+        macros: VIETNAMESE_MATH_MACROS,
       });
     } catch {
       return `<span class="katex-fallback font-mono text-xs">${escapeHtml(formula)}</span>`;
@@ -87,15 +121,17 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
 
   // 4. Nếu là công thức thuần LaTeX không bọc $ (ví dụ: \frac{a}{b}, x^2 + y^2 = R^2)
   if (isPureLatexFormula(normalized)) {
+    const formula = cleanMathFormula(normalized);
     try {
-      return katex.renderToString(normalized, {
+      return katex.renderToString(formula, {
         displayMode: defaultBlock,
         throwOnError: false,
         strict: false,
         trust: true,
+        macros: VIETNAMESE_MATH_MACROS,
       });
     } catch {
-      return `<span class="katex-fallback font-mono text-xs">${escapeHtml(normalized)}</span>`;
+      return `<span class="katex-fallback font-mono text-xs">${escapeHtml(formula)}</span>`;
     }
   }
 
@@ -119,13 +155,15 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
       (part.startsWith('$$') && part.endsWith('$$') && part.length >= 4) ||
       (part.startsWith('\\[') && part.endsWith('\\]') && part.length >= 4)
     ) {
-      const formula = part.startsWith('$$') ? part.slice(2, -2).trim() : part.slice(2, -2).trim();
+      const rawFormula = part.startsWith('$$') ? part.slice(2, -2).trim() : part.slice(2, -2).trim();
+      const formula = cleanMathFormula(rawFormula);
       try {
         resultHtml += katex.renderToString(formula, {
           displayMode: true,
           throwOnError: false,
           strict: false,
           trust: true,
+          macros: VIETNAMESE_MATH_MACROS,
         });
       } catch {
         resultHtml += `<div class="katex-fallback font-mono text-xs my-2">${escapeHtml(formula)}</div>`;
@@ -136,13 +174,15 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
       (part.startsWith('$') && part.endsWith('$') && part.length >= 2) ||
       (part.startsWith('\\(') && part.endsWith('\\)') && part.length >= 4)
     ) {
-      const formula = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
+      const rawFormula = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
+      const formula = cleanMathFormula(rawFormula);
       try {
         resultHtml += katex.renderToString(formula, {
           displayMode: false,
           throwOnError: false,
           strict: false,
           trust: true,
+          macros: VIETNAMESE_MATH_MACROS,
         });
       } catch {
         resultHtml += `<span class="katex-fallback font-mono text-xs">${escapeHtml(formula)}</span>`;

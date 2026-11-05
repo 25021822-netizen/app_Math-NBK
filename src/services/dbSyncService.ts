@@ -288,26 +288,51 @@ export async function dbUpdateUser(user: UserProfile): Promise<boolean> {
  */
 export async function dbSaveClassrooms(classrooms: Classroom[]): Promise<boolean> {
   const cleanClasses = cleanForFirestore(classrooms);
+  if (!Array.isArray(cleanClasses)) return false;
+
+  // 1. Lưu ngay vào localStorage để không bị mất khi F5 / làm mới trang
   try {
-    for (const c of cleanClasses) {
-      await setDoc(doc(db, 'classrooms', c.id), c, { merge: true });
+    localStorage.setItem('math_liki_classrooms', JSON.stringify(cleanClasses));
+  } catch {}
+
+  // 2. Đồng thời lưu lên Server Express API (/api/db/classrooms)
+  const serverPromise = fetch('/api/db/classrooms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ classrooms: cleanClasses }),
+  }).catch((err) => {
+    console.warn('Lỗi dbSaveClassrooms Server API:', err);
+    return null;
+  });
+
+  // 3. Đồng thời lưu lên Firestore Real-time Database
+  const firestorePromise = (async () => {
+    try {
+      for (const c of cleanClasses) {
+        await setDoc(doc(db, 'classrooms', c.id), c, { merge: true });
+      }
+    } catch (err) {
+      console.warn('Lỗi dbSaveClassrooms Firestore:', err);
     }
-    fetch('/api/db/classrooms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ classrooms: cleanClasses }),
-    }).catch(() => {});
-    return true;
-  } catch (err) {
-    console.warn('Lỗi dbSaveClassrooms Firestore:', err);
-    return false;
-  }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
  * Giải tán / Xóa nhóm lớp và TOÀN BỘ dữ liệu liên quan (Bài học, Tin nhắn, Danh sách giao đề)
  */
 export async function dbDisbandClassroom(classId: string): Promise<boolean> {
+  // 0. Xóa ngay khỏi localStorage cache
+  try {
+    const s = localStorage.getItem('math_liki_classrooms');
+    if (s) {
+      const arr = JSON.parse(s);
+      localStorage.setItem('math_liki_classrooms', JSON.stringify(arr.filter((c: any) => c.id !== classId)));
+    }
+  } catch {}
+
   // 1. Gửi lệnh xóa tới Server API để dọn dẹp file data/database.json
   const serverPromise = fetch('/api/db/classroom/delete', {
     method: 'POST',
@@ -721,6 +746,15 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
     distributionType: cleanExam.distributionType,
   });
 
+  // 1. Lưu ngay vào localStorage để không bị mất khi F5 / làm mới trang
+  try {
+    const raw = localStorage.getItem('math_liki_exams');
+    const existingList: Exam[] = raw ? JSON.parse(raw) : [];
+    const nextList = [cleanExam, ...existingList.filter((e) => e.id !== cleanExam.id)];
+    localStorage.setItem('math_liki_exams', JSON.stringify(nextList));
+  } catch {}
+
+  // 2. Gửi yêu cầu lưu tới Server API (/api/db/exam/save)
   const serverPromise = fetch('/api/db/exam/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -730,6 +764,7 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
     return null;
   });
 
+  // 3. Đồng bộ lên Firestore Real-time Database
   const firestorePromise = (async () => {
     try {
       await setDoc(doc(db, 'exams', cleanExam.id), cleanExam, { merge: true });
@@ -751,6 +786,16 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
  * - Gỡ mã đề thi khỏi danh sách giao của tất cả các nhóm lớp
  */
 export async function dbDeleteExam(examId: string): Promise<boolean> {
+  // 0. Xóa ngay khỏi localStorage
+  try {
+    const raw = localStorage.getItem('math_liki_exams');
+    if (raw) {
+      const existingList: Exam[] = JSON.parse(raw);
+      const nextList = existingList.filter((e) => e.id !== examId);
+      localStorage.setItem('math_liki_exams', JSON.stringify(nextList));
+    }
+  } catch {}
+
   // 1. Gửi yêu cầu xóa tới Server API để dọn dẹp file data/database.json
   const serverPromise = fetch('/api/db/exam/delete', {
     method: 'POST',
@@ -819,6 +864,10 @@ export async function dbDeleteExam(examId: string): Promise<boolean> {
 export async function dbSaveExams(exams: Exam[]): Promise<boolean> {
   const cleanExams = cleanForFirestore(exams);
   if (!Array.isArray(cleanExams)) return false;
+
+  try {
+    localStorage.setItem('math_liki_exams', JSON.stringify(cleanExams));
+  } catch {}
 
   const serverPromise = fetch('/api/db/exams', {
     method: 'POST',
@@ -1072,16 +1121,26 @@ export function startDbPolling(
 ): () => void {
   ensureAdminSeeded();
 
+  // Khởi tạo ngay từ localStorage cache để màn hình không bị chớp hay mất đề thi khi F5
+  let initialCachedClassrooms: Classroom[] = [];
+  let initialCachedExams: Exam[] = [];
+  try {
+    const sC = localStorage.getItem('math_liki_classrooms');
+    if (sC) initialCachedClassrooms = JSON.parse(sC);
+    const sE = localStorage.getItem('math_liki_exams');
+    if (sE) initialCachedExams = JSON.parse(sE);
+  } catch {}
+
   const stateAccumulator: DatabaseState = {
     version: 1,
     lastUpdated: new Date().toISOString(),
     users: [DEFAULT_ADMIN_PROFILE],
-    classrooms: [],
+    classrooms: initialCachedClassrooms,
     submissions: [],
     cheatLogs: [],
     classroomLessons: [],
     classroomMessages: {},
-    exams: [],
+    exams: initialCachedExams,
   };
 
   const dispatchUpdate = () => {
@@ -1111,14 +1170,26 @@ export function startDbPolling(
     console.warn('Lỗi Firestore users onSnapshot:', err);
   });
 
-  // 2. Lắng nghe thay đổi Lớp học trên Firestore Real-time
+  // 2. Lắng nghe thay đổi Lớp học trên Firestore Real-time (Hợp nhất thông minh, không xóa đè mảng rỗng)
   const unsubClassrooms = onSnapshot(collection(db, 'classrooms'), (snapshot) => {
     const list: Classroom[] = [];
     snapshot.forEach((d) => {
-      list.push(d.data() as Classroom);
+      const c = d.data() as Classroom;
+      if (c && c.id) {
+        list.push(c);
+      }
     });
-    stateAccumulator.classrooms = list;
-    dispatchUpdate();
+
+    if (list.length > 0) {
+      const classMap = new Map<string, Classroom>();
+      stateAccumulator.classrooms.forEach((c) => classMap.set(c.id, c));
+      list.forEach((c) => classMap.set(c.id, c));
+      stateAccumulator.classrooms = Array.from(classMap.values());
+      try {
+        localStorage.setItem('math_liki_classrooms', JSON.stringify(stateAccumulator.classrooms));
+      } catch {}
+      dispatchUpdate();
+    }
   }, (err) => {
     console.warn('Lỗi Firestore classrooms onSnapshot:', err);
   });
@@ -1162,7 +1233,7 @@ export function startDbPolling(
     console.warn('Lỗi Firestore lessons onSnapshot:', err);
   });
 
-  // 5b. Lắng nghe Đề thi đăng bởi giáo viên trên Firestore Real-time (Đồng bộ ngay tới học sinh)
+  // 5b. Lắng nghe Đề thi đăng bởi giáo viên trên Firestore Real-time (Hợp nhất thông minh, không xóa đè mảng rỗng)
   const unsubExams = onSnapshot(collection(db, 'exams'), (snapshot) => {
     const list: Exam[] = [];
     snapshot.forEach((d) => {
@@ -1171,8 +1242,17 @@ export function startDbPolling(
         list.push(data);
       }
     });
-    stateAccumulator.exams = list;
-    dispatchUpdate();
+
+    if (list.length > 0) {
+      const examMap = new Map<string, Exam>();
+      stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
+      list.forEach((e) => examMap.set(e.id, e));
+      stateAccumulator.exams = Array.from(examMap.values());
+      try {
+        localStorage.setItem('math_liki_exams', JSON.stringify(stateAccumulator.exams));
+      } catch {}
+      dispatchUpdate();
+    }
   }, (err) => {
     console.warn('Lỗi Firestore exams onSnapshot:', err);
   });
@@ -1240,8 +1320,15 @@ export function startDbPolling(
           }
           // Đồng bộ Lớp học
           if (json.data.classrooms && Array.isArray(json.data.classrooms)) {
-            if (JSON.stringify(json.data.classrooms) !== JSON.stringify(stateAccumulator.classrooms)) {
-              stateAccumulator.classrooms = json.data.classrooms;
+            const classMap = new Map<string, Classroom>();
+            stateAccumulator.classrooms.forEach((c) => classMap.set(c.id, c));
+            json.data.classrooms.forEach((c: Classroom) => classMap.set(c.id, c));
+            const mergedClasses = Array.from(classMap.values());
+            if (mergedClasses.length !== stateAccumulator.classrooms.length || JSON.stringify(mergedClasses) !== JSON.stringify(stateAccumulator.classrooms)) {
+              stateAccumulator.classrooms = mergedClasses;
+              try {
+                localStorage.setItem('math_liki_classrooms', JSON.stringify(mergedClasses));
+              } catch {}
               hasChanges = true;
             }
           }
@@ -1262,8 +1349,11 @@ export function startDbPolling(
             stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
             json.data.exams.forEach((e: Exam) => examMap.set(e.id, e));
             const mergedExams = Array.from(examMap.values());
-            if (JSON.stringify(mergedExams) !== JSON.stringify(stateAccumulator.exams)) {
+            if (mergedExams.length !== stateAccumulator.exams.length || JSON.stringify(mergedExams) !== JSON.stringify(stateAccumulator.exams)) {
               stateAccumulator.exams = mergedExams;
+              try {
+                localStorage.setItem('math_liki_exams', JSON.stringify(mergedExams));
+              } catch {}
               hasChanges = true;
             }
           }

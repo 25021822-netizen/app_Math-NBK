@@ -32,7 +32,7 @@ export function extractBalancedBraces(text: string, startIndex: number, maxGroup
   return groups;
 }
 
-// Làm sạch và chuẩn hóa font Unicode, xóa lỗi ký tự đặc biệt của Word/PDF/TCVN3
+// Làm sạch và chuẩn hóa font Unicode, xóa lỗi ký tự đặc biệt của Word/PDF/TCVN3 và các dòng tiêu đề rác
 export function cleanRawLatexText(raw: string): string {
   if (!raw) return '';
 
@@ -62,6 +62,15 @@ export function cleanRawLatexText(raw: string): string {
 
   // 4. Loại bỏ các dòng chú thích % ... (giữ nguyên \% nếu là dấu phần trăm)
   cleaned = cleaned.replace(/(^|[^\\])%.*$/gm, '$1');
+
+  // 5. Loại bỏ các dòng tiêu đề trang, mã đề, số báo danh từ file PDF/Word quét được
+  cleaned = cleaned
+    .replace(/^[ \t]*Trang\s+\d+(?:\s*\/\s*\d+)?[ \t]*$/gim, '')
+    .replace(/^[ \t]*Mã\s+đề(?:\s+thi)?\s*[:\.]?\s*\d+[ \t]*$/gim, '')
+    .replace(/^[ \t]*Họ,?\s*tên\s+thí\s+sinh\s*[:\.]?.*$/gim, '')
+    .replace(/^[ \t]*Số\s+báo\s+danh\s*[:\.]?.*$/gim, '')
+    .replace(/^[ \t]*Thời\s+gian\s+làm\s+bài\s*[:\.]?.*$/gim, '')
+    .replace(/^[ \t]*(?:-{3,}|—{3,}|\*{3,})\s*HẾT\s*(?:-{3,}|—{3,}|\*{3,})[ \t]*$/gim, '');
 
   return cleaned.trim();
 }
@@ -158,7 +167,7 @@ export function parseExamFromLatexOrText(
     }
   }
 
-  // Ưu tiên 2: Nếu không dùng môi trường LaTeX, tách theo các dấu hiệu đánh số câu hỏi
+  // Ưu tiên 2: Nếu không dùng môi trường LaTeX, tách theo các dấu hiệu đánh số câu hỏi hoặc phần thi
   if (rawBlocks.length === 0 && text) {
     const splitByQuestion = text.split(
       /(?=(?:\\section\*?\{|PHẦN\s+[I|V|X\d]+|(?:\r?\n|^)\s*(?:\\item\s+|\[?Câu\s*\d+\]?|\[?CÂU\s*\d+\]?|\[?Bài\s*\d+\]?|Question\s*\d+)[\.:\s]))/gi
@@ -166,19 +175,23 @@ export function parseExamFromLatexOrText(
 
     for (const b of splitByQuestion) {
       const trimmed = b.trim();
-      if (trimmed.length > 12 && !/^(?:\\section\*?\{|PHẦN\s+[I|V|X\d]+)/i.test(trimmed)) {
+      if (trimmed.length > 8) {
         rawBlocks.push(trimmed);
       }
     }
   }
 
-  let qCounter = 1;
   let activeSectionPart: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = 'part_1_mcq';
+  let part1LocalCount = 0;
+  let part2LocalCount = 0;
+  let part3LocalCount = 0;
+  let globalCount = 0;
 
-  for (const block of rawBlocks) {
+  for (let bIdx = 0; bIdx < rawBlocks.length; bIdx++) {
+    let block = rawBlocks[bIdx];
     const lowerBlock = block.toLowerCase();
 
-    // Nhận diện và cập nhật section nếu phát hiện tiêu đề phân loại
+    // Nhận diện và chuyển đổi section nếu phát hiện tiêu đề phân loại chuẩn BGD
     if (
       lowerBlock.includes('phần ii') ||
       lowerBlock.includes('phần 2') ||
@@ -204,10 +217,20 @@ export function parseExamFromLatexOrText(
       activeSectionPart = 'part_1_mcq';
     }
 
-    // Tách phần lời giải \loigiai{...} hoặc Lời giải:...
-    let questionBody = block;
+    // Nếu block CHỈ là dòng tiêu đề phần thi (không có nội dung câu hỏi) thì bỏ qua
+    const strippedHeader = block
+      .replace(/^(?:\\section\*?\{[^}]*\}|PHẦN\s+[I|V|X\d]+[^\n\r]*)/i, '')
+      .trim();
+
+    if (!strippedHeader || strippedHeader.length < 10) {
+      continue;
+    }
+
+    // Nếu block có chứa tiêu đề phần thi ở đầu và theo sau là câu hỏi, ta giữ lại câu hỏi
+    let questionBody = strippedHeader;
     let explanationText = 'Lời giải chi tiết áp dụng chuẩn kiến thức GDPT 2018.';
 
+    // Tách phần lời giải \loigiai{...} hoặc Lời giải:...
     const loigiaiMatch = questionBody.match(/\\(?:loigiai|huongdan)/);
     if (loigiaiMatch && loigiaiMatch.index !== undefined) {
       const loigiaiIdx = loigiaiMatch.index;
@@ -229,12 +252,12 @@ export function parseExamFromLatexOrText(
     const hasChoice = /\\choice(?![a-zA-Z])/.test(questionBody) && !hasChoiceTF;
     const hasTasks = /\\begin\{tasks\}/i.test(questionBody);
     const hasSubABCD =
-      /(?:^|\n)\s*[a-d]\s*[\)\.\:]/i.test(questionBody) ||
+      /(?:^|\n|\s{2,}|\t)\s*[a-d]\s*[\)\.\:]/i.test(questionBody) ||
       questionBody.includes('(Đúng)') ||
       questionBody.includes('(Sai)') ||
       questionBody.includes('[Đúng]') ||
       questionBody.includes('[Sai]');
-    const hasMcqABCD = /(?:^|\s{2,}|\n)\s*[A-D]\s*[\.\:\)]/.test(questionBody);
+    const hasMcqABCD = /(?:^|\s{2,}|\n|\t)\s*(?:[A-D]\s*[\.\:\)]|\([A-D]\)|\[[A-D]\])/.test(questionBody);
     const hasShortAns =
       questionBody.includes('\\shortans') ||
       /(?:Đáp án|Đáp số|Kết quả|=)\s*[:\.]?\s*[-+]?\d+/i.test(questionBody);
@@ -266,10 +289,16 @@ export function parseExamFromLatexOrText(
           optC = optionsBraces[2];
           optD = optionsBraces[3];
 
-          if (optA.includes('\\True') || optA.includes('\\textbf{A}')) { correct = 'A'; optA = optA.replace(/\\True/g, '').trim(); }
-          if (optB.includes('\\True') || optB.includes('\\textbf{B}')) { correct = 'B'; optB = optB.replace(/\\True/g, '').trim(); }
-          if (optC.includes('\\True') || optC.includes('\\textbf{C}')) { correct = 'C'; optC = optC.replace(/\\True/g, '').trim(); }
-          if (optD.includes('\\True') || optD.includes('\\textbf{D}')) { correct = 'D'; optD = optD.replace(/\\True/g, '').trim(); }
+          // Kiểm tra xem phương án nào có \True
+          if (optA.includes('\\True') || optA.includes('\\textbf{A}')) { correct = 'A'; }
+          if (optB.includes('\\True') || optB.includes('\\textbf{B}')) { correct = 'B'; }
+          if (optC.includes('\\True') || optC.includes('\\textbf{C}')) { correct = 'C'; }
+          if (optD.includes('\\True') || optD.includes('\\textbf{D}')) { correct = 'D'; }
+
+          optA = optA.replace(/\\(?:True|textbf\{A\})/g, '').trim();
+          optB = optB.replace(/\\(?:True|textbf\{B\})/g, '').trim();
+          optC = optC.replace(/\\(?:True|textbf\{C\})/g, '').trim();
+          optD = optD.replace(/\\(?:True|textbf\{D\})/g, '').trim();
         }
       } else if (hasTasks) {
         const tasksMatch = questionBody.match(/\\begin\{tasks\}(?:\[\d+\]|\(\d+\))?([\s\S]*?)\\end\{tasks\}/i);
@@ -281,36 +310,51 @@ export function parseExamFromLatexOrText(
             optB = taskItems[1];
             optC = taskItems[2];
             optD = taskItems[3];
+
+            if (optA.includes('\\True')) { correct = 'A'; }
+            if (optB.includes('\\True')) { correct = 'B'; }
+            if (optC.includes('\\True')) { correct = 'C'; }
+            if (optD.includes('\\True')) { correct = 'D'; }
+
+            optA = optA.replace(/\\True/g, '').trim();
+            optB = optB.replace(/\\True/g, '').trim();
+            optC = optC.replace(/\\True/g, '').trim();
+            optD = optD.replace(/\\True/g, '').trim();
           }
         }
       } else {
-        // Tách A. B. C. D. thông minh (hỗ trợ cả cùng dòng hoặc xuống dòng)
-        const parts = questionBody.split(/(?=(?:^|\s{2,}|\n)\s*[A-D]\s*[\.\:\)])/);
+        // Tách A. B. C. D. thông minh (hỗ trợ cả cùng dòng, xuống dòng, hoặc có tab)
+        const parts = questionBody.split(/(?=(?:^|\s{2,}|\n|\t)\s*(?:[A-D]\s*[\.\:\)]|\([A-D]\)|\[[A-D]\]))/);
         if (parts.length >= 4) {
           prompt = parts[0].replace(/^(?:\\item\s+|\[?(?:Câu|CÂU|Bài)\s*\d+\]?[:\.]?\s*)/i, '').trim();
           for (let i = 1; i < parts.length; i++) {
             const p = parts[i].trim();
-            if (/^A\s*[\.\:\)]/i.test(p)) optA = p.replace(/^A\s*[\.\:\)]\s*/i, '').trim();
-            else if (/^B\s*[\.\:\)]/i.test(p)) optB = p.replace(/^B\s*[\.\:\)]\s*/i, '').trim();
-            else if (/^C\s*[\.\:\)]/i.test(p)) optC = p.replace(/^C\s*[\.\:\)]\s*/i, '').trim();
-            else if (/^D\s*[\.\:\)]/i.test(p)) optD = p.replace(/^D\s*[\.\:\)]\s*/i, '').trim();
+            if (/^(?:A\s*[\.\:\)]|\(A\)|\[A\])/i.test(p)) optA = p.replace(/^(?:A\s*[\.\:\)]|\(A\)|\[A\])\s*/i, '').trim();
+            else if (/^(?:B\s*[\.\:\)]|\(B\)|\[B\])/i.test(p)) optB = p.replace(/^(?:B\s*[\.\:\)]|\(B\)|\[B\])\s*/i, '').trim();
+            else if (/^(?:C\s*[\.\:\)]|\(C\)|\[C\])/i.test(p)) optC = p.replace(/^(?:C\s*[\.\:\)]|\(C\)|\[C\])\s*/i, '').trim();
+            else if (/^(?:D\s*[\.\:\)]|\(D\)|\[D\])/i.test(p)) optD = p.replace(/^(?:D\s*[\.\:\)]|\(D\)|\[D\])\s*/i, '').trim();
           }
         }
       }
 
-      // Đối chiếu đáp án
+      part1LocalCount++;
+      globalCount++;
+
+      // Đối chiếu đáp án từ câu hỏi hoặc bảng đáp án (hỗ trợ cả số câu cục bộ và toàn cục)
       const ansMatch = questionBody.match(/(?:Đáp án|Chọn|Key|ĐÁP ÁN)\s*[:\.]?\s*([A-D])/i);
       if (ansMatch) {
         correct = ansMatch[1].toUpperCase() as any;
-      } else if (tableAnswers.mcqAnswers[qCounter]) {
-        correct = tableAnswers.mcqAnswers[qCounter];
+      } else if (tableAnswers.mcqAnswers[part1LocalCount]) {
+        correct = tableAnswers.mcqAnswers[part1LocalCount];
+      } else if (tableAnswers.mcqAnswers[globalCount]) {
+        correct = tableAnswers.mcqAnswers[globalCount];
       }
 
       if (prompt && (optA || optB)) {
         questions.push({
-          id: `q_p1_${Date.now()}_${qCounter}`,
+          id: `q_p1_${Date.now()}_${globalCount}`,
           part: 'part_1_mcq',
-          questionNumber: qCounter,
+          questionNumber: globalCount,
           prompt: prompt.replace(/\\end\{(?:ex|bt|vd|cau)\}/g, '').trim(),
           options: [
             { key: 'A' as const, text: optA || 'Phương án A' },
@@ -322,13 +366,12 @@ export function parseExamFromLatexOrText(
           explanation: explanationText,
           points: 0.25,
         });
-        qCounter++;
         continue;
       }
     }
 
     // ==========================================
-    // 2. XỬ LÝ PHẦN 2: TRẮC NGHIỆM ĐÚNG / SAI (4 Ý)
+    // 2. XỬ LÝ PHẦN 2: TRẮC NGHIỆM ĐÚNG / SAI (4 Ý a, b, c, d)
     // ==========================================
     if (determinedPart === 'part_2_true_false') {
       let prompt = '';
@@ -358,16 +401,16 @@ export function parseExamFromLatexOrText(
           });
         });
       } else {
-        // Tách chính xác các ý a), b), c), d) mà không làm mất ký tự hay từ tiếng Việt
-        const chunks = questionBody.split(/(?=(?:^|\n)\s*[a-d]\s*[\)\.\:])/i);
+        // Tách chính xác các ý a), b), c), d) kể cả khi cùng dòng hoặc nhiều khoảng trắng
+        const chunks = questionBody.split(/(?=(?:^|\n|\s{2,}|\t)\s*(?:[a-d]\s*[\)\.\:]|\([a-d]\)|\[[a-d]\]))/i);
         if (chunks.length > 1) {
           prompt = chunks[0].replace(/^(?:\\item\s+|\[?(?:Câu|CÂU|Bài)\s*\d+\]?[:\.]?\s*)/i, '').trim();
           for (let i = 1; i < chunks.length; i++) {
             const chunk = chunks[i].trim();
-            const chunkMatch = chunk.match(/^([a-d])\s*[\)\.\:]\s*([\s\S]*)$/i);
+            const chunkMatch = chunk.match(/^(?:([a-d])\s*[\)\.\:]|\(([a-d])\)	|\[([a-d])\])\s*([\s\S]*)$/i);
             if (chunkMatch) {
-              const subKey = chunkMatch[1].toLowerCase();
-              let itemText = chunkMatch[2].trim();
+              const subKey = (chunkMatch[1] || chunkMatch[2] || chunkMatch[3]).toLowerCase();
+              let itemText = chunkMatch[4].trim();
               let isCorrect = true;
 
               // Kiểm tra xem ý này có ghi rõ (Đúng) hoặc (Sai) không
@@ -382,7 +425,7 @@ export function parseExamFromLatexOrText(
               itemText = itemText
                 .replace(/\((?:Đúng|Sai|Đ|S)\)/gi, '')
                 .replace(/\[(?:Đúng|Sai|Đ|S)\]/gi, '')
-                .replace(/\\(?:True|False)/g, '')
+                .replace(/\\(?:True|False|TrueTF|FalseTF)/g, '')
                 .trim();
 
               if (itemText) {
@@ -398,11 +441,15 @@ export function parseExamFromLatexOrText(
         }
       }
 
-      // Đối chiếu bảng đáp án Phần II nếu có
-      if (tableAnswers.tfAnswers[qCounter]) {
+      part2LocalCount++;
+      globalCount++;
+
+      // Đối chiếu bảng đáp án Phần II (hỗ trợ cả part2LocalCount 1, 2, 3, 4 và globalCount)
+      const activeTfKey = tableAnswers.tfAnswers[part2LocalCount] || tableAnswers.tfAnswers[globalCount];
+      if (activeTfKey) {
         subItems.forEach((item) => {
-          if (tableAnswers.tfAnswers[qCounter][item.subKey] !== undefined) {
-            item.isCorrect = tableAnswers.tfAnswers[qCounter][item.subKey];
+          if (activeTfKey[item.subKey] !== undefined) {
+            item.isCorrect = activeTfKey[item.subKey];
           }
         });
       }
@@ -421,15 +468,14 @@ export function parseExamFromLatexOrText(
         });
 
         questions.push({
-          id: `q_p2_${Date.now()}_${qCounter}`,
+          id: `q_p2_${Date.now()}_${globalCount}`,
           part: 'part_2_true_false',
-          questionNumber: qCounter,
+          questionNumber: globalCount,
           prompt: prompt || 'Cho giả thiết toán học sau. Xét tính đúng/sai của các mệnh đề:',
           items: subItems.slice(0, 4),
           explanation: explanationText,
           points: 1.0,
         });
-        qCounter++;
         continue;
       }
     }
@@ -458,35 +504,39 @@ export function parseExamFromLatexOrText(
         }
       }
 
-      // Đối chiếu bảng đáp án Phần III
-      if (tableAnswers.shortAnswers[qCounter]) {
-        ans = tableAnswers.shortAnswers[qCounter];
+      part3LocalCount++;
+      globalCount++;
+
+      // Đối chiếu bảng đáp án Phần III (hỗ trợ cả part3LocalCount và globalCount)
+      if (tableAnswers.shortAnswers[part3LocalCount]) {
+        ans = tableAnswers.shortAnswers[part3LocalCount];
+      } else if (tableAnswers.shortAnswers[globalCount]) {
+        ans = tableAnswers.shortAnswers[globalCount];
       }
 
       if (prompt.length > 5) {
         questions.push({
-          id: `q_p3_${Date.now()}_${qCounter}`,
+          id: `q_p3_${Date.now()}_${globalCount}`,
           part: 'part_3_short_answer',
-          questionNumber: qCounter,
+          questionNumber: globalCount,
           prompt,
           correctAnswer: ans,
           explanation: explanationText,
           points: 0.5,
         });
-        qCounter++;
         continue;
       }
     }
   }
 
-  // Nếu không bóc tách được câu hỏi nào, cấp bộ câu hỏi chuẩn 2025 đầy đủ 3 phần
+  // Nếu không bóc tách được câu hỏi nào từ file/mã nguồn đã dán, tạo bộ câu hỏi chuẩn 2025 đầy đủ 3 phần
   if (questions.length === 0) {
-    const p1 = [
+    const sampleFullExam: Question[] = [
       {
         id: 'q_p1_sample_01',
         part: 'part_1_mcq' as const,
         questionNumber: 1,
-        prompt: 'Cho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng xét dấu đạo hàm $f\'(x)$ như sau: $f\'(x) > 0$ trên $(-\\infty; 1)$ và $f\'(x) < 0$ trên $(1; +\\infty)$. Hàm số $y = f(x)$ đồng biến trên khoảng nào sau đây?',
+        prompt: 'Cho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng biến thiên với $f\'(x) > 0$ trên $(-\\infty; 1)$ và $f\'(x) < 0$ trên $(1; +\\infty)$. Hàm số $y = f(x)$ đồng biến trên khoảng nào sau đây?',
         options: [
           { key: 'A' as const, text: '$(-\\infty; 1)$' },
           { key: 'B' as const, text: '$(1; 3)$' },
@@ -497,9 +547,37 @@ export function parseExamFromLatexOrText(
         explanation: 'Hàm số đồng biến trên khoảng $(-\\infty; 1)$ do đạo hàm $f\'(x) > 0$ trên khoảng đó.',
         points: 0.25,
       },
+      {
+        id: 'q_p2_sample_01',
+        part: 'part_2_true_false' as const,
+        questionNumber: 2,
+        prompt: 'Cho hình chóp $S.ABCD$ có đáy $ABCD$ là hình vuông cạnh $a$, cạnh bên $SA \\perp (ABCD)$ và $SA = a\\sqrt{3}$. Xét tính đúng/sai của các mệnh đề sau:',
+        items: [
+          { id: 'tf_a_sample', subKey: 'a' as const, text: 'Đường thẳng $SA$ vuông góc với mặt phẳng đáy $(ABCD)$.', isCorrect: true },
+          { id: 'tf_b_sample', subKey: 'b' as const, text: 'Thể tích khối chóp $S.ABCD$ bằng $\\frac{a^3\\sqrt{3}}{3}$.', isCorrect: true },
+          { id: 'tf_c_sample', subKey: 'c' as const, text: 'Góc giữa đường thẳng $SC$ và đáy $(ABCD)$ bằng $45^\\circ$.', isCorrect: false },
+          { id: 'tf_d_sample', subKey: 'd' as const, text: 'Khoảng cách từ $A$ đến mặt phẳng $(SBC)$ bằng $\\frac{a\\sqrt{3}}{2}$.', isCorrect: true },
+        ],
+        explanation: 'Thể tích $V = \\frac{1}{3} S_{ABCD} \\cdot SA = \\frac{a^3\\sqrt{3}}{3}$. Tan của góc giữa SC và (ABCD) là SA/AC = a*sqrt(3) / (a*sqrt(2)) = sqrt(3/2) != 1.',
+        points: 1.0,
+      },
+      {
+        id: 'q_p3_sample_01',
+        part: 'part_3_short_answer' as const,
+        questionNumber: 3,
+        prompt: 'Một bể bơi hình chữ nhật có chu vi bằng $60\\text{ m}$. Hỏi chiều rộng của bể bơi bằng bao nhiêu mét để diện tích mặt nước đạt giá trị lớn nhất?',
+        correctAnswer: '15',
+        explanation: 'Nửa chu vi $x + y = 30$. Diện tích $S = x(30 - x)$ đạt cực đại khi $x = 15\\text{ m}$.',
+        points: 0.5,
+      },
     ];
-    questions.push(...p1);
+    questions.push(...sampleFullExam);
   }
+
+  // Đánh lại số thứ tự từ 1 đến N liên tục
+  questions.forEach((q, idx) => {
+    q.questionNumber = idx + 1;
+  });
 
   const totalPoints = questions.reduce((sum, q) => sum + (q.points || 0), 0);
 
