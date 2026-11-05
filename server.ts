@@ -1102,6 +1102,10 @@ HƯỚNG DẪN QUAN TRỌNG ĐỂ KHÔNG QUÉT SAI CÂU HỎI VÀ LỖI PHÔNG C
 4. CÔNG THỨC TOÁN HỌC & CHUẨN HÓA PHÔNG CHỮ:
    - Mọi biểu thức toán, ký hiệu, đồ thị hàm số phải được bọc trong cú pháp LaTeX chuẩn $...$ hoặc $$...$$ (ví dụ: $y = f(x)$, $\\int_0^1 x dx$, $\\frac{a}{b}$, $\\sqrt{x^2+1}$, $\\in$, $\\mathbb{R}$).
    - Tất cả văn bản tiếng Việt phải dùng font Unicode UTF-8 chuẩn (dựng sẵn NFC), giữ nguyên dấu câu, không viết hoa/thường sai lệch, không dính chữ.
+5. XỬ LÝ CÂU ĐẦU ĐỀ, TRÍCH DẪN NGUỒN VÀ DỮ KIỆN CHUNG:
+   - Nếu câu hỏi có trích dẫn xuất xứ ở đầu (ví dụ: '[Chuyên Lam Sơn 2025]', '(Đề tham khảo BGD)', '\\textit{(Đề thi HSG)}'), hãy GIỮ NGUYÊN trích dẫn này ở đầu prompt dưới dạng '[Trích dẫn: ...]'.
+   - Nếu có đoạn văn bản trích dẫn dữ kiện chung cho nhiều câu (ví dụ: 'Dựa vào thông tin sau để trả lời Câu 1 và Câu 2:', 'Dữ kiện chung cho các câu 4, 5:'), hãy gắn kèm dữ kiện này vào phần đầu prompt của TẤT CẢ các câu hỏi liên quan để câu hỏi có đầy đủ dữ kiện giải toán.
+   - TUYỆT ĐỐI KHÔNG tạo câu hỏi giả mạo từ các câu hướng dẫn quy chế phần thi (ví dụ: 'Thí sinh trả lời từ câu 1 đến câu 12', 'Mỗi câu hỏi thí sinh chỉ chọn một phương án').
 
 Cấu trúc JSON đầu ra bắt buộc:
 {

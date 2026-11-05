@@ -200,9 +200,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [aiScreenMonitoring, setAiScreenMonitoring] = useState<boolean>(true);
   const [aiMaxInfractions, setAiMaxInfractions] = useState<number>(3);
 
-  // Mẫu mã nguồn LaTeX chuẩn Bộ Giáo dục & Đào tạo 2025 (3 phần)
-  const SAMPLE_LATEX_BGD_EXAM = `\\section*{PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn (Mỗi câu 0.25 điểm)}
-\\begin{ex}
+  // Mẫu mã nguồn LaTeX chuẩn Bộ Giáo dục & Đào tạo 2025 có câu đầu đề, trích dẫn nguồn và lời dẫn chung
+  const SAMPLE_LATEX_BGD_EXAM = `% BỘ GIÁO DỤC VÀ ĐÀO TẠO - KỲ THI THAM KHẢO TỐT NGHIỆP THPT 2025
+% Bài thi môn: TOÁN HỌC - Thời gian làm bài: 90 phút
+
+\\section*{PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn (Thí sinh trả lời từ câu 1 đến câu 12. Mỗi câu chỉ chọn một phương án)}
+
+\\begin{ex}[Đề tham khảo Bộ GD&ĐT 2025]
 Câu 1. Cho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng xét dấu đạo hàm $f'(x)$ như sau: $f'(x) > 0$ trên $(-\\infty; 1)$ và $f'(x) < 0$ trên $(1; +\\infty)$. Hàm số $y = f(x)$ đồng biến trên khoảng nào dưới đây?
 \\choice
 {\\True $(-\\infty; 1)$}
@@ -212,7 +216,7 @@ Câu 1. Cho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng 
 \\loigiai{Hàm số đồng biến trên khoảng $(-\\infty; 1)$ do đạo hàm $f'(x) > 0$.}
 \\end{ex}
 
-\\begin{ex}
+\\begin{ex}[Chuyên Lam Sơn 2025]
 Câu 2. Trong không gian $Oxyz$, cho mặt cầu $(S): (x-2)^2 + (y+1)^2 + (z-3)^2 = 25$. Tọa độ tâm $I$ và bán kính $R$ của mặt cầu $(S)$ là:
 \\choice
 {\\True $I(2; -1; 3), R = 5$}
@@ -222,19 +226,10 @@ Câu 2. Trong không gian $Oxyz$, cho mặt cầu $(S): (x-2)^2 + (y+1)^2 + (z-3
 \\loigiai{Phương trình chính tắc $(x-a)^2 + (y-b)^2 + (z-c)^2 = R^2 \\implies I(2; -1; 3), R = \\sqrt{25} = 5$.}
 \\end{ex}
 
-\\begin{ex}
-Câu 3. Khối chóp tam giác đều $S.ABC$ có cạnh đáy bằng $a = 2\\sqrt{3}$ và chiều cao $h = 4$. Thể tích của khối chóp đã cho bằng:
-\\choice
-{\\True $4\\sqrt{3}$}
-{$12\\sqrt{3}$}
-{$8\\sqrt{3}$}
-{$6\\sqrt{3}$}
-\\loigiai{Diện tích đáy tam giác đều $B = \\frac{(2\\sqrt{3})^2 \\sqrt{3}}{4} = 3\\sqrt{3}$. Thể tích $V = \\frac{1}{3} B h = \\frac{1}{3} \\cdot 3\\sqrt{3} \\cdot 4 = 4\\sqrt{3}$.}
-\\end{ex}
+\\section*{PHẦN II. Câu trắc nghiệm đúng sai (Thí sinh trả lời từ câu 1 đến câu 4. Trong mỗi ý a, b, c, d, chọn Đúng hoặc Sai)}
 
-\\section*{PHẦN II. Câu trắc nghiệm đúng sai (Mỗi câu 1.0 điểm, 4 ý a, b, c, d)}
-\\begin{ex}
-Câu 4. Cho hàm số bậc ba $y = f(x) = x^3 - 3x^2 + 2$ có đồ thị là $(C)$.
+\\begin{ex}[Đề thi thử THPT Quốc gia]
+Câu 3. Cho hàm số bậc ba $y = f(x) = x^3 - 3x^2 + 2$ có đồ thị là $(C)$.
 a) Đạo hàm của hàm số là $f'(x) = 3x^2 - 6x$. (Đúng)
 b) Đồ thị hàm số có điểm cực đại là $M(0; 2)$. (Đúng)
 c) Giá trị cực tiểu của hàm số bằng $-2$ đạt tại $x = 2$. (Đúng)
@@ -242,11 +237,21 @@ d) Hàm số luôn đồng biến trên toàn khoảng $(0; 2)$. (Sai)
 \\loigiai{Trên khoảng $(0; 2)$, ta có $f'(x) = 3x(x - 2) < 0$ nên hàm số nghịch biến, do đó mệnh đề d là Sai.}
 \\end{ex}
 
-\\section*{PHẦN III. Câu trắc nghiệm trả lời ngắn (Mỗi câu 0.5 điểm)}
+\\section*{PHẦN III. Câu trắc nghiệm trả lời ngắn (Thí sinh điền kết quả vào ô trống)}
+
+Dữ kiện sau đây dùng cho Câu 4 và Câu 5:
+Một doanh nghiệp sản xuất đồ thị thực nghiệm mô hình chuyển động của vật thể với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$), vận tốc ban đầu $v(0) = 5$ m/s.
+
 \\begin{ex}
-Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$). Biết vận tốc ban đầu tại $t = 0$ là $v(0) = 5$ m/s. Vận tốc của vật tại thời điểm $t = 2$ giây bằng bao nhiêu m/s?
+Câu 4. Vận tốc của vật thể tại thời điểm $t = 2$ giây bằng bao nhiêu m/s?
 Đáp số: 17
-\\loigiai{Ta có $v(t) = \\int (3t^2 + 2t) dt = t^3 + t^2 + C$. Với $v(0) = 5 \\implies C = 5$. Suy ra $v(2) = 2^3 + 2^2 + 5 = 8 + 4 + 5 = 17$ m/s.}
+\\loigiai{Ta có $v(t) = \\int (3t^2 + 2t) dt = t^3 + t^2 + C$. Với $v(0) = 5 \\implies C = 5$. Suy ra $v(2) = 2^3 + 2^2 + 5 = 17$ m/s.}
+\\end{ex}
+
+\\begin{ex}
+Câu 5. Quãng đường vật thể đi được trong khoảng thời gian từ $t = 0$ đến $t = 3$ giây bằng bao nhiêu mét?
+Đáp số: 44
+\\loigiai{Quãng đường $s = \\int_0^3 (t^3 + t^2 + 5) dt = [\\frac{t^4}{4} + \\frac{t^3}{3} + 5t]_0^3 = \\frac{81}{4} + 9 + 15 = 44.25$ mét.}
 \\end{ex}`;
 
   // Xử lý nạp mã LaTeX mẫu
