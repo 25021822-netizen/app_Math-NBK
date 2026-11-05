@@ -1079,7 +1079,12 @@ export default function App() {
             tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
             onUpgradeTier={handleToggleTier}
-            onStartExam={() => setCurrentTab('exam')}
+            onStartExam={(newExam) => {
+              if (newExam) {
+                handlePublishExam(newExam);
+              }
+              setCurrentTab('exam');
+            }}
           />
         );
       }
@@ -1188,7 +1193,12 @@ export default function App() {
             tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
             onUpgradeTier={handleToggleTier}
-            onStartExam={() => setCurrentTab('exam')}
+            onStartExam={(newExam) => {
+              if (newExam) {
+                handlePublishExam(newExam);
+              }
+              setCurrentTab('exam');
+            }}
           />
         );
       case 'image_studio':
@@ -1200,7 +1210,12 @@ export default function App() {
             tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
             onUpgradeTier={handleToggleTier}
-            onStartExam={() => setCurrentTab('exam')}
+            onStartExam={(newExam) => {
+              if (newExam) {
+                handlePublishExam(newExam);
+              }
+              setCurrentTab('exam');
+            }}
           />
         );
       case 'ask_ai':
@@ -1215,7 +1230,12 @@ export default function App() {
             tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
             onUpgradeTier={handleToggleTier}
-            onStartExam={() => setCurrentTab('exam')}
+            onStartExam={(newExam) => {
+              if (newExam) {
+                handlePublishExam(newExam);
+              }
+              setCurrentTab('exam');
+            }}
           />
         );
     }

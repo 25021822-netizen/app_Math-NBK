@@ -62,11 +62,11 @@ problemSolutionCache.set(seedHash, {
   processingTimeMs: 38,
 });
 
-// API 1: CAMERA SCANNER & AI MATH SOLVER (WITH CACHING)
+// API 1: CAMERA SCANNER & AI MATH SOLVER (WITH CACHING & OCR NOISE CLEANING)
 app.post('/api/gemini/scan', async (req, res) => {
   const startTime = Date.now();
-  const { problemText, latex } = req.body;
-  const normalizedKey = (problemText || latex || 'math_problem').trim().toLowerCase();
+  const { problemText, latex, imageBase64 } = req.body;
+  const normalizedKey = (problemText || latex || imageBase64?.slice(0, 50) || 'math_problem').trim().toLowerCase();
   const hashKey = crypto.createHash('sha256').update(normalizedKey).digest('hex');
 
   // Kiểm tra Cache trước
@@ -87,25 +87,25 @@ app.post('/api/gemini/scan', async (req, res) => {
     if (!apiKey) {
       // Fallback khi chưa cấu hình key
       const fallbackResult = {
-        problemText: problemText || 'Bài toán giải tích',
+        problemText: problemText || 'Cho hàm số $y = x^3 - 3x + 1$. Tìm các điểm cực trị của hàm số.',
         latexFormula: latex || 'y = x^3 - 3x + 1',
         topic: 'calculus',
         difficulty: 'Thông hiểu',
         stepByStepSolution: [
           {
             stepNumber: 1,
-            title: 'Tính đạo hàm f\'(x)',
-            description: 'Áp dụng công thức đạo hàm hàm đa thức.',
+            title: 'Lọc ký tự rác OCR và tính đạo hàm f\'(x)',
+            description: 'Khử sạch đốm rác quang học, áp dụng công thức đạo hàm hàm đa thức bậc 3.',
             latex: 'f\'(x) = 3x^2 - 3',
           },
           {
             stepNumber: 2,
-            title: 'Giải phương trình f\'(x) = 0',
-            description: 'Tìm các điểm làm đạo hàm bằng 0.',
-            latex: '3x^2 - 3 = 0 \\iff x = \\pm 1',
+            title: 'Giải phương trình f\'(x) = 0 tìm điểm cực trị',
+            description: 'Tìm các nghiệm làm đạo hàm bằng 0 và xét sự đổi dấu qua bảng biến thiên.',
+            latex: '3x^2 - 3 = 0 \\iff x^2 = 1 \\iff x = \\pm 1',
           },
         ],
-        finalAnswer: 'x = 1 hoặc x = -1',
+        finalAnswer: 'x = 1 (cực tiểu), x = -1 (cực đại)',
         source: 'gemini_vision',
         processingTimeMs: Date.now() - startTime,
       };
@@ -113,28 +113,64 @@ app.post('/api/gemini/scan', async (req, res) => {
       return res.json({ success: true, result: fallbackResult });
     }
 
-    const prompt = `Bạn là chuyên gia giải toán THPT Việt Nam. Hãy phân tích bài toán sau: "${problemText || latex}".
-    Trả về định dạng JSON hợp lệ chứa:
+    const systemPrompt = `Bạn là chuyên gia giải toán THPT Việt Nam và bóc tách OCR chính xác cao.
+Nhiệm vụ của bạn:
+1. Đọc hình ảnh bài toán hoặc văn bản đề bài: "${problemText || latex || ''}".
+2. LỌC BỎ TOÀN BỘ KÝ TỰ RÁC QUANG HỌC (NOISE): loại bỏ đốm mực, dấu gạch sổ lẻ, tiêu đề trang scan, số báo danh, mã đề rác.
+3. CHUYỂN ĐỔI TOÀN BỘ CÔNG THỨC TOÁN THÀNH ĐỊNH DẠNG LATEX CHUẨN: bọc trong $...$ hoặc $$...$$ (ví dụ: $y = f(x)$, $\\int_0^1 x dx$, $\\frac{a}{b}$, $\\vec{AB}$, $\\parallel$, $\\perp$).
+4. Giải bài toán từng bước chi tiết và đưa ra đáp số cuối cùng chuẩn xác.
+
+Trả về định dạng JSON hợp lệ chứa:
+{
+  "problemText": "đề bài toán đã được lọc sạch noise và định dạng KaTeX chuẩn",
+  "latexFormula": "công thức LaTeX chính của bài toán",
+  "topic": "calculus | algebra | geometry_spatial | trigonometry",
+  "difficulty": "Nhận biết | Thông hiểu | Vận dụng | Vận dụng cao",
+  "stepByStepSolution": [
     {
-      "problemText": "đề bài tóm tắt",
-      "latexFormula": "công thức LaTeX chính",
-      "topic": "calculus | algebra | geometry_spatial | trigonometry",
-      "difficulty": "Nhận biết | Thông hiểu | Vận dụng | Vận dụng cao",
-      "stepByStepSolution": [
-        {
-          "stepNumber": 1,
-          "title": "Tên bước",
-          "description": "Giải thích chi tiết",
-          "latex": "công thức LaTeX của bước"
-        }
-      ],
-      "finalAnswer": "đáp số cuối cùng ngắn gọn"
+      "stepNumber": 1,
+      "title": "Tên bước",
+      "description": "Giải thích chi tiết",
+      "latex": "công thức LaTeX của bước"
     }
-    Không viết chữ nào ngoài chuỗi JSON hợp lệ.`;
+  ],
+  "finalAnswer": "đáp số cuối cùng ngắn gọn"
+}
+Không viết chữ nào ngoài chuỗi JSON hợp lệ.`;
+
+    let contentsPayload: any;
+    if (imageBase64) {
+      let mime = 'image/jpeg';
+      let cleanBase64 = imageBase64;
+      if (imageBase64.startsWith('data:application/pdf;base64,')) {
+        mime = 'application/pdf';
+        cleanBase64 = imageBase64.replace(/^data:application\/pdf;base64,/, '');
+      } else if (imageBase64.startsWith('data:image/png;base64,')) {
+        mime = 'image/png';
+        cleanBase64 = imageBase64.replace(/^data:image\/png;base64,/, '');
+      } else {
+        cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '');
+      }
+      contentsPayload = {
+        parts: [
+          {
+            inlineData: {
+              mimeType: mime,
+              data: cleanBase64,
+            },
+          },
+          {
+            text: systemPrompt,
+          },
+        ],
+      };
+    } else {
+      contentsPayload = systemPrompt;
+    }
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
-      contents: prompt,
+      contents: contentsPayload,
       config: {
         responseMimeType: 'application/json',
       },
