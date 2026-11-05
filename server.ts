@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { PDFParse } from 'pdf-parse';
+import { parseExamFromLatexOrText } from './src/lib/latexExamParser';
 
 dotenv.config();
 
@@ -619,7 +620,7 @@ function extractBalancedBraces(text: string, startIndex: number, maxGroups: numb
   return groups;
 }
 
-function parseExamFromLatexOrText(rawInput: string, grade: number = 12, durationMinutes: number = 90, examTitle?: string) {
+function legacyParseExamFromLatexOrText(rawInput: string, grade: number = 12, durationMinutes: number = 90, examTitle?: string) {
   const text = (rawInput || '').trim();
   const title = examTitle || (text ? 'Đề Thi Toán THPT (Trích Xuất LaTeX / PDF)' : 'Đề Thi Thử Tốt Nghiệp THPT 2025 Chuẩn BGD');
 
@@ -967,6 +968,12 @@ function parseExamFromLatexOrText(rawInput: string, grade: number = 12, duration
 function safeParseJsonWithLatex(jsonStr: string): any {
   if (!jsonStr) return null;
   let clean = jsonStr.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  const firstBrace = clean.indexOf('{');
+  const lastBrace = clean.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    clean = clean.slice(firstBrace, lastBrace + 1);
+  }
+
   try {
     return JSON.parse(clean);
   } catch (e1) {
@@ -986,7 +993,7 @@ function safeParseJsonWithLatex(jsonStr: string): any {
             i++;
           } else if (next === 'b' || next === 'f' || next === 'n' || next === 'r' || next === 't') {
             const nextWord = clean.slice(i + 1, i + 8);
-            if (/^(frac|text|times|theta|tau|nabla|ne|neq|right|rho|rangle|binom|bar|beta|bf|sqrt|sum|prod)/.test(nextWord)) {
+            if (/^(frac|text|times|theta|tau|nabla|ne|neq|right|rho|rangle|binom|bar|beta|bf|sqrt|sum|prod|nu)/.test(nextWord)) {
               out += '\\\\';
             } else {
               out += '\\';
@@ -1015,7 +1022,7 @@ app.post('/api/gemini/parse-pdf', async (req, res) => {
   let extractedPdfText = pdfText || '';
 
   try {
-    // 1. Nếu có pdfBase64, trích xuất text nhị phân trực tiếp bằng pdf-parse
+    // 1. Nếu có pdfBase64, trích xuất text nhị phân trực tiếp bằng pdf-parse (dùng làm dự phòng)
     if (pdfBase64) {
       try {
         const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
@@ -1041,40 +1048,76 @@ app.post('/api/gemini/parse-pdf', async (req, res) => {
       return res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser', textExtracted: Boolean(extractedPdfText) });
     }
 
-    const systemPrompt = `Bạn là chuyên gia chuyển đổi và bóc tách đề thi Toán học THPT Việt Nam (Bộ Giáo dục & Đào tạo định dạng mới 2025).
-Hãy phân tích tài liệu đề thi được cung cấp (văn bản, mã nguồn LaTeX hoặc file PDF) và trích xuất cấu trúc 3 phần chuẩn sau:
+    const systemPrompt = `Bạn là chuyên gia thẩm định và bóc tách đề thi Toán học THPT Việt Nam (Bộ Giáo dục & Đào tạo định dạng mới 2025).
+Nhiệm vụ của bạn: Bóc tách TOÀN BỘ các câu hỏi từ đề thi được cung cấp thành định dạng JSON chuẩn hóa 3 phần.
 
-1. PHẦN 1 (part_1_mcq): Câu trắc nghiệm 4 lựa chọn (A, B, C, D).
-   - "options": Mảng đúng 4 phần tử với key: 'A', 'B', 'C', 'D' và text.
-   - "correctAnswer": 1 trong 4 chữ cái 'A', 'B', 'C', 'D'.
-   - "points": 0.25 điểm mỗi câu.
+HƯỚNG DẪN QUAN TRỌNG ĐỂ KHÔNG QUÉT SAI CÂU HỎI VÀ LỖI PHÔNG CHỮ:
+1. ĐỌC THEO CỘT VĂN BẢN (TRÁNH TRỘN CÂU):
+   - Đề thi Toán THPT thường in 2 CỘT trên mỗi trang. Bạn PHẢI đọc hết cột bên trái từ trên xuống dưới, sau đó mới đọc cột bên phải từ trên xuống dưới.
+   - Tuyệt đối KHÔNG đọc ngang hàng làm trộn lẫn câu hỏi hoặc phương án giữa cột trái và cột phải.
+2. CẤU TRÚC 3 PHẦN CHUẨN BGD 2025:
+   - PHẦN I ("part_1_mcq"): Trắc nghiệm 4 lựa chọn (A, B, C, D). Mỗi câu có mảng options gồm 4 phần tử với key: 'A', 'B', 'C', 'D' và text; correctAnswer là 'A', 'B', 'C' hoặc 'D'; points: 0.25.
+   - PHẦN II ("part_2_true_false"): Trắc nghiệm Đúng/Sai. Mỗi câu có đúng 4 ý độc lập a, b, c, d. Trường "items" là mảng đúng 4 phần tử: subKey ('a', 'b', 'c', 'd'), text, và isCorrect: boolean (true = Đúng, false = Sai); points: 1.0.
+     Lưu ý: Trong đề bài, Phần II thường được đánh số lại là Câu 1, Câu 2... Bạn PHẢI phân loại vào "part_2_true_false".
+   - PHẦN III ("part_3_short_answer"): Trắc nghiệm trả lời ngắn (điền kết quả). KHÔNG có phương án A, B, C, D. Trường "correctAnswer" là số hoặc phân số rút gọn (ví dụ: "12", "-2.5", "3/4"); points: 0.5.
+3. BẢNG ĐÁP ÁN Ở CUỐI ĐỀ THI:
+   - Nếu trong tài liệu có BẢNG ĐÁP ÁN hoặc LỜI GIẢI / HƯỚNG DẪN CHẤM ở cuối đề hoặc trang cuối, bạn BẮT BUỘC phải đối chiếu bảng đáp án này để gán chính xác correctAnswer cho Phần I, isCorrect cho từng ý a, b, c, d của Phần II, và đáp số cho Phần III.
+   - Nếu không có bảng đáp án, bạn hãy giải toán chính xác để xác định đáp án đúng.
+4. CÔNG THỨC TOÁN HỌC & CHUẨN HÓA PHÔNG CHỮ:
+   - Mọi biểu thức toán, ký hiệu, đồ thị hàm số phải được bọc trong cú pháp LaTeX chuẩn $...$ hoặc $$...$$ (ví dụ: $y = f(x)$, $\\int_0^1 x dx$, $\\frac{a}{b}$, $\\sqrt{x^2+1}$, $\\in$, $\\mathbb{R}$).
+   - Tất cả văn bản tiếng Việt phải dùng font Unicode UTF-8 chuẩn (dựng sẵn NFC), giữ nguyên dấu câu, không viết hoa/thường sai lệch, không dính chữ.
 
-2. PHẦN 2 (part_2_true_false): Câu trắc nghiệm Đúng/Sai gồm 4 ý độc lập.
-   - "items": Mảng đúng 4 phần tử với subKey: 'a', 'b', 'c', 'd', text, và isCorrect: boolean (true = Đúng, false = Sai).
-   - "points": 1.0 điểm mỗi câu.
-
-3. PHẦN 3 (part_3_short_answer): Câu trắc nghiệm trả lời ngắn (điền kết quả).
-   - "correctAnswer": Chuỗi số/phân số tối đa 4 ký tự (ví dụ: "2", "-1/2", "3.5", "12").
-   - "points": 0.5 điểm mỗi câu.
-
-Quy tắc BẮT BUỘC:
-- Mọi công thức toán học phải được giữ nguyên dạng cú pháp LaTeX chuẩn (ví dụ: $y = f(x)$, $\\int_0^1 x dx$, $\\frac{a}{b}$, $\\sqrt{x^2+1}$).
-- Đặt tiêu đề đề thi vào trường metadata.title: "${examTitle || 'Đề Thi Toán THPT Chuẩn BGD'}".
-- metadata.grade: ${grade}, metadata.durationMinutes: ${durationMinutes}.
-- Trả về DUY NHẤT một đối tượng JSON hợp lệ theo cấu trúc:
+Cấu trúc JSON đầu ra bắt buộc:
 {
   "metadata": {
-    "title": "Tên đề thi",
-    "grade": 12,
+    "title": "${examTitle || 'Đề Thi Toán THPT Chuẩn BGD'}",
+    "grade": ${grade},
     "year": 2025,
-    "durationMinutes": 90,
+    "durationMinutes": ${durationMinutes},
     "totalPoints": 10.0
   },
   "questions": [
-    ...
+    {
+      "id": "q1",
+      "part": "part_1_mcq",
+      "questionNumber": 1,
+      "prompt": "Lời dẫn câu hỏi có chứa công thức $...$",
+      "options": [
+        { "key": "A", "text": "Phương án A có công thức $...$" },
+        { "key": "B", "text": "Phương án B có công thức $...$" },
+        { "key": "C", "text": "Phương án C có công thức $...$" },
+        { "key": "D", "text": "Phương án D có công thức $...$" }
+      ],
+      "correctAnswer": "A",
+      "explanation": "Lời giải chi tiết ngắn gọn",
+      "points": 0.25
+    },
+    {
+      "id": "q2",
+      "part": "part_2_true_false",
+      "questionNumber": 2,
+      "prompt": "Lời dẫn câu hỏi Đúng/Sai",
+      "items": [
+        { "subKey": "a", "text": "Ý a", "isCorrect": true },
+        { "subKey": "b", "text": "Ý b", "isCorrect": false },
+        { "subKey": "c", "text": "Ý c", "isCorrect": true },
+        { "subKey": "d", "text": "Ý d", "isCorrect": false }
+      ],
+      "explanation": "Lời giải chi tiết",
+      "points": 1.0
+    },
+    {
+      "id": "q3",
+      "part": "part_3_short_answer",
+      "questionNumber": 3,
+      "prompt": "Lời dẫn câu hỏi trả lời ngắn",
+      "correctAnswer": "15",
+      "explanation": "Lời giải chi tiết",
+      "points": 0.5
+    }
   ]
 }
-Không xuất bất kỳ chữ nào ngoài JSON.`;
+Trả về DUY NHẤT chuỗi JSON hợp lệ, không có văn bản giải thích nào ngoài JSON.`;
 
     let contentsPayload: any;
 
@@ -1089,9 +1132,7 @@ Không xuất bất kỳ chữ nào ngoài JSON.`;
             },
           },
           {
-            text: extractedPdfText
-              ? `${systemPrompt}\n\n(DƯỚI ĐÂY LÀ VĂN BẢN TRÍCH XUẤT TỪ FILE PDF ĐỂ THAM KHẢO THÊM):\n${extractedPdfText.slice(0, 25000)}`
-              : systemPrompt,
+            text: systemPrompt,
           },
         ],
       };

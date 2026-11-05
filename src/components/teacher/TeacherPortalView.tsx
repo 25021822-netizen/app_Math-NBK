@@ -1484,12 +1484,14 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                 </div>
 
                 {/* Question Prompt */}
-                <p className="font-bold text-slate-900 text-sm">{q.prompt}</p>
+                <div className="font-bold text-slate-900 text-sm leading-relaxed">
+                  <MathView math={q.prompt} />
+                </div>
 
                 {/* Công thức LaTeX nếu có */}
                 {q.latex && (
                   <div className="p-3 bg-slate-50 rounded-xl overflow-x-auto">
-                    <MathView latex={q.latex} />
+                    <MathView latex={q.latex} block />
                   </div>
                 )}
 
@@ -1524,10 +1526,12 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                             : 'bg-slate-50 border-slate-200 text-slate-700'
                         }`}
                       >
-                        <span className="w-5 h-5 rounded-md bg-white border border-slate-300 flex items-center justify-center font-bold text-[10px]">
+                        <span className="w-5 h-5 rounded-md bg-white border border-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0">
                           {opt.key}
                         </span>
-                        <span>{opt.text}</span>
+                        <div className="flex-1 min-w-0 text-xs">
+                          <MathView math={opt.text} />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1539,14 +1543,16 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                     {q.items.map((item) => (
                       <div
                         key={item.id}
-                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between"
+                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3"
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-purple-700">{item.subKey})</span>
-                          <span>{item.text}</span>
+                        <div className="flex items-center gap-2 flex-1 min-w-0 text-xs">
+                          <span className="font-bold text-purple-700 shrink-0">{item.subKey})</span>
+                          <div className="flex-1 min-w-0">
+                            <MathView math={item.text} />
+                          </div>
                         </div>
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
                             item.isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                           }`}
                         >
@@ -1560,7 +1566,7 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
                 {/* Render Answer for Part 3 */}
                 {q.part === 'part_3_short_answer' && (
                   <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between">
-                    <span className="font-bold text-amber-900">Đáp án ngắn:</span>
+                    <span className="font-bold text-amber-900 text-xs">Đáp án ngắn:</span>
                     <span className="font-mono font-black text-amber-800 text-sm bg-white px-3 py-1 rounded-lg border border-amber-300">
                       {q.correctAnswer}
                     </span>
@@ -1569,9 +1575,9 @@ Câu 5. Một vật chuyển động với gia tốc $a(t) = 3t^2 + 2t$ (m/s$^2$
 
                 {/* Explanation */}
                 {q.explanation && (
-                  <div className="text-[11px] text-slate-500 pt-1">
+                  <div className="text-[11px] text-slate-500 pt-1 leading-relaxed">
                     <span className="font-bold text-slate-700">Lời giải chi tiết: </span>
-                    {q.explanation}
+                    <MathView math={q.explanation} />
                   </div>
                 )}
               </div>

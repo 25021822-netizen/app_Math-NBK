@@ -810,7 +810,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <span className="text-xs font-bold text-blue-600">Câu {q.questionNumber}:</span>
-                        <p className="text-sm font-semibold text-slate-900">{q.prompt}</p>
+                        <div className="text-sm font-semibold text-slate-900 leading-relaxed">
+                          <MathView math={q.prompt} />
+                        </div>
                         {q.latex && <MathView math={q.latex} block />}
                       </div>
 
@@ -886,9 +888,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                             >
                               {opt.key}
                             </span>
-                            <div className="text-xs sm:text-sm text-slate-800">
-                              <span>{opt.text}</span>
-                              {opt.latex && <MathView math={opt.latex} />}
+                            <div className="text-xs sm:text-sm text-slate-800 flex-1 leading-relaxed">
+                              <MathView math={opt.text} />
+                              {opt.latex && <MathView math={opt.latex} block />}
                             </div>
                           </button>
                         );
@@ -901,7 +903,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                           <BookOpen size={14} className="text-blue-600" />
                           <span>Lời giải chi tiết:</span>
                         </span>
-                        <p>{q.explanation}</p>
+                        <div className="leading-relaxed">
+                          <MathView math={q.explanation} />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -939,7 +943,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <span className="text-xs font-bold text-purple-600">Câu {q.questionNumber}:</span>
-                        <p className="text-sm font-semibold text-slate-900">{q.prompt}</p>
+                        <div className="text-sm font-semibold text-slate-900 leading-relaxed">
+                          <MathView math={q.prompt} />
+                        </div>
                         {q.latex && <MathView math={q.latex} block />}
                       </div>
 
@@ -980,10 +986,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                             key={item.id}
                             className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                           >
-                            <div className="text-xs sm:text-sm text-slate-800 flex-1">
+                            <div className="text-xs sm:text-sm text-slate-800 flex-1 leading-relaxed">
                               <span className="font-bold text-purple-700 mr-2">{item.subKey})</span>
-                              <span>{item.text}</span>
-                              {item.latex && <MathView math={item.latex} />}
+                              <MathView math={item.text} />
+                              {item.latex && <MathView math={item.latex} block />}
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">
@@ -1020,7 +1026,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     {isSubmitted && q.explanation && (
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
                         <span className="font-bold text-slate-900 block">Lời giải chi tiết:</span>
-                        <p>{q.explanation}</p>
+                        <div className="leading-relaxed">
+                          <MathView math={q.explanation} />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1058,7 +1066,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <span className="text-xs font-bold text-amber-600">Câu {q.questionNumber}:</span>
-                        <p className="text-sm font-semibold text-slate-900">{q.prompt}</p>
+                        <div className="text-sm font-semibold text-slate-900 leading-relaxed">
+                          <MathView math={q.prompt} />
+                        </div>
                         {q.latex && <MathView math={q.latex} block />}
                       </div>
 
@@ -1121,7 +1131,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                         <span className="font-bold text-amber-700 block">
                           Đáp án chuẩn: <span className="font-mono">{q.correctAnswer}</span>
                         </span>
-                        {q.explanation && <p>{q.explanation}</p>}
+                        {q.explanation && (
+                          <div className="leading-relaxed mt-1">
+                            <MathView math={q.explanation} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
