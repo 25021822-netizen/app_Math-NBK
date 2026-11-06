@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { PDFParse } from 'pdf-parse';
 import { parseExamFromLatexOrText } from './src/lib/latexExamParser';
+import { cleanPdfNoiseAndOcr } from './src/lib/ocrNoiseCleaner';
 
 dotenv.config();
 
@@ -66,7 +67,12 @@ problemSolutionCache.set(seedHash, {
 app.post('/api/gemini/scan', async (req, res) => {
   const startTime = Date.now();
   const { problemText, latex, imageBase64 } = req.body;
-  const normalizedKey = (problemText || latex || imageBase64?.slice(0, 50) || 'math_problem').trim().toLowerCase();
+  // Làm sạch nhiễu PDF (header/footer, số trang, mã đề, đốm mực) trước khi gửi AI
+  const cleanedProblem = cleanPdfNoiseAndOcr(problemText || '');
+  const cleanProblemText = cleanedProblem.suggestedPrompt || problemText;
+  const cleanLatex = cleanedProblem.latexFormula || latex;
+
+  const normalizedKey = (cleanProblemText || cleanLatex || imageBase64?.slice(0, 50) || 'math_problem').trim().toLowerCase();
   const hashKey = crypto.createHash('sha256').update(normalizedKey).digest('hex');
 
   // Kiểm tra Cache trước
@@ -1076,11 +1082,13 @@ app.post('/api/gemini/parse-pdf', async (req, res) => {
     }
 
     const rawContent = latexText || extractedPdfText || pdfText || '';
+    // Khử sạch header/footer, số trang, watermark PDF trước khi bóc tách cấu trúc đề
+    const cleanedContent = cleanPdfNoiseAndOcr(rawContent).cleanedText || rawContent;
 
     // Nếu không có API Key, chuyển sang sử dụng bộ bóc tách thông minh Regex/LaTeX nội bộ
     if (!apiKey) {
       console.warn('[Gemini PDF Parser] Không có API Key, sử dụng bộ giải mã LaTeX/PDF thông minh');
-      const fallbackExam = parseExamFromLatexOrText(rawContent, grade, durationMinutes, examTitle);
+      const fallbackExam = parseExamFromLatexOrText(cleanedContent, grade, durationMinutes, examTitle);
       return res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser', textExtracted: Boolean(extractedPdfText) });
     }
 

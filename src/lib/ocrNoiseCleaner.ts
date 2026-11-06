@@ -47,15 +47,24 @@ export function cleanOcrNoise(raw: string): { text: string; noiseCount: number; 
     .replace(/[‘’`]/g, "'")
     .replace(/[–—−]/g, '-');
 
-  // 4. Loại bỏ các dòng tiêu đề rác của trang đề thi scan (Header/Footer noise)
+  // 4. Loại bỏ các dòng tiêu đề rác của trang đề thi PDF/Scan (Header/Footer & Page Numbers noise)
   const headerFooterPatterns = [
-    /^[ \t]*Trang\s+\d+(?:\s*\/\s*\d+)?[ \t]*$/gim,
-    /^[ \t]*Mã\s+đề(?:\s+thi)?\s*[:\.]?\s*\d+[ \t]*$/gim,
+    /^[ \t]*(?:Trang|Page)\s*\d+(?:\s*(?:\/|of|trên)\s*\d+)?[ \t]*$/gim, // Trang 1/4, Page 2 of 5
+    /^[ \t]*[-–—]\s*\d+\s*[-–—][ \t]*$/gm, // - 1 -, — 2 —
+    /^[ \t]*\d{1,2}\s*\/\s*\d{1,2}[ \t]*$/gm, // 1/4, 2/4 (số trang lẻ ở mép giấy)
+    /^[ \t]*Mã\s+đề(?:\s+thi)?\s*[:\.]?\s*\w+[ \t]*$/gim,
     /^[ \t]*Họ,?\s*tên\s+thí\s+sinh\s*[:\.]?.*$/gim,
     /^[ \t]*Số\s+báo\s+danh\s*[:\.]?.*$/gim,
     /^[ \t]*Thời\s+gian\s+làm\s+bài\s*[:\.]?.*$/gim,
-    /^[ \t]*(?:BỘ|SỞ)\s+GIÁO\s+DỤC\s+VÀ\s+ĐÀO\s+TẠO.*$/gim,
+    /^[ \t]*\(?(?:Đề\s+thi\s+gồm\s+có|Đề\s+thi\s+có)\s+\d+\s+trang\)?.*$/gim,
+    /^[ \t]*Thí\s+sinh\s+không\s+được\s+sử\s+dụng\s+tài\s+liệu.*$/gim,
+    /^[ \t]*Cán\s+bộ\s+coi\s+thi\s+không\s+giải\s+thích\s+gì\s+thêm.*$/gim,
+    /^[ \t]*(?:Chữ\s+ký|Giám\s+thị\s+\d).*$/gim,
+    /^[ \t]*(?:BỘ|SỞ)\s+(?:GIÁO\s+DỤC\s+VÀ\s+ĐÀO\s+TẠO|GD\s*&\s*ĐT).*$/gim,
     /^[ \t]*KỲ\s+THI\s+(?:TỐT\s+NGHIỆP|THỬ|CHỌN|KHẢO\s+SÁT).*$/gim,
+    /^[ \t]*(?:BẢN\s+QUYỀN|PHOTOCOPY|ĐỀ\s+DỰ\s+BỊ|LƯU\s+HÀNH\s+NỘI\s+BỘ|DO\s+NOT\s+COPY).*$/gim,
+    /^[ \t]*(?:https?:\/\/|www\.|file:\/\/)[^\s]+[ \t]*$/gim, // URL footer tự động chèn khi in PDF
+    /^[ \t]*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?[ \t]*$/gm, // Dấu mốc thời gian in PDF
     /^[ \t]*(?:-{3,}|—{3,}|\*{3,})\s*(?:HẾT|HET)\s*(?:-{3,}|—{3,}|\*{3,})[ \t]*$/gim,
     /^[ \t]*\|\s*\d{1,2}\s*\|[ \t]*$/gm, // Đánh số lề trang scan
   ];
@@ -64,7 +73,7 @@ export function cleanOcrNoise(raw: string): { text: string; noiseCount: number; 
     const matches = cleaned.match(p);
     if (matches) {
       noiseCount += matches.length;
-      artifacts.push(`Tiêu đề trang scan: "${matches[0].trim().slice(0, 30)}..."`);
+      artifacts.push(`Đầu/chân trang PDF: "${matches[0].trim().slice(0, 32)}..."`);
       cleaned = cleaned.replace(p, '');
     }
   });
@@ -248,4 +257,11 @@ export function cleanOcrTextAndConvertToLatex(rawInput: string): OcrCleanResult 
     extractedOptions: options,
     detectedCorrectAnswer: correctAnswer,
   };
+}
+
+/**
+ * 5. Loại bỏ ký tự nhiễu thường gặp trong PDF (header/footer, số trang, mã đề) và chuẩn hóa OCR
+ */
+export function cleanPdfNoiseAndOcr(raw: string): OcrCleanResult {
+  return cleanOcrTextAndConvertToLatex(raw);
 }

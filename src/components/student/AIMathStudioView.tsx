@@ -5,9 +5,10 @@ import { MathView } from '../MathView';
 import { FunctionGrapher } from '../FunctionGrapher';
 import { Three3DSceneView } from '../geometry/Three3DSceneView';
 import { LikiImageStudioView } from '../image/LikiImageStudioView';
-import { cleanOcrTextAndConvertToLatex, OcrCleanResult } from '../../lib/ocrNoiseCleaner';
+import { cleanOcrTextAndConvertToLatex, cleanPdfNoiseAndOcr, OcrCleanResult } from '../../lib/ocrNoiseCleaner';
 import { validatePdfFile, PdfValidationResult } from '../../lib/pdfValidator';
 import { dbSaveExam } from '../../services/dbSyncService';
+import { QuestionCropStudioView } from '../teacher/QuestionCropStudioView';
 import {
   Camera,
   MessageSquare,
@@ -47,6 +48,7 @@ import {
   AlertTriangle,
   FileWarning,
   ShieldAlert,
+  Scissors,
 } from 'lucide-react';
 
 export type StudioSubTab = 'tutor' | 'three_3d' | 'image_studio' | 'scanner';
@@ -59,6 +61,7 @@ interface AIMathStudioViewProps {
   onIncrementScan: () => void;
   onUpgradeTier: () => void;
   onStartExam?: (exam?: Exam) => void;
+  onOpenCropStudio?: (fileData: { fileName: string; fileSize: string; fileBase64?: string; isPdf?: boolean; extractedText?: string }) => void;
 }
 
 export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
@@ -69,6 +72,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
   onIncrementScan,
   onUpgradeTier,
   onStartExam,
+  onOpenCropStudio,
 }) => {
   // Chế độ tích hợp trực tiếp trong Liki:
   // 'tutor' (Gia sư Liki), 'three_3d' (Không gian 3D Three.js), 'image_studio' (Tạo ảnh AI), 'scanner' (Quét OCR)
@@ -88,6 +92,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
   const [copiedLatex, setCopiedLatex] = useState<boolean>(false);
   const [isCreatingExam, setIsCreatingExam] = useState<boolean>(false);
   const [createdExamNotice, setCreatedExamNotice] = useState<string | null>(null);
+  const [showCropStudioModal, setShowCropStudioModal] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ==========================================
@@ -234,10 +239,10 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
     // 1. Xác định nội dung đề bài thô cần phân tích
     const rawInput = customProblemText.trim() || SAMPLE_SCAN_RESULTS[selectedPresetIndex % SAMPLE_SCAN_RESULTS.length].problemText;
 
-    // 2. Chạy logic lọc ký tự rác (Noise Cleaner) và chuẩn hóa cú pháp LaTeX
+    // 2. Chạy logic lọc ký tự rác (Noise Cleaner), khử header/footer, số trang PDF trước khi gửi AI
     let cleanedOutput: OcrCleanResult;
     if (enableOcrNoiseCleaning) {
-      cleanedOutput = cleanOcrTextAndConvertToLatex(rawInput);
+      cleanedOutput = cleanPdfNoiseAndOcr(rawInput);
       setOcrNoiseResult(cleanedOutput);
     } else {
       cleanedOutput = {
@@ -487,6 +492,32 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
     setMessages([]);
     setHintsRemaining(2);
   };
+
+  // Nếu người dùng yêu cầu chuyển sang phòng riêng biệt để cắt các câu vào đề
+  if (showCropStudioModal) {
+    return (
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 animate-in fade-in">
+        <QuestionCropStudioView
+          documentData={{
+            fileName: customPdfFile?.file.name || 'Tai_Lieu_Toan_Scan.png',
+            fileSize: customPdfFile?.info.fileSizeFormatted || '1.8 MB',
+            fileBase64: customImagePreview || undefined,
+            isPdf: Boolean(customPdfFile),
+            extractedText: customProblemText || undefined,
+          }}
+          initialTitle={customPdfFile ? `Đề Thi: ${customPdfFile.file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')}` : undefined}
+          onPublishExam={(exam) => {
+            if (onStartExam) onStartExam(exam);
+            setShowCropStudioModal(false);
+          }}
+          onTransferToManualEditor={() => {
+            setShowCropStudioModal(false);
+          }}
+          onBackToUpload={() => setShowCropStudioModal(false)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -1302,6 +1333,28 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                     <span>Quét OCR & Lọc Sạch Noise Tự Động</span>
                   </>
                 )}
+              </button>
+
+              {/* NÚT CHUYỂN SANG GIAO DIỆN PHÒNG CẮT CÁC CÂU VÀO ĐỀ */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenCropStudio) {
+                    onOpenCropStudio({
+                      fileName: customPdfFile?.file.name || 'Tai_Lieu_Toan.png',
+                      fileSize: customPdfFile?.info.fileSizeFormatted || '1.5 MB',
+                      fileBase64: customImagePreview || undefined,
+                      isPdf: Boolean(customPdfFile),
+                      extractedText: customProblemText || undefined,
+                    });
+                  } else {
+                    setShowCropStudioModal(true);
+                  }
+                }}
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-50 to-blue-50 hover:from-indigo-100 hover:to-blue-100 text-indigo-900 border-2 border-indigo-200 text-xs font-black shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Scissors size={15} className="text-indigo-600" />
+                <span>✂️ Chuyển Sang Phòng Cắt Các Câu Vào Đề</span>
               </button>
             </div>
           </div>

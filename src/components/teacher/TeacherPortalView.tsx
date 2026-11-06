@@ -36,9 +36,11 @@ import {
   ShieldAlert,
   Monitor,
   ClipboardPaste,
+  Scissors,
 } from 'lucide-react';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
+import { QuestionCropStudioView } from './QuestionCropStudioView';
 
 interface TeacherPortalViewProps {
   onPublishExam?: (newExam: Exam) => void;
@@ -47,7 +49,7 @@ interface TeacherPortalViewProps {
   currentUserName?: string;
   examsList?: Exam[];
   onDeleteExam?: (examId: string) => void;
-  initialMode?: 'manual' | 'ai_pdf' | 'manage_exams';
+  initialMode?: 'manual' | 'ai_pdf' | 'crop_studio' | 'manage_exams';
   onAssignExamToClasses?: (
     examId: string,
     targetClassIds: string[],
@@ -70,8 +72,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   initialMode,
   onAssignExamToClasses,
 }) => {
-  // Chế độ: 'manual' (Tạo đề thủ công), 'ai_pdf' (AI Bóc Tách PDF) hoặc 'manage_exams' (Quản lý kho đề thi)
-  const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf' | 'manage_exams'>(initialMode || 'manual');
+  // Chế độ: 'manual' (Tạo đề thủ công), 'ai_pdf' (AI Bóc Tách PDF), 'crop_studio' (Phòng cắt câu đề thi) hoặc 'manage_exams' (Quản lý kho đề thi)
+  const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf' | 'crop_studio' | 'manage_exams'>(initialMode || 'manual');
 
   useEffect(() => {
     if (initialMode) {
@@ -353,6 +355,10 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       setAiInputMethod('pdf');
       const cleanTitle = file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
       setAiExamTitle(`Đề Thi: ${cleanTitle}`);
+      // Tự động chuyển ngay sang Phòng Cắt Câu Đề Thi để cắt từng câu vào đề
+      setCreationMode('crop_studio');
+      setPublishSuccessMessage(`Đã nạp file "${file.name}" và chuyển sang Phòng Cắt Câu Đề Thi! Thầy/Cô có thể khoanh vùng câu hỏi hoặc dùng "AI Cắt Tự Động Toàn Đề".`);
+      setTimeout(() => setPublishSuccessMessage(null), 5000);
     };
     reader.readAsDataURL(file);
   };
@@ -947,6 +953,18 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           >
             <FileUp size={15} />
             <span>Tải Lên File PDF AI</span>
+          </button>
+          <button
+            onClick={() => setCreationMode('crop_studio')}
+            className={`flex-1 md:flex-initial px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              creationMode === 'crop_studio' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Scissors size={15} />
+            <span>Phòng Cắt Câu Đề Thi</span>
+            {aiPdfFile && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse ml-0.5"></span>
+            )}
           </button>
           <button
             onClick={() => setCreationMode('manage_exams')}
@@ -1709,6 +1727,14 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setCreationMode('crop_studio')}
+                        className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                      >
+                        <Scissors size={14} />
+                        <span>Mở Phòng Cắt Câu</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => pdfExamInputRef.current?.click()}
@@ -2801,6 +2827,52 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODE CROP STUDIO: PHÒNG CẮT CÁC CÂU VÀO ĐỀ THI                          */}
+      {/* ========================================================================= */}
+      {creationMode === 'crop_studio' && (
+        <QuestionCropStudioView
+          documentData={
+            aiPdfFile
+              ? {
+                  fileName: aiPdfFile.fileName,
+                  fileSize: aiPdfFile.fileSize,
+                  fileBase64: aiPdfFile.fileBase64,
+                  isPdf: true,
+                }
+              : aiLatexText
+              ? {
+                  fileName: 'Ma_Nguon_Latex.tex',
+                  fileSize: `${Math.round(aiLatexText.length / 1024)} KB`,
+                  extractedText: aiLatexText,
+                  isPdf: false,
+                }
+              : null
+          }
+          initialQuestions={aiParsedExam?.questions || []}
+          initialTitle={aiExamTitle || 'Đề Thi Phân Đoạn Mới'}
+          initialGrade={aiGrade}
+          initialDuration={aiDuration}
+          currentUserName={currentUserName}
+          onPublishExam={(newExam) => {
+            onPublishExam?.(newExam);
+            setPublishSuccessMessage(`Đã xuất bản đề thi "${newExam.title}" thành công từ Phòng Cắt Câu!`);
+            setCreationMode('manage_exams');
+            setTimeout(() => setPublishSuccessMessage(null), 5000);
+          }}
+          onTransferToManualEditor={(questions, meta) => {
+            setManualQuestions(questions);
+            setManualTitle(meta.title);
+            setManualGrade(meta.grade);
+            setManualDuration(meta.duration);
+            setCreationMode('manual');
+            setPublishSuccessMessage(`Đã chuyển ${questions.length} câu hỏi sang giao diện biên tập thủ công!`);
+            setTimeout(() => setPublishSuccessMessage(null), 4000);
+          }}
+          onBackToUpload={() => setCreationMode('ai_pdf')}
+        />
       )}
 
       {/* ========================================================================= */}
