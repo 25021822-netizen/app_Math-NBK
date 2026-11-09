@@ -62,6 +62,7 @@ export interface QuestionPart1MCQ {
     key: 'A' | 'B' | 'C' | 'D';
     text: string;
     latex?: string;
+    imageUrl?: string; // Ảnh cắt riêng của phương án A, B, C, D
   }[];
   correctAnswer: 'A' | 'B' | 'C' | 'D';
   explanation: string;
@@ -69,6 +70,7 @@ export interface QuestionPart1MCQ {
   imageAttachment?: string; // Dán/cắt file ảnh minh họa hoặc đề bài
   pdfAttachmentName?: string; // Tên file tài liệu / hình vẽ đính kèm
   pdfAttachmentUrl?: string;
+  optionsAttachmentUrl?: string; // Ảnh cắt khối 4 đáp án A, B, C, D
 }
 
 export interface QuestionPart2TrueFalseItem {
@@ -77,6 +79,7 @@ export interface QuestionPart2TrueFalseItem {
   text: string;
   latex?: string;
   isCorrect: boolean; // Giá trị chân lý đúng của mệnh đề
+  imageUrl?: string; // Ảnh cắt riêng của từng mệnh đề a, b, c, d
 }
 
 export interface QuestionPart2TrueFalse {
@@ -91,6 +94,7 @@ export interface QuestionPart2TrueFalse {
   imageAttachment?: string;
   pdfAttachmentName?: string;
   pdfAttachmentUrl?: string;
+  optionsAttachmentUrl?: string; // Ảnh cắt khối 4 ý a, b, c, d
 }
 
 export interface QuestionPart3ShortAnswer {
@@ -105,6 +109,7 @@ export interface QuestionPart3ShortAnswer {
   imageAttachment?: string;
   pdfAttachmentName?: string;
   pdfAttachmentUrl?: string;
+  optionsAttachmentUrl?: string; // Ảnh cắt vùng đáp số / lời giải
 }
 
 // Chỉ gồm 3 phần thi trắc nghiệm khách quan chuẩn BGD (đã loại bỏ hoàn toàn tự luận)

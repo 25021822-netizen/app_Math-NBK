@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Question, Exam, MathTopic } from '../../types/math';
+import { Question, Exam, QuestionPart1MCQ, QuestionPart2TrueFalse, QuestionPart3ShortAnswer } from '../../types/math';
 import { MathView } from '../MathView';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
 import { cleanPdfNoiseAndOcr } from '../../lib/ocrNoiseCleaner';
@@ -19,20 +19,16 @@ import {
   FileText,
   Image as ImageIcon,
   Check,
-  Eye,
-  Save,
-  ArrowLeft,
-  ArrowRight,
-  ShieldCheck,
   Sliders,
-  Layers,
-  HelpCircle,
-  X,
-  RefreshCw,
-  Copy,
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Crosshair,
+  ArrowLeft,
+  Layers,
+  UploadCloud,
+  X,
+  Target,
 } from 'lucide-react';
 
 export interface CropDocumentData {
@@ -76,7 +72,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [enableScreenMonitoring, setEnableScreenMonitoring] = useState<boolean>(true);
   const [maxInfractions, setMaxInfractions] = useState<number>(3);
 
-  // Danh sách câu hỏi đã cắt vào đề
+  // Danh sách câu hỏi đã cắt vào đề (KHÔNG chứa câu hỏi mẫu mặc định)
   const [questions, setQuestions] = useState<Question[]>(() => {
     if (initialQuestions.length > 0) return initialQuestions;
     return [];
@@ -86,6 +82,14 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [isAiCroppingAll, setIsAiCroppingAll] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'canvas' | 'pdf_document'>('canvas');
+
+  // Phân loại câu hỏi đang thao tác / tạo mới
+  const [selectedPartType, setSelectedPartType] = useState<'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer'>('part_1_mcq');
+  // Bộ lọc hiển thị danh sách câu hỏi bên phải
+  const [filterPart, setFilterPart] = useState<'all' | 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer'>('all');
+
+  // Phân biệt lần cắt: Cắt Đề bài (question_prompt) hay Cắt Đáp án (question_answers)
+  const [cuttingTargetMode, setCuttingTargetMode] = useState<'question_prompt' | 'question_answers'>('question_prompt');
 
   // Điều khiển trang PDF
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -99,7 +103,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [isDrawingCrop, setIsDrawingCrop] = useState<boolean>(false);
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropBox, setCropBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  const [lastCroppedSnippetUrl, setLastCroppedSnippetUrl] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -208,12 +212,12 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     };
   }, [currentPage, totalPages]);
 
-  // Nếu chưa có câu hỏi nào và có tài liệu, tự động bóc tách ban đầu
+  // Tự động chọn câu đầu tiên khi danh sách câu hỏi thay đổi nếu chưa có câu nào active
   useEffect(() => {
-    if (questions.length === 0 && (documentData?.fileBase64 || documentData?.extractedText)) {
-      handleAutoCropAllQuestions();
+    if (!activeQuestionId && questions.length > 0) {
+      setActiveQuestionId(questions[0].id);
     }
-  }, [documentData]);
+  }, [questions, activeQuestionId]);
 
   // Bắt đầu vẽ khung cắt với tính toán tọa độ chính xác tuyệt đối
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -234,12 +238,13 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     setIsDrawingCrop(true);
     setCropStart({ x, y });
     setCropBox({ x, y, w: 0, h: 0 });
+    setMousePos({ x, y });
   };
 
-  // Kéo chuột để mở rộng khung cắt
+  // Kéo chuột để mở rộng khung cắt và cập nhật con trỏ crosshair trực tiếp
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDrawingCrop || !cropStart || !containerRef.current) return;
     const container = containerRef.current;
+    if (!container) return;
     const rect = container.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
@@ -248,6 +253,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
     const currentX = Math.max(0, Math.min(container.offsetWidth, (e.clientX - rect.left) * scaleX));
     const currentY = Math.max(0, Math.min(container.offsetHeight, (e.clientY - rect.top) * scaleY));
+
+    setMousePos({ x: currentX, y: currentY });
+
+    if (!isDrawingCrop || !cropStart) return;
 
     const x = Math.min(cropStart.x, currentX);
     const y = Math.min(cropStart.y, currentY);
@@ -260,6 +269,14 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   // Thả chuột kết thúc khung cắt
   const handleMouseUp = () => {
     setIsDrawingCrop(false);
+  };
+
+  // Khi chuột rời bàn cắt
+  const handleMouseLeave = () => {
+    setMousePos(null);
+    if (isDrawingCrop) {
+      setIsDrawingCrop(false);
+    }
   };
 
   // Trích xuất ảnh cắt chất lượng cao từ canvas hoặc hình ảnh thực tế
@@ -292,9 +309,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, srcW, srcH);
         ctx.drawImage(source, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
-        const dataUrl = cropCanvas.toDataURL('image/png');
-        setLastCroppedSnippetUrl(dataUrl);
-        return dataUrl;
+        return cropCanvas.toDataURL('image/png');
       }
     } catch (err) {
       console.warn('Lỗi cắt ảnh từ tài liệu:', err);
@@ -302,31 +317,12 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     return '';
   };
 
-  // Gắn ảnh vùng cắt vào câu hỏi đang chọn
-  const handleAttachCropToActiveQuestion = () => {
-    if (!activeQuestionId) {
-      setStatusMessage('Vui lòng chọn một câu hỏi ở cột bên phải để gắn ảnh!');
-      setTimeout(() => setStatusMessage(null), 3000);
-      return;
-    }
+  // =========================================================
+  // LẦN 1: CẮT ĐỀ BÀI (TẠO CÂU MỚI HOẶC GẮN VÀO CÂU ĐANG CHỌN)
+  // =========================================================
+  const handleCropNewQuestion = (part: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = selectedPartType) => {
     const snippetDataUrl = getCroppedDataUrl();
-    if (!snippetDataUrl) {
-      setStatusMessage('Vui lòng khoanh vùng một khu vực trên bàn cắt trước khi gắn!');
-      setTimeout(() => setStatusMessage(null), 3000);
-      return;
-    }
-
-    handleUpdateQuestion(activeQuestionId, { pdfAttachmentUrl: snippetDataUrl });
-    const targetQ = questions.find((q) => q.id === activeQuestionId);
-    setStatusMessage(`Đã gắn hình ảnh vừa cắt vào Câu ${targetQ?.questionNumber || ''}!`);
-    setCropBox(null);
-    setTimeout(() => setStatusMessage(null), 3000);
-  };
-
-  // Thực hiện cắt khung hiện tại và tạo câu hỏi mới vào danh sách
-  const handleCommitCropToQuestion = (part: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = 'part_1_mcq') => {
     const newQNumber = questions.length + 1;
-    const snippetDataUrl = getCroppedDataUrl();
 
     let newQuestion: Question;
 
@@ -335,15 +331,15 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         id: `q_crop_${Date.now()}_${newQNumber}`,
         part: 'part_2_true_false',
         questionNumber: newQNumber,
-        prompt: `Câu ${newQNumber}. Cho giả thiết bài toán. Xét tính đúng/sai của các mệnh đề sau:`,
+        prompt: `Câu ${newQNumber}. Xét tính đúng/sai của các mệnh đề sau:`,
         pdfAttachmentUrl: snippetDataUrl || undefined,
         items: [
-          { id: `tf_a_${Date.now()}`, subKey: 'a', text: 'Mệnh đề a liên quan đến câu hỏi.', isCorrect: true },
-          { id: `tf_b_${Date.now()}`, subKey: 'b', text: 'Mệnh đề b liên quan đến câu hỏi.', isCorrect: true },
-          { id: `tf_c_${Date.now()}`, subKey: 'c', text: 'Mệnh đề c liên quan đến câu hỏi.', isCorrect: false },
-          { id: `tf_d_${Date.now()}`, subKey: 'd', text: 'Mệnh đề d liên quan đến câu hỏi.', isCorrect: true },
+          { id: `tf_a_${Date.now()}`, subKey: 'a', text: '', isCorrect: true },
+          { id: `tf_b_${Date.now()}`, subKey: 'b', text: '', isCorrect: true },
+          { id: `tf_c_${Date.now()}`, subKey: 'c', text: '', isCorrect: false },
+          { id: `tf_d_${Date.now()}`, subKey: 'd', text: '', isCorrect: true },
         ],
-        explanation: 'Lời giải chi tiết cho 4 ý đúng/sai.',
+        explanation: '',
         points: 1.0,
       };
     } else if (part === 'part_3_short_answer') {
@@ -351,10 +347,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         id: `q_crop_${Date.now()}_${newQNumber}`,
         part: 'part_3_short_answer',
         questionNumber: newQNumber,
-        prompt: `Câu ${newQNumber}. Tính giá trị của bài toán (điền kết quả ngắn):`,
+        prompt: `Câu ${newQNumber}. Điền đáp số của bài toán:`,
         pdfAttachmentUrl: snippetDataUrl || undefined,
-        correctAnswer: '15',
-        explanation: 'Lời giải chi tiết tìm ra đáp số.',
+        correctAnswer: '',
+        explanation: '',
         points: 0.5,
       };
     } else {
@@ -362,16 +358,16 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         id: `q_crop_${Date.now()}_${newQNumber}`,
         part: 'part_1_mcq',
         questionNumber: newQNumber,
-        prompt: `Câu ${newQNumber}. Chọn một phương án đúng nhất trong các phương án sau:`,
+        prompt: `Câu ${newQNumber}. Chọn một phương án đúng nhất:`,
         pdfAttachmentUrl: snippetDataUrl || undefined,
         options: [
-          { key: 'A', text: 'Phương án A' },
-          { key: 'B', text: 'Phương án B' },
-          { key: 'C', text: 'Phương án C' },
-          { key: 'D', text: 'Phương án D' },
+          { key: 'A', text: '' },
+          { key: 'B', text: '' },
+          { key: 'C', text: '' },
+          { key: 'D', text: '' },
         ],
         correctAnswer: 'A',
-        explanation: 'Lời giải chi tiết câu hỏi trắc nghiệm.',
+        explanation: '',
         points: 0.25,
       };
     }
@@ -379,14 +375,169 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     setQuestions((prev) => [...prev, newQuestion]);
     setActiveQuestionId(newQuestion.id);
     setCropBox(null);
-    setStatusMessage(`Đã cắt thành công Câu ${newQNumber} vào đề thi!`);
+    setStatusMessage(`Đã cắt Đề Bài thành công và tạo Câu ${newQNumber}! Thầy/Cô có thể tiếp tục cắt đáp án cho câu này.`);
+    setTimeout(() => setStatusMessage(null), 3500);
+  };
+
+  // Cắt và cập nhật lại đề bài cho câu đang chọn
+  const handleUpdatePromptImageForActiveQuestion = () => {
+    if (!activeQuestionId) {
+      setStatusMessage('Vui lòng chọn một câu hỏi ở cột bên phải để gắn đề bài!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+    const snippetDataUrl = getCroppedDataUrl();
+    if (!snippetDataUrl) {
+      setStatusMessage('Vui lòng khoanh vùng khu vực đề bài trên bàn cắt trước khi bấm!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+
+    handleUpdateQuestion(activeQuestionId, { pdfAttachmentUrl: snippetDataUrl });
+    const targetQ = questions.find((q) => q.id === activeQuestionId);
+    setStatusMessage(`Đã cập nhật ảnh đề bài cho Câu ${targetQ?.questionNumber || ''}!`);
+    setCropBox(null);
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
-  // Tự động nhận diện và bóc tách toàn bộ câu hỏi (AI Auto Crop từ PDF / LaTeX)
+  // =========================================================
+  // LẦN 2: CẮT ĐÁP ÁN (PHẦN TRẮC NGHIỆM VÀ PHẦN ĐÚNG SAI)
+  // =========================================================
+
+  // Cắt riêng từng phương án A, B, C, D (Phần I - MCQ)
+  const handleCropOptionForActiveQuestion = (optKey: 'A' | 'B' | 'C' | 'D') => {
+    if (!activeQuestionId) {
+      setStatusMessage('Vui lòng chọn một câu trắc nghiệm ở cột bên phải trước khi cắt đáp án!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+    const snippet = getCroppedDataUrl();
+    if (!snippet) {
+      setStatusMessage(`Vui lòng khoanh vùng phương án ${optKey} trên tài liệu trước khi bấm cắt!`);
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+
+    setQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== activeQuestionId || q.part !== 'part_1_mcq') return q;
+        const currentOpts = q.options || [
+          { key: 'A', text: '' },
+          { key: 'B', text: '' },
+          { key: 'C', text: '' },
+          { key: 'D', text: '' },
+        ];
+        const newOpts = currentOpts.map((opt) => (opt.key === optKey ? { ...opt, imageUrl: snippet } : opt));
+        return { ...q, options: newOpts } as QuestionPart1MCQ;
+      })
+    );
+    setCropBox(null);
+    const targetQ = questions.find((q) => q.id === activeQuestionId);
+    setStatusMessage(`Đã cắt thành công phương án [${optKey}] cho Câu ${targetQ?.questionNumber || ''}!`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  // Cắt riêng từng ý a, b, c, d (Phần II - Đúng / Sai)
+  const handleCropItemForActiveQuestion = (subKey: 'a' | 'b' | 'c' | 'd') => {
+    if (!activeQuestionId) {
+      setStatusMessage('Vui lòng chọn một câu Đúng/Sai ở cột bên phải trước khi cắt ý!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+    const snippet = getCroppedDataUrl();
+    if (!snippet) {
+      setStatusMessage(`Vui lòng khoanh vùng mệnh đề ${subKey}) trên tài liệu trước khi bấm cắt!`);
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+
+    setQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== activeQuestionId || q.part !== 'part_2_true_false') return q;
+        const currentItems = q.items || [
+          { id: `tf_a_${Date.now()}`, subKey: 'a', text: '', isCorrect: true },
+          { id: `tf_b_${Date.now()}`, subKey: 'b', text: '', isCorrect: true },
+          { id: `tf_c_${Date.now()}`, subKey: 'c', text: '', isCorrect: false },
+          { id: `tf_d_${Date.now()}`, subKey: 'd', text: '', isCorrect: true },
+        ];
+        const newItems = currentItems.map((item) => (item.subKey === subKey ? { ...item, imageUrl: snippet } : item));
+        return { ...q, items: newItems } as QuestionPart2TrueFalse;
+      })
+    );
+    setCropBox(null);
+    const targetQ = questions.find((q) => q.id === activeQuestionId);
+    setStatusMessage(`Đã cắt thành công mệnh đề [${subKey})] cho Câu ${targetQ?.questionNumber || ''}!`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  // Cắt khối cả 4 đáp án (A-B-C-D hoặc a-b-c-d liền nhau)
+  const handleCropOptionsBlockForActiveQuestion = () => {
+    if (!activeQuestionId) {
+      setStatusMessage('Vui lòng chọn câu hỏi ở cột bên phải để gắn khối đáp án!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+    const snippet = getCroppedDataUrl();
+    if (!snippet) {
+      setStatusMessage('Vui lòng khoanh vùng khối các đáp án trên tài liệu trước khi bấm!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+
+    handleUpdateQuestion(activeQuestionId, { optionsAttachmentUrl: snippet });
+    setCropBox(null);
+    const targetQ = questions.find((q) => q.id === activeQuestionId);
+    setStatusMessage(`Đã gắn khối đáp án vào Câu ${targetQ?.questionNumber || ''}!`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  // Cắt đáp số / lời giải ngắn (Phần III)
+  const handleCropShortAnswerForActiveQuestion = () => {
+    if (!activeQuestionId) {
+      setStatusMessage('Vui lòng chọn câu hỏi ở cột bên phải!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+    const snippet = getCroppedDataUrl();
+    if (!snippet) {
+      setStatusMessage('Vui lòng khoanh vùng đáp số / lời giải trên tài liệu!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+
+    handleUpdateQuestion(activeQuestionId, { optionsAttachmentUrl: snippet });
+    setCropBox(null);
+    const targetQ = questions.find((q) => q.id === activeQuestionId);
+    setStatusMessage(`Đã gắn ảnh đáp số/lời giải vào Câu ${targetQ?.questionNumber || ''}!`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  // Xóa ảnh phương án riêng
+  const handleRemoveOptionImage = (qId: string, optKey: 'A' | 'B' | 'C' | 'D') => {
+    setQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId || q.part !== 'part_1_mcq') return q;
+        const newOpts = (q.options || []).map((opt) => (opt.key === optKey ? { ...opt, imageUrl: undefined } : opt));
+        return { ...q, options: newOpts } as QuestionPart1MCQ;
+      })
+    );
+  };
+
+  // Xóa ảnh ý Đúng/Sai riêng
+  const handleRemoveItemImage = (qId: string, subKey: 'a' | 'b' | 'c' | 'd') => {
+    setQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId || q.part !== 'part_2_true_false') return q;
+        const newItems = (q.items || []).map((item) => (item.subKey === subKey ? { ...item, imageUrl: undefined } : item));
+        return { ...q, items: newItems } as QuestionPart2TrueFalse;
+      })
+    );
+  };
+
+  // Tự động nhận diện và bóc tách toàn bộ câu hỏi (KHÔNG tạo câu hỏi mẫu rác khi không tìm thấy)
   const handleAutoCropAllQuestions = async () => {
     setIsAiCroppingAll(true);
-    setStatusMessage('AI Gemini 3.8 Flash đang đọc file PDF và tự động bóc tách các câu hỏi chuẩn BGD 2025...');
+    setStatusMessage('AI Gemini đang quét tài liệu và bóc tách các câu hỏi chuẩn BGD 2025...');
 
     try {
       let parsed: any = null;
@@ -431,17 +582,15 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         setActiveQuestionId(parsed.questions[0].id);
         setStatusMessage(`AI đã tự động bóc tách thành công ${parsed.questions.length} câu hỏi vào đề thi!`);
       } else {
-        handleCommitCropToQuestion('part_1_mcq');
-        handleCommitCropToQuestion('part_2_true_false');
-        handleCommitCropToQuestion('part_3_short_answer');
-        setStatusMessage('Đã tạo khung câu hỏi mẫu 3 phần chuẩn BGD 2025!');
+        // KHÔNG TẠO CÂU HỎI MẪU RÁC: Chỉ thông báo để người dùng khoanh vùng cắt trực tiếp
+        setStatusMessage('Chưa tìm thấy câu hỏi tự động. Thầy/Cô hãy kéo chuột khoanh vùng để cắt câu hỏi và đáp án trực tiếp từ đề.');
       }
     } catch (err) {
       console.warn('Lỗi auto crop:', err);
-      setStatusMessage('Đã tạo bộ khung câu hỏi mẫu chuẩn BGD 2025.');
+      setStatusMessage('Thầy/Cô hãy kéo chuột khoanh vùng để cắt câu hỏi trực tiếp từ đề.');
     } finally {
       setIsAiCroppingAll(false);
-      setTimeout(() => setStatusMessage(null), 4000);
+      setTimeout(() => setStatusMessage(null), 4500);
     }
   };
 
@@ -469,13 +618,25 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     const temp = copy[index];
     copy[index] = copy[targetIndex];
     copy[targetIndex] = temp;
-    // Đánh lại số câu hỏi
     const reindexed = copy.map((q, i) => ({ ...q, questionNumber: i + 1 } as Question));
     setQuestions(reindexed);
   };
 
   // Tính tổng điểm đề thi
   const totalPoints = questions.reduce((sum, q) => sum + (q.points || 0), 0);
+
+  // Thống kê số lượng câu từng phần
+  const p1Count = questions.filter((q) => q.part === 'part_1_mcq').length;
+  const p2Count = questions.filter((q) => q.part === 'part_2_true_false').length;
+  const p3Count = questions.filter((q) => q.part === 'part_3_short_answer').length;
+
+  // Lọc câu hỏi theo tab
+  const filteredQuestions = questions.filter((q) => {
+    if (filterPart === 'all') return true;
+    return q.part === filterPart;
+  });
+
+  const activeQuestion = questions.find((q) => q.id === activeQuestionId);
 
   // Xuất bản đề thi trực tiếp
   const handlePublishDirectly = () => {
@@ -516,7 +677,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   return (
     <div className="w-full max-w-7xl mx-auto space-y-5 pb-16">
       {/* ========================================================= */}
-      // TOP HEADER & THANH ĐIỀU KHIỂN PHÒNG CẮT CÂU
+      {/* TOP HEADER & THANH ĐIỀU KHIỂN PHÒNG CẮT CÂU */}
       {/* ========================================================= */}
       <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -524,10 +685,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
                 <Scissors size={14} className="text-indigo-600" />
-                <span>Phòng Cắt Câu Đề Thi (Crop Studio)</span>
+                <span>Bàn Cắt Trực Quan Chuẩn BGD 2025</span>
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-                Giao Diện Riêng Biệt Cắt Đề BGD 2025
+                Con Trỏ Bắn Tọa Độ Trực Tiếp
               </span>
               {documentData && (
                 <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-mono font-bold">
@@ -536,10 +697,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               )}
             </div>
             <h1 className="text-2xl font-black text-slate-900 mt-2">
-              Khu Vực Cắt Câu Hỏi Vào Đề Thi
+              Khu Vực Cắt Câu Hỏi & Đáp Án Từ Đề Thi
             </h1>
             <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
-              Kéo chuột trên tài liệu để khoanh vùng cắt từng câu, hoặc nhấn bóc tách AI để tự động đưa toàn bộ câu hỏi vào đề.
+              Phân tách rõ ràng giữa lần cắt đề bài và lần cắt đáp án (trắc nghiệm 4 lựa chọn, đúng/sai 4 ý).
             </p>
           </div>
 
@@ -648,14 +809,18 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       {/* ========================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ========================================================= */}
-        {/* CỘT TRÁI (6 COLS): BÀN CẮT TÀI LIỆU VÀ KHUNG VẼ CẮT */}
+        {/* CỘT TRÁI (6 COLS): BÀN CẮT TÀI LIỆU VỚI CON TRỎ BẮN TỌA ĐỘ */}
         {/* ========================================================= */}
         <div className="lg:col-span-6 space-y-4">
           <div className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4 shadow-xs">
+            {/* Thanh công cụ Bàn Cắt */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <Crop size={18} className="text-indigo-600" />
-                <h3 className="font-extrabold text-sm text-slate-900">Bàn Cắt Tài Liệu Trực Quan</h3>
+                <Crosshair size={18} className="text-indigo-600" />
+                <h3 className="font-extrabold text-sm text-slate-900">Bàn Cắt Laser Trực Quan</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
+                  {mousePos ? `X: ${Math.round(mousePos.x)} | Y: ${Math.round(mousePos.y)}` : 'Sẵn sàng'}
+                </span>
               </div>
 
               {/* Chuyển trang PDF */}
@@ -717,7 +882,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 </div>
               )}
 
-              {/* Các công cụ zoom và xoay (khi ở chế độ canvas) */}
+              {/* Các công cụ zoom và xoay */}
               {viewMode === 'canvas' && (
                 <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
                   <button
@@ -757,7 +922,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               )}
             </div>
 
-            {/* VÙNG HIỂN THỊ TÀI LIỆU & CẮT KHUNG */}
+            {/* VÙNG HIỂN THỊ TÀI LIỆU & CON TRỎ BẮN TỌA ĐỘ TRỰC TIẾP */}
             {viewMode === 'pdf_document' && documentData?.fileBase64 ? (
               <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[520px] h-[660px] flex items-center justify-center">
                 <object
@@ -796,6 +961,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseLeave}
                   style={{
                     transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
                     transformOrigin: 'top center',
@@ -806,7 +972,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                   {documentData?.isPdf && documentData?.fileBase64 ? (
                     <canvas
                       ref={pageCanvasRef}
-                      className="max-w-full h-auto object-contain block mx-auto"
+                      className="max-w-full h-auto object-contain block mx-auto pointer-events-none"
                     />
                   ) : documentData?.fileBase64 && !documentData.isPdf ? (
                     <img
@@ -816,58 +982,61 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                       className="max-w-full h-auto object-contain block mx-auto pointer-events-none"
                     />
                   ) : (
-                    // Giả lập giao diện trang đề thi để giáo viên kéo thả cắt câu hỏi trực tiếp
-                    <div className="w-[520px] min-h-[700px] bg-white text-slate-800 p-8 shadow-2xl font-serif text-xs space-y-4">
-                      <div className="text-center border-b pb-3 border-slate-200">
-                        <p className="font-bold uppercase tracking-wider text-[11px] text-slate-500">
-                          {documentData?.fileName || 'ĐỀ THI TOÁN THPT NĂM HỌC 2024 - 2025'}
-                        </p>
-                        <h4 className="font-extrabold text-sm text-slate-900 mt-0.5">
-                          {examTitle}
-                        </h4>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
-                          Thời gian: {examDuration} phút | Môn: Toán học | Khối {examGrade}
+                    // Khi chưa có file PDF / Hình ảnh tải lên: Hiển thị hướng dẫn kéo thả sạch sẽ, không có câu hỏi mẫu giả
+                    <div className="w-[520px] min-h-[580px] bg-slate-50 text-slate-800 p-8 flex flex-col items-center justify-center text-center space-y-4 border-2 border-dashed border-slate-300 rounded-lg">
+                      <div className="w-16 h-16 rounded-3xl bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-inner">
+                        <UploadCloud size={32} />
+                      </div>
+                      <div className="max-w-xs space-y-1">
+                        <h4 className="font-extrabold text-sm text-slate-800">Chưa có tệp đề thi tải lên</h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Thầy/Cô hãy quay lại để chọn file PDF hoặc hình ảnh đề thi thật để bàn cắt tự động nạp trang lên đây.
                         </p>
                       </div>
-
-                      <div className="space-y-4 font-sans text-xs leading-relaxed text-slate-700">
-                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                          <span className="font-bold text-indigo-700">PHẦN I. TRẮC NGHIỆM 4 PHƯƠNG ÁN</span>
-                          <div className="mt-1 font-semibold text-slate-800">
-                            <MathView math="Câu 1: Cho hàm số $y = x^3 - 3x + 1$. Điểm cực tiểu của đồ thị hàm số là:" />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 mt-2 font-mono text-[11px]">
-                            <div><MathView math="A. $M(1; -1)$" /></div>
-                            <div><MathView math="B. $N(-1; 3)$" /></div>
-                            <div><MathView math="C. $P(0; 1)$" /></div>
-                            <div><MathView math="D. $Q(2; 3)$" /></div>
-                          </div>
-                        </div>
-
-                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                          <span className="font-bold text-indigo-700">PHẦN II. TRẮC NGHIỆM ĐÚNG / SAI</span>
-                          <div className="mt-1 font-semibold text-slate-800">
-                            <MathView math="Câu 2: Cho khối chóp $S.ABCD$ có đáy $ABCD$ là hình vuông cạnh $a$, $SA \perp (ABCD)$." />
-                          </div>
-                          <div className="space-y-1 mt-1.5 pl-2 text-[11px]">
-                            <div><MathView math="a) $SA \perp BC$" /></div>
-                            <div><MathView math={'b) Thể tích $V = \\frac{a^3\\sqrt{3}}{3}$'} /></div>
-                            <div><MathView math="c) $BD \perp (SAC)$" /></div>
-                            <div><MathView math={'d) Góc giữa $SC$ và đáy bằng $45^\\circ$'} /></div>
-                          </div>
-                        </div>
-
-                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                          <span className="font-bold text-indigo-700">PHẦN III. TRẢ LỜI NGẮN</span>
-                          <div className="mt-1 font-semibold text-slate-800">
-                            <MathView math={'Câu 3: Một hình chữ nhật có chu vi $40\\text{ m}$. Diện tích lớn nhất của hình chữ nhật bằng bao nhiêu mét vuông?'} />
-                          </div>
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={onBackToUpload}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
+                      >
+                        Quay lại chọn tệp đề thi
+                      </button>
                     </div>
                   )}
 
-                  {/* KHUNG CẮT ĐANG KÉO (CROP BOUNDING BOX) */}
+                  {/* TIA LASER CON TRỎ CẮT BẮN TỌA ĐỘ TRỰC TIẾP TỪ ĐỀ (CROSSHAIR GUIDELINES) */}
+                  {mousePos && (
+                    <>
+                      {/* Đường laser ngang */}
+                      <div
+                        className="absolute left-0 right-0 pointer-events-none z-20 border-t border-dashed border-red-500/70"
+                        style={{ top: `${mousePos.y}px` }}
+                      />
+                      {/* Đường laser dọc */}
+                      <div
+                        className="absolute top-0 bottom-0 pointer-events-none z-20 border-l border-dashed border-red-500/70"
+                        style={{ left: `${mousePos.x}px` }}
+                      />
+                      {/* Tâm ngắm (Reticle) */}
+                      <div
+                        className="absolute pointer-events-none z-30 transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
+                        style={{ left: `${mousePos.x}px`, top: `${mousePos.y}px` }}
+                      >
+                        <div className="w-5 h-5 rounded-full border border-red-500 bg-red-500/10 flex items-center justify-center shadow-xs">
+                          <div className="w-1 h-1 rounded-full bg-red-600" />
+                        </div>
+                        {/* Thẻ chỉ dẫn tọa độ bám sát con trỏ */}
+                        <div className="absolute left-3.5 top-3.5 px-2 py-0.5 rounded-md bg-slate-900/90 text-white font-mono text-[9px] whitespace-nowrap shadow-lg border border-slate-700 pointer-events-none flex items-center gap-1">
+                          <Target size={10} className="text-red-400" />
+                          <span>
+                            {Math.round(mousePos.x)}, {Math.round(mousePos.y)}
+                            {isDrawingCrop && cropBox ? ` (${Math.round(cropBox.w)}×${Math.round(cropBox.h)})` : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* KHUNG CẮT ĐANG KÉO (CROP BOUNDING BOX) VỚI ĐIỂM NEO */}
                   {cropBox && cropBox.w > 5 && cropBox.h > 5 && (
                     <div
                       style={{
@@ -878,8 +1047,14 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                       }}
                       className="absolute border-2 border-dashed border-emerald-400 bg-emerald-500/20 pointer-events-none z-20 flex items-start justify-end p-1.5 shadow-lg"
                     >
+                      {/* 4 Điểm neo góc định vị */}
+                      <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-emerald-500 border border-white rounded-xs shadow-xs" />
+                      <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 border border-white rounded-xs shadow-xs" />
+                      <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-emerald-500 border border-white rounded-xs shadow-xs" />
+                      <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-500 border border-white rounded-xs shadow-xs" />
+
                       <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shadow-md">
-                        Vùng Cắt: {Math.round(cropBox.w)} × {Math.round(cropBox.h)} px
+                        {Math.round(cropBox.w)} × {Math.round(cropBox.h)} px
                       </span>
                     </div>
                   )}
@@ -887,72 +1062,263 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               </div>
             )}
 
-            {/* BẢNG HÀNH ĐỘNG CẮT CÂU */}
-            <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
-                  <Scissors size={14} className="text-indigo-600" />
-                  <span>Hành Động Cắt Khung Vào Đề:</span>
-                </span>
-                <div className="flex items-center gap-2">
-                  {cropBox && cropBox.w > 20 && (
-                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+            {/* ========================================================= */}
+            {/* BẢNG ĐIỀU KHIỂN CẮT PHÂN BIỆT: ĐỀ BÀI vs ĐÁP ÁN */}
+            {/* ========================================================= */}
+            <div className="p-4 rounded-3xl bg-slate-50 border border-slate-200 space-y-4">
+              {/* Tab chuyển đổi mục tiêu: Cắt Đề Bài vs Cắt Đáp Án */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
+                <div className="flex bg-slate-200 p-1 rounded-2xl text-xs font-bold w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setCuttingTargetMode('question_prompt')}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      cuttingTargetMode === 'question_prompt'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Scissors size={14} />
+                    <span>Lần Cắt 1: Cắt Đề Bài</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCuttingTargetMode('question_answers')}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      cuttingTargetMode === 'question_answers'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <CheckCircle2 size={14} />
+                    <span>Lần Cắt 2: Cắt Đáp Án</span>
+                  </button>
+                </div>
+
+                {cropBox && cropBox.w > 20 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full">
                       Đã khoanh: {Math.round(cropBox.w)} × {Math.round(cropBox.h)} px
                     </span>
-                  )}
-                  {cropBox && (
                     <button
                       type="button"
                       onClick={() => setCropBox(null)}
                       className="text-[11px] font-bold text-rose-600 hover:text-rose-700 underline cursor-pointer"
                     >
-                      Hủy vùng cắt
+                      Hủy khung
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
-              {/* Nút gắn ảnh vào câu hỏi đang chọn (nếu có câu đang chọn) */}
-              {activeQuestionId && cropBox && cropBox.w > 20 && cropBox.h > 20 && (
-                <button
-                  type="button"
-                  onClick={handleAttachCropToActiveQuestion}
-                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Check size={14} />
-                  <span>
-                    Gắn Vùng Cắt Này Vào Câu {questions.find((q) => q.id === activeQuestionId)?.questionNumber || ''} Đang Chọn
-                  </span>
-                </button>
+              {/* ===================================== */}
+              {/* NỘI DUNG LẦN CẮT 1: CẮT ĐỀ BÀI */}
+              {/* ===================================== */}
+              {cuttingTargetMode === 'question_prompt' && (
+                <div className="space-y-3 animate-in fade-in">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Layers size={14} className="text-indigo-600" />
+                      <span>Chọn Loại Câu Hỏi Cần Tạo Từ Vùng Cắt:</span>
+                    </span>
+                    {activeQuestion && (
+                      <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200">
+                        Đang chọn: Câu {activeQuestion.questionNumber}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Nút phân loại câu hỏi (Phần I, II, III) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPartType('part_1_mcq')}
+                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                        selectedPartType === 'part_1_mcq'
+                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-black text-xs text-blue-900 block">Phần I. Trắc Nghiệm</span>
+                      <span className="text-[10px] text-blue-700 block mt-0.5">4 Lựa chọn (A, B, C, D) • 0.25đ</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPartType('part_2_true_false')}
+                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                        selectedPartType === 'part_2_true_false'
+                          ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200'
+                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-black text-xs text-indigo-900 block">Phần II. Đúng / Sai</span>
+                      <span className="text-[10px] text-indigo-700 block mt-0.5">4 Ý (a, b, c, d) • Tối đa 1.0đ</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPartType('part_3_short_answer')}
+                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                        selectedPartType === 'part_3_short_answer'
+                          ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
+                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-black text-xs text-purple-900 block">Phần III. Điền Số</span>
+                      <span className="text-[10px] text-purple-700 block mt-0.5">Trả lời ngắn • 0.5đ/câu</span>
+                    </button>
+                  </div>
+
+                  {/* Hành động cắt đề bài */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleCropNewQuestion(selectedPartType)}
+                      className="py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Plus size={15} />
+                      <span>
+                        Cắt Vùng Đề Bài & Tạo Câu Mới ({selectedPartType === 'part_1_mcq' ? 'Phần I' : selectedPartType === 'part_2_true_false' ? 'Phần II' : 'Phần III'})
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!activeQuestionId}
+                      onClick={handleUpdatePromptImageForActiveQuestion}
+                      className="py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-900 disabled:opacity-40 text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <ImageIcon size={15} />
+                      <span>
+                        Gắn Làm Đề Bài Cho Câu {activeQuestion ? activeQuestion.questionNumber : 'Đang Chọn'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleCommitCropToQuestion('part_1_mcq')}
-                  className="py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer text-center"
-                >
-                  + Cắt Câu Phần I (MCQ)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCommitCropToQuestion('part_2_true_false')}
-                  className="py-2.5 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer text-center"
-                >
-                  + Cắt Câu Phần II (Đúng/Sai)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCommitCropToQuestion('part_3_short_answer')}
-                  className="py-2.5 px-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer text-center"
-                >
-                  + Cắt Câu Phần III (Điền Số)
-                </button>
-              </div>
+              {/* ===================================== */}
+              {/* NỘI DUNG LẦN CẮT 2: CẮT ĐÁP ÁN (MCQ & ĐÚNG/SAI) */}
+              {/* ===================================== */}
+              {cuttingTargetMode === 'question_answers' && (
+                <div className="space-y-3 animate-in fade-in">
+                  {!activeQuestion ? (
+                    <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold text-center">
+                      Thầy/Cô vui lòng nhấp chọn một câu hỏi ở cột bên phải để bắt đầu cắt đáp án cho câu đó!
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                          <span>
+                            Cắt Đáp Án Cho: Câu {activeQuestion.questionNumber} (
+                            {activeQuestion.part === 'part_1_mcq'
+                              ? 'Trắc Nghiệm 4 Lựa Chọn'
+                              : activeQuestion.part === 'part_2_true_false'
+                              ? 'Đúng / Sai 4 Ý'
+                              : 'Trả Lời Ngắn'}
+                            )
+                          </span>
+                        </span>
+                      </div>
 
-              <p className="text-[11px] text-indigo-900/70">
-                💡 Mẹo: Kéo chuột khoanh vùng câu hỏi hoặc hình vẽ trên bàn cắt trực quan, sau đó bấm nút để phân loại câu vào đề thi.
-              </p>
+                      {/* 1. Nếu là Phần I: Trắc nghiệm 4 lựa chọn (A, B, C, D) */}
+                      {activeQuestion.part === 'part_1_mcq' && (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {(['A', 'B', 'C', 'D'] as const).map((key) => {
+                              const hasImg = activeQuestion.options?.find((o) => o.key === key)?.imageUrl;
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  onClick={() => handleCropOptionForActiveQuestion(key)}
+                                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                                    hasImg
+                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-black'
+                                      : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800 font-bold'
+                                  }`}
+                                >
+                                  <span className="block text-xs">✂️ Cắt Phương Án [{key}]</span>
+                                  <span className="block text-[10px] text-slate-500 mt-0.5">
+                                    {hasImg ? 'Đã có ảnh (Bấm để cắt lại)' : 'Chưa có ảnh'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={handleCropOptionsBlockForActiveQuestion}
+                              className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <Crop size={14} />
+                              <span>Cắt Khối Cả 4 Đáp Án (A, B, C, D liền nhau)</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. Nếu là Phần II: Đúng / Sai 4 ý (a, b, c, d) */}
+                      {activeQuestion.part === 'part_2_true_false' && (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {(['a', 'b', 'c', 'd'] as const).map((subKey) => {
+                              const hasImg = activeQuestion.items?.find((it) => it.subKey === subKey)?.imageUrl;
+                              return (
+                                <button
+                                  key={subKey}
+                                  type="button"
+                                  onClick={() => handleCropItemForActiveQuestion(subKey)}
+                                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                                    hasImg
+                                      ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-black'
+                                      : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800 font-bold'
+                                  }`}
+                                >
+                                  <span className="block text-xs">✂️ Cắt Ý [{subKey})]</span>
+                                  <span className="block text-[10px] text-slate-500 mt-0.5">
+                                    {hasImg ? 'Đã có ảnh (Cắt lại)' : 'Chưa có ảnh'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={handleCropOptionsBlockForActiveQuestion}
+                              className="w-full py-2.5 px-3 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <Crop size={14} />
+                              <span>Cắt Khối Cả 4 Mệnh Đề (a, b, c, d liền nhau)</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. Nếu là Phần III: Trả lời ngắn */}
+                      {activeQuestion.part === 'part_3_short_answer' && (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={handleCropShortAnswerForActiveQuestion}
+                            className="w-full py-2.5 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <Crop size={14} />
+                            <span>Cắt Vùng Đáp Số / Hướng Dẫn Giải Ngắn</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -962,6 +1328,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         {/* ========================================================= */}
         <div className="lg:col-span-6 space-y-4">
           <div className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4 shadow-xs">
+            {/* Header danh sách & Điểm */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
@@ -977,9 +1344,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() => handleCommitCropToQuestion('part_1_mcq')}
+                  onClick={() => handleCropNewQuestion(selectedPartType)}
                   className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                  title="Thêm câu hỏi trống"
+                  title="Thêm câu hỏi mới"
                 >
                   <Plus size={13} />
                   <span>Thêm Câu</span>
@@ -987,40 +1354,85 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               </div>
             </div>
 
+            {/* BỘ LỌC CÂU HỎI THEO PHẦN */}
+            <div className="flex items-center gap-1.5 flex-wrap bg-slate-100 p-1 rounded-2xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setFilterPart('all')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  filterPart === 'all' ? 'bg-white text-indigo-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Tất cả ({questions.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterPart('part_1_mcq')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  filterPart === 'part_1_mcq' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Phần I ({p1Count})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterPart('part_2_true_false')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  filterPart === 'part_2_true_false' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Phần II ({p2Count})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterPart('part_3_short_answer')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  filterPart === 'part_3_short_answer' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Phần III ({p3Count})
+              </button>
+            </div>
+
             {/* DANH SÁCH CÁC THẺ CÂU HỎI */}
-            {questions.length === 0 ? (
-              <div className="p-12 text-center rounded-2xl border-2 border-dashed border-slate-200 space-y-3">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
-                  <Scissors size={26} />
+            {filteredQuestions.length === 0 ? (
+              <div className="p-10 text-center rounded-2xl border-2 border-dashed border-slate-200 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                  <Scissors size={24} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-slate-800">Chưa có câu hỏi nào được cắt vào đề</h4>
+                  <h4 className="font-bold text-sm text-slate-800">Chưa có câu hỏi nào trong đề</h4>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                    Hãy kéo chuột trên tài liệu bên trái để cắt câu, hoặc nhấn "AI Cắt Tự Động Toàn Đề" ở thanh công cụ phía trên.
+                    Kéo chuột khoanh vùng trên tài liệu bên trái để cắt đề bài (Lần 1), sau đó cắt các phương án hoặc mệnh đề (Lần 2).
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="space-y-4 max-h-[700px] overflow-y-auto pr-1">
-                {questions.map((q, idx) => {
-                  const isExpanded = activeQuestionId === q.id || activeQuestionId === null;
+              <div className="space-y-4 max-h-[720px] overflow-y-auto pr-1">
+                {filteredQuestions.map((q, idx) => {
+                  const isActive = activeQuestionId === q.id;
 
                   return (
                     <div
                       key={q.id}
-                      className={`p-4 rounded-2xl border transition-all ${
-                        activeQuestionId === q.id
-                          ? 'border-indigo-400 bg-indigo-50/20 shadow-xs ring-1 ring-indigo-200'
+                      onClick={() => setActiveQuestionId(q.id)}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                        isActive
+                          ? 'border-indigo-500 bg-indigo-50/20 shadow-md ring-2 ring-indigo-200'
                           : 'border-slate-200 bg-white hover:border-slate-300'
                       }`}
                     >
-                      {/* Tiêu đề câu hỏi & Nút điều khiển */}
+                      {/* Tiêu đề thẻ câu hỏi & Nút điều khiển */}
                       <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="w-7 h-7 rounded-xl bg-indigo-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
+                          <span
+                            className={`w-7 h-7 rounded-xl font-extrabold text-xs flex items-center justify-center shadow-xs ${
+                              isActive ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
                             {q.questionNumber || idx + 1}
                           </span>
-                          <span className="text-xs font-bold text-slate-800">
+                          <span className="text-xs font-bold text-slate-900">
                             Câu {q.questionNumber || idx + 1}
                           </span>
                           <span
@@ -1039,7 +1451,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1 text-slate-400">
+                        <div className="flex items-center gap-1 text-slate-400" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => handleMoveQuestion(idx, 'up')}
@@ -1069,28 +1481,65 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Ảnh trích xuất từ khung cắt (nếu có) */}
+                      {/* ẢNH ĐỀ BÀI ĐÃ CẮT (LẦN 1) */}
                       {q.pdfAttachmentUrl && (
-                        <div className="mt-2.5 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 p-1">
+                        <div className="mt-2.5 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 p-2 relative group">
+                          <div className="flex items-center justify-between pb-1 text-[10px] font-bold text-slate-500">
+                            <span>🖼️ Ảnh Đề Bài Đã Cắt:</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateQuestion(q.id, { pdfAttachmentUrl: undefined });
+                              }}
+                              className="text-rose-600 hover:text-rose-800 underline cursor-pointer"
+                            >
+                              Xóa ảnh
+                            </button>
+                          </div>
                           <img
                             src={q.pdfAttachmentUrl}
-                            alt={`Hình ảnh câu ${q.questionNumber}`}
-                            className="max-h-36 object-contain mx-auto"
+                            alt={`Đề bài câu ${q.questionNumber}`}
+                            className="max-h-36 object-contain mx-auto rounded"
                           />
                         </div>
                       )}
 
-                      {/* Nội dung đề bài & KaTeX live preview */}
-                      <div className="mt-3 space-y-2">
+                      {/* ẢNH KHỐI CẢ 4 ĐÁP ÁN (NẾU CẮT NGUYÊN KHỐI) */}
+                      {q.optionsAttachmentUrl && (
+                        <div className="mt-2.5 rounded-xl overflow-hidden border border-teal-200 bg-teal-50/50 p-2 relative group">
+                          <div className="flex items-center justify-between pb-1 text-[10px] font-bold text-teal-800">
+                            <span>📑 Khối Đáp Án Đã Cắt:</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateQuestion(q.id, { optionsAttachmentUrl: undefined });
+                              }}
+                              className="text-rose-600 hover:text-rose-800 underline cursor-pointer"
+                            >
+                              Xóa khối đáp án
+                            </button>
+                          </div>
+                          <img
+                            src={q.optionsAttachmentUrl}
+                            alt={`Khối đáp án câu ${q.questionNumber}`}
+                            className="max-h-32 object-contain mx-auto rounded"
+                          />
+                        </div>
+                      )}
+
+                      {/* Nội dung đề bài dạng text / LaTeX */}
+                      <div className="mt-3 space-y-1.5" onClick={(e) => e.stopPropagation()}>
                         <textarea
                           rows={2}
                           value={q.prompt}
                           onChange={(e) => handleUpdateQuestion(q.id, { prompt: e.target.value })}
-                          className="w-full p-2.5 rounded-xl border border-slate-200 font-mono text-xs focus:border-indigo-600 focus:outline-none"
-                          placeholder="Nhập nội dung câu hỏi (hỗ trợ công thức $...$)"
+                          className="w-full p-2 rounded-xl border border-slate-200 font-mono text-xs focus:border-indigo-600 focus:outline-none"
+                          placeholder="Nhập nội dung đề bài (tùy chọn nếu đã cắt ảnh)..."
                         />
-                        {q.prompt.includes('$') && (
-                          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-semibold">
+                        {q.prompt && q.prompt.includes('$') && (
+                          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 font-semibold">
                             <MathView math={q.prompt} />
                           </div>
                         )}
@@ -1100,10 +1549,16 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                       {/* PHẦN 1: MCQ 4 PHƯƠNG ÁN A, B, C, D */}
                       {/* ===================================== */}
                       {q.part === 'part_1_mcq' && (
-                        <div className="mt-3 space-y-2 pt-2 border-t border-slate-100">
-                          <span className="text-[11px] font-bold text-slate-500 block">
-                            Các phương án & Chọn đáp án đúng:
-                          </span>
+                        <div className="mt-3 space-y-2 pt-2 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-black text-slate-600">
+                              Các Phương Án (Nhấp chọn đáp án đúng):
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Đáp án đúng: <strong className="text-emerald-700">{q.correctAnswer}</strong>
+                            </span>
+                          </div>
+
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {(['A', 'B', 'C', 'D'] as const).map((key) => {
                               const opt = q.options?.find((o) => o.key === key) || { key, text: '' };
@@ -1113,29 +1568,61 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                                 <div
                                   key={key}
                                   onClick={() => handleUpdateQuestion(q.id, { correctAnswer: key })}
-                                  className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
+                                  className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
                                     isCorrect
-                                      ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold'
+                                      ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold ring-1 ring-emerald-300'
                                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                                   }`}
                                 >
-                                  <span
-                                    className={`w-6 h-6 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
-                                      isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-                                    }`}
-                                  >
-                                    {key}
-                                  </span>
+                                  <div className="flex items-center justify-between gap-1 mb-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={`w-5 h-5 rounded-md text-[11px] font-black flex items-center justify-center shrink-0 ${
+                                          isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-700'
+                                        }`}
+                                      >
+                                        {key}
+                                      </span>
+                                      <span className="text-[11px]">
+                                        {isCorrect ? 'Đáp Án Đúng' : `Phương Án ${key}`}
+                                      </span>
+                                    </div>
+
+                                    {opt.imageUrl && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRemoveOptionImage(q.id, key);
+                                        }}
+                                        className="text-[10px] text-rose-500 hover:text-rose-700 underline"
+                                      >
+                                        Xóa ảnh
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Hiển thị ảnh phương án nếu đã cắt */}
+                                  {opt.imageUrl ? (
+                                    <div className="rounded border border-slate-200 bg-white p-1 my-1">
+                                      <img
+                                        src={opt.imageUrl}
+                                        alt={`Phương án ${key}`}
+                                        className="max-h-16 object-contain mx-auto"
+                                      />
+                                    </div>
+                                  ) : null}
+
                                   <input
                                     type="text"
                                     value={opt.text}
+                                    onClick={(e) => e.stopPropagation()}
                                     onChange={(e) => {
-                                      e.stopPropagation();
                                       const newOptions = (q.options || []).map((o) => (o.key === key ? { ...o, text: e.target.value } : o));
                                       handleUpdateQuestion(q.id, { options: newOptions });
                                     }}
-                                    className="w-full bg-transparent text-xs focus:outline-none"
-                                    placeholder={`Nội dung ${key}...`}
+                                    className="w-full bg-white/70 px-2 py-1 rounded border border-slate-200 text-xs focus:outline-none focus:border-indigo-500 font-mono"
+                                    placeholder={opt.imageUrl ? 'Ghi chú công thức...' : `Nhập nội dung ${key}...`}
                                   />
                                 </div>
                               );
@@ -1148,62 +1635,89 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                       {/* PHẦN 2: TRẮC NGHIỆM ĐÚNG / SAI 4 Ý a, b, c, d */}
                       {/* ===================================== */}
                       {q.part === 'part_2_true_false' && (
-                        <div className="mt-3 space-y-2 pt-2 border-t border-slate-100">
-                          <span className="text-[11px] font-bold text-slate-500 block">
-                            Mệnh đề & Đánh giá tính Đúng / Sai:
+                        <div className="mt-3 space-y-2 pt-2 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-[11px] font-black text-slate-600 block">
+                            4 Mệnh Đề Độc Lập (Đánh giá tính Đúng / Sai):
                           </span>
-                          <div className="space-y-1.5">
+
+                          <div className="space-y-2">
                             {q.items?.map((item, itemIdx) => (
                               <div
                                 key={item.id || itemIdx}
-                                className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-xs"
+                                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5"
                               >
-                                <div className="flex items-center gap-2 flex-1">
-                                  <span className="font-bold text-indigo-700 uppercase">{item.subKey})</span>
-                                  <input
-                                    type="text"
-                                    value={item.text}
-                                    onChange={(e) => {
-                                      const newItems = [...(q.items || [])];
-                                      newItems[itemIdx] = { ...newItems[itemIdx], text: e.target.value };
-                                      handleUpdateQuestion(q.id, { items: newItems });
-                                    }}
-                                    className="w-full bg-transparent focus:outline-none font-medium text-slate-800"
-                                    placeholder={`Mệnh đề ${item.subKey.toUpperCase()}...`}
-                                  />
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 flex-1">
+                                    <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-800 text-[11px] font-black flex items-center justify-center shrink-0 uppercase">
+                                      {item.subKey}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={item.text}
+                                      onChange={(e) => {
+                                        const newItems = [...(q.items || [])];
+                                        newItems[itemIdx] = { ...newItems[itemIdx], text: e.target.value };
+                                        handleUpdateQuestion(q.id, { items: newItems });
+                                      }}
+                                      className="w-full bg-transparent text-xs focus:outline-none font-medium text-slate-800"
+                                      placeholder={item.imageUrl ? 'Đã cắt ảnh mệnh đề...' : `Nội dung mệnh đề ${item.subKey.toUpperCase()}...`}
+                                    />
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newItems = [...(q.items || [])];
+                                        newItems[itemIdx] = { ...newItems[itemIdx], isCorrect: true };
+                                        handleUpdateQuestion(q.id, { items: newItems });
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                                        item.isCorrect
+                                          ? 'bg-emerald-600 text-white shadow-xs'
+                                          : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                      }`}
+                                    >
+                                      Đúng
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newItems = [...(q.items || [])];
+                                        newItems[itemIdx] = { ...newItems[itemIdx], isCorrect: false };
+                                        handleUpdateQuestion(q.id, { items: newItems });
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                                        !item.isCorrect
+                                          ? 'bg-rose-600 text-white shadow-xs'
+                                          : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                      }`}
+                                    >
+                                      Sai
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newItems = [...(q.items || [])];
-                                      newItems[itemIdx] = { ...newItems[itemIdx], isCorrect: true };
-                                      handleUpdateQuestion(q.id, { items: newItems });
-                                    }}
-                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
-                                      item.isCorrect
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                                    }`}
-                                  >
-                                    Đúng
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newItems = [...(q.items || [])];
-                                      newItems[itemIdx] = { ...newItems[itemIdx], isCorrect: false };
-                                      handleUpdateQuestion(q.id, { items: newItems });
-                                    }}
-                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
-                                      !item.isCorrect
-                                        ? 'bg-rose-600 text-white'
-                                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                                    }`}
-                                  >
-                                    Sai
-                                  </button>
-                                </div>
+
+                                {/* Hiển thị ảnh của ý nếu có */}
+                                {item.imageUrl && (
+                                  <div className="rounded border border-slate-200 bg-white p-1 relative">
+                                    <div className="flex justify-between items-center pb-0.5 text-[9px] text-slate-400">
+                                      <span>Ảnh ý {item.subKey})</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveItemImage(q.id, item.subKey)}
+                                        className="text-rose-500 hover:text-rose-700 underline"
+                                      >
+                                        Xóa ảnh
+                                      </button>
+                                    </div>
+                                    <img
+                                      src={item.imageUrl}
+                                      alt={`Mệnh đề ${item.subKey}`}
+                                      className="max-h-16 object-contain mx-auto"
+                                    />
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1214,14 +1728,14 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                       {/* PHẦN 3: ĐIỀN ĐÁP SỐ NGẮN */}
                       {/* ===================================== */}
                       {q.part === 'part_3_short_answer' && (
-                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-3 text-xs">
-                          <label className="font-bold text-slate-700">Đáp án điền số:</label>
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-3 text-xs" onClick={(e) => e.stopPropagation()}>
+                          <label className="font-bold text-slate-700">Đáp án điền số (Tối đa 4 ký tự):</label>
                           <input
                             type="text"
                             value={q.correctAnswer || ''}
                             onChange={(e) => handleUpdateQuestion(q.id, { correctAnswer: e.target.value.slice(0, 4) })}
                             className="w-32 h-8 px-2.5 rounded-lg border border-slate-300 font-mono font-bold text-indigo-700 text-center focus:border-indigo-600 focus:outline-none"
-                            placeholder="Ví dụ: 15 hoặc -3.5"
+                            placeholder="VD: 15 hoặc -3.5"
                           />
                         </div>
                       )}

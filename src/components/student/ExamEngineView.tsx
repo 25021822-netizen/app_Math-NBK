@@ -854,6 +854,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       </div>
                     )}
 
+                    {/* Ảnh khối đáp án đính kèm nếu có */}
+                    {q.optionsAttachmentUrl && (
+                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2">
+                        <img src={q.optionsAttachmentUrl} alt="Bảng 4 phương án lựa chọn" className="max-h-56 rounded-xl object-contain bg-white" />
+                      </div>
+                    )}
+
                     {/* Options */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                       {q.options.map((opt) => {
@@ -889,8 +896,15 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                               {opt.key}
                             </span>
                             <div className="text-xs sm:text-sm text-slate-800 flex-1 leading-relaxed">
-                              <MathView math={opt.text} />
+                              {opt.text && <MathView math={opt.text} />}
                               {opt.latex && <MathView math={opt.latex} block />}
+                              {opt.imageUrl && (
+                                <img
+                                  src={opt.imageUrl}
+                                  alt={`Phương án ${opt.key}`}
+                                  className="max-h-24 object-contain rounded-lg border border-slate-200 mt-1 bg-white"
+                                />
+                              )}
                             </div>
                           </button>
                         );
@@ -975,6 +989,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       </div>
                     )}
 
+                    {/* Ảnh khối 4 ý a, b, c, d nếu có */}
+                    {q.optionsAttachmentUrl && (
+                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2">
+                        <img src={q.optionsAttachmentUrl} alt="Bảng 4 ý đúng sai" className="max-h-56 rounded-xl object-contain bg-white" />
+                      </div>
+                    )}
+
                     {/* Bảng 4 ý a, b, c, d */}
                     <div className="space-y-2 pt-2">
                       {q.items.map((item) => {
@@ -988,8 +1009,15 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                           >
                             <div className="text-xs sm:text-sm text-slate-800 flex-1 leading-relaxed">
                               <span className="font-bold text-purple-700 mr-2">{item.subKey})</span>
-                              <MathView math={item.text} />
+                              {item.text && <MathView math={item.text} />}
                               {item.latex && <MathView math={item.latex} block />}
+                              {item.imageUrl && (
+                                <img
+                                  src={item.imageUrl}
+                                  alt={`Ý ${item.subKey}`}
+                                  className="max-h-24 object-contain rounded-lg border border-slate-200 mt-1 bg-white"
+                                />
+                              )}
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">

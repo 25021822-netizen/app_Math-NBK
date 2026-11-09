@@ -902,51 +902,6 @@ export function parseExamFromLatexOrText(
     }
   }
 
-  // Nếu không bóc tách được câu hỏi nào từ file/mã nguồn đã dán, tạo bộ câu hỏi chuẩn 2025 đầy đủ 3 phần mẫu
-  if (questions.length === 0) {
-    const sampleFullExam: Question[] = [
-      {
-        id: 'q_p1_sample_01',
-        part: 'part_1_mcq' as const,
-        questionNumber: 1,
-        prompt: '[Trích dẫn: Đề tham khảo BGD 2025]\nCho hàm số $y = f(x)$ liên tục trên $\\mathbb{R}$ và có bảng biến thiên với $f\'(x) > 0$ trên $(-\\infty; 1)$ và $f\'(x) < 0$ trên $(1; +\\infty)$. Hàm số $y = f(x)$ đồng biến trên khoảng nào sau đây?',
-        options: [
-          { key: 'A' as const, text: '$(-\\infty; 1)$' },
-          { key: 'B' as const, text: '$(1; 3)$' },
-          { key: 'C' as const, text: '$(3; +\\infty)$' },
-          { key: 'D' as const, text: '$(0; 2)$' },
-        ],
-        correctAnswer: 'A' as const,
-        explanation: 'Hàm số đồng biến trên khoảng $(-\\infty; 1)$ do đạo hàm $f\'(x) > 0$ trên khoảng đó.',
-        points: 0.25,
-      },
-      {
-        id: 'q_p2_sample_01',
-        part: 'part_2_true_false' as const,
-        questionNumber: 2,
-        prompt: '[Trích dẫn: Đề thi thử THPT Chuyên Lam Sơn]\nCho hình chóp $S.ABCD$ có đáy $ABCD$ là hình vuông cạnh $a$, cạnh bên $SA \\perp (ABCD)$ và $SA = a\\sqrt{3}$. Xét tính đúng/sai của các mệnh đề sau:',
-        items: [
-          { id: 'tf_a_sample', subKey: 'a' as const, text: 'Đường thẳng $SA$ vuông góc với mặt phẳng đáy $(ABCD)$.', isCorrect: true },
-          { id: 'tf_b_sample', subKey: 'b' as const, text: 'Thể tích khối chóp $S.ABCD$ bằng $\\frac{a^3\\sqrt{3}}{3}$.', isCorrect: true },
-          { id: 'tf_c_sample', subKey: 'c' as const, text: 'Góc giữa đường thẳng $SC$ và đáy $(ABCD)$ bằng $45^\\circ$.', isCorrect: false },
-          { id: 'tf_d_sample', subKey: 'd' as const, text: 'Khoảng cách từ $A$ đến mặt phẳng $(SBC)$ bằng $\\frac{a\\sqrt{3}}{2}$.', isCorrect: true },
-        ],
-        explanation: 'Thể tích $V = \\frac{1}{3} S_{ABCD} \\cdot SA = \\frac{a^3\\sqrt{3}}{3}$. Tan của góc giữa SC và (ABCD) là SA/AC = a*sqrt(3) / (a*sqrt(2)) = sqrt(3/2) != 1.',
-        points: 1.0,
-      },
-      {
-        id: 'q_p3_sample_01',
-        part: 'part_3_short_answer' as const,
-        questionNumber: 3,
-        prompt: '[Dữ kiện trích dẫn chung]: Một cơ sở sản xuất đồ dùng thể thao đang thiết kế một bể bơi tiêu chuẩn.\n\nMột bể bơi hình chữ nhật có chu vi bằng $60\\text{ m}$. Hỏi chiều rộng của bể bơi bằng bao nhiêu mét để diện tích mặt nước đạt giá trị lớn nhất?',
-        correctAnswer: '15',
-        explanation: 'Nửa chu vi $x + y = 30$. Diện tích $S = x(30 - x)$ đạt cực đại khi $x = 15\\text{ m}$.',
-        points: 0.5,
-      },
-    ];
-    questions.push(...sampleFullExam);
-  }
-
   // Đánh lại số thứ tự từ 1 đến N liên tục
   questions.forEach((q, idx) => {
     q.questionNumber = idx + 1;

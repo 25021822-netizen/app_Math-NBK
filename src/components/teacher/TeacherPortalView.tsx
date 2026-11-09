@@ -1521,13 +1521,24 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   </div>
                 )}
 
-                {/* File ảnh đính kèm nếu có */}
-                {q.imageAttachment && (
+                {/* File ảnh đề bài đính kèm / cắt từ PDF */}
+                {(q.pdfAttachmentUrl || q.imageAttachment) && (
                   <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
                     <img
-                      src={q.imageAttachment}
+                      src={q.pdfAttachmentUrl || q.imageAttachment}
                       alt="Ảnh đính kèm đề bài"
                       className="max-h-48 rounded-xl object-contain bg-white"
+                    />
+                  </div>
+                )}
+
+                {/* Khối đáp án cắt cả khối */}
+                {q.optionsAttachmentUrl && (
+                  <div className="p-2 bg-teal-50 rounded-2xl border border-teal-200 inline-block">
+                    <img
+                      src={q.optionsAttachmentUrl}
+                      alt="Khối đáp án đã cắt"
+                      className="max-h-44 rounded-xl object-contain bg-white"
                     />
                   </div>
                 )}
@@ -1546,18 +1557,27 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     {q.options.map((opt) => (
                       <div
                         key={opt.key}
-                        className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                        className={`p-2.5 rounded-xl border flex flex-col gap-1.5 ${
                           opt.key === q.correctAnswer
                             ? 'bg-emerald-50 border-emerald-300 font-bold text-emerald-900'
                             : 'bg-slate-50 border-slate-200 text-slate-700'
                         }`}
                       >
-                        <span className="w-5 h-5 rounded-md bg-white border border-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0">
-                          {opt.key}
-                        </span>
-                        <div className="flex-1 min-w-0 text-xs">
-                          <MathView math={opt.text} />
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-md bg-white border border-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0">
+                            {opt.key}
+                          </span>
+                          {opt.text && (
+                            <div className="flex-1 min-w-0 text-xs">
+                              <MathView math={opt.text} />
+                            </div>
+                          )}
                         </div>
+                        {opt.imageUrl && (
+                          <div className="rounded border border-slate-200 bg-white p-1">
+                            <img src={opt.imageUrl} alt={`Đáp án ${opt.key}`} className="max-h-20 object-contain mx-auto" />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1569,21 +1589,30 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     {q.items.map((item) => (
                       <div
                         key={item.id}
-                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3"
+                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-1.5"
                       >
-                        <div className="flex items-center gap-2 flex-1 min-w-0 text-xs">
-                          <span className="font-bold text-purple-700 shrink-0">{item.subKey})</span>
-                          <div className="flex-1 min-w-0">
-                            <MathView math={item.text} />
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 flex-1 min-w-0 text-xs">
+                            <span className="font-bold text-purple-700 shrink-0">{item.subKey})</span>
+                            {item.text && (
+                              <div className="flex-1 min-w-0">
+                                <MathView math={item.text} />
+                              </div>
+                            )}
                           </div>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                              item.isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {item.isCorrect ? 'ĐÚNG' : 'SAI'}
+                          </span>
                         </div>
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
-                            item.isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {item.isCorrect ? 'ĐÚNG' : 'SAI'}
-                        </span>
+                        {item.imageUrl && (
+                          <div className="rounded border border-slate-200 bg-white p-1">
+                            <img src={item.imageUrl} alt={`Ý ${item.subKey}`} className="max-h-20 object-contain mx-auto" />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
