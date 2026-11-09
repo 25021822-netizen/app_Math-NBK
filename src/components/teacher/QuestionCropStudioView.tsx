@@ -82,6 +82,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [isAiCroppingAll, setIsAiCroppingAll] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'canvas' | 'pdf_document'>(
+    documentData?.isPdf && documentData?.fileBase64 ? 'pdf_document' : 'canvas'
+  );
 
   // Canvas & tương tác cắt khung
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -97,7 +100,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
   // Nếu chưa có câu hỏi nào và có tài liệu, tự động bóc tách ban đầu
   useEffect(() => {
-    if (questions.length === 0 && documentData?.extractedText) {
+    if (questions.length === 0 && (documentData?.fileBase64 || documentData?.extractedText)) {
       handleAutoCropAllQuestions();
     }
   }, [documentData]);
@@ -213,38 +216,66 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
-  // Tự động nhận diện và bóc tách toàn bộ câu hỏi (AI Auto Crop)
-  const handleAutoCropAllQuestions = () => {
+  // Tự động nhận diện và bóc tách toàn bộ câu hỏi (AI Auto Crop từ PDF / LaTeX)
+  const handleAutoCropAllQuestions = async () => {
     setIsAiCroppingAll(true);
-    setStatusMessage('AI đang làm sạch nhiễu header/footer và tự động bóc tách các câu hỏi...');
+    setStatusMessage('AI Gemini 3.8 Flash đang đọc file PDF và tự động bóc tách các câu hỏi chuẩn BGD 2025...');
 
-    setTimeout(() => {
-      try {
-        const textToParse = documentData?.extractedText || '';
-        // Làm sạch nhiễu PDF trước khi bóc tách
-        const cleaned = cleanPdfNoiseAndOcr(textToParse);
-        const parsed = parseExamFromLatexOrText(cleaned.cleanedText || textToParse, examGrade, examDuration, examTitle);
+    try {
+      let parsed: any = null;
 
-        if (parsed && parsed.questions && parsed.questions.length > 0) {
-          setQuestions(parsed.questions);
-          if (parsed.metadata?.title) setExamTitle(parsed.metadata.title);
-          if (parsed.metadata?.durationMinutes) setExamDuration(parsed.metadata.durationMinutes);
-          setActiveQuestionId(parsed.questions[0].id);
-          setStatusMessage(`AI đã tự động nhận diện và cắt ${parsed.questions.length} câu hỏi vào đề!`);
-        } else {
-          // Thêm 3 câu hỏi mẫu chuẩn BGD nếu chưa có nội dung
-          handleCommitCropToQuestion('part_1_mcq');
-          handleCommitCropToQuestion('part_2_true_false');
-          handleCommitCropToQuestion('part_3_short_answer');
-          setStatusMessage('Đã tạo khung câu hỏi mẫu 3 phần chuẩn BGD 2025!');
+      // 1. Thử gọi API Gemini bóc tách từ file PDF base64 hoặc văn bản LaTeX
+      if (documentData?.fileBase64 || documentData?.extractedText) {
+        try {
+          const resp = await fetch('/api/gemini/parse-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pdfBase64: documentData?.isPdf ? documentData.fileBase64 : undefined,
+              latexText: !documentData?.isPdf ? documentData.extractedText : undefined,
+              grade: examGrade,
+              durationMinutes: examDuration,
+              examTitle: examTitle,
+            }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success && data.parsedExam && Array.isArray(data.parsedExam.questions) && data.parsedExam.questions.length > 0) {
+              parsed = data.parsedExam;
+            }
+          }
+        } catch (serverErr) {
+          console.warn('[QuestionCropStudio] Lỗi gọi Gemini parse-pdf:', serverErr);
         }
-      } catch (err) {
-        console.warn('Lỗi auto crop:', err);
-      } finally {
-        setIsAiCroppingAll(false);
-        setTimeout(() => setStatusMessage(null), 3500);
       }
-    }, 600);
+
+      // 2. Dự phòng bằng bộ giải mã thông minh nội bộ
+      if (!parsed || !parsed.questions || parsed.questions.length === 0) {
+        const textToParse = documentData?.extractedText || documentData?.fileName || '';
+        const cleaned = cleanPdfNoiseAndOcr(textToParse);
+        parsed = parseExamFromLatexOrText(cleaned.cleanedText || textToParse, examGrade, examDuration, examTitle);
+      }
+
+      if (parsed && parsed.questions && parsed.questions.length > 0) {
+        setQuestions(parsed.questions);
+        if (parsed.metadata?.title) setExamTitle(parsed.metadata.title);
+        if (parsed.metadata?.durationMinutes) setExamDuration(parsed.metadata.durationMinutes);
+        if (parsed.metadata?.grade) setExamGrade(parsed.metadata.grade);
+        setActiveQuestionId(parsed.questions[0].id);
+        setStatusMessage(`AI đã tự động bóc tách thành công ${parsed.questions.length} câu hỏi vào đề thi!`);
+      } else {
+        handleCommitCropToQuestion('part_1_mcq');
+        handleCommitCropToQuestion('part_2_true_false');
+        handleCommitCropToQuestion('part_3_short_answer');
+        setStatusMessage('Đã tạo khung câu hỏi mẫu 3 phần chuẩn BGD 2025!');
+      }
+    } catch (err) {
+      console.warn('Lỗi auto crop:', err);
+      setStatusMessage('Đã tạo bộ khung câu hỏi mẫu chuẩn BGD 2025.');
+    } finally {
+      setIsAiCroppingAll(false);
+      setTimeout(() => setStatusMessage(null), 4000);
+    }
   };
 
   // Cập nhật thông tin câu hỏi đang chỉnh sửa
@@ -457,138 +488,179 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Crop size={18} className="text-indigo-600" />
-                <h3 className="font-extrabold text-sm text-slate-900">Bàn Cắt Tài Liệu Trực Quan</h3>
+                <h3 className="font-extrabold text-sm text-slate-900">Bàn Cắt Tài Liệu & Đọc File</h3>
               </div>
 
-              {/* Các công cụ zoom và xoay */}
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
-                <button
-                  type="button"
-                  onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.15))}
-                  className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                  title="Thu nhỏ"
-                >
-                  <ZoomOut size={14} />
-                </button>
-                <span className="px-1 text-[11px] font-mono">{Math.round(zoomLevel * 100)}%</span>
-                <button
-                  type="button"
-                  onClick={() => setZoomLevel((z) => Math.min(2.0, z + 0.15))}
-                  className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                  title="Phóng to"
-                >
-                  <ZoomIn size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setZoomLevel(1)}
-                  className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                  title="Vừa màn hình"
-                >
-                  <Maximize2 size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRotationAngle((r) => (r + 90) % 360)}
-                  className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                  title="Xoay 90 độ"
-                >
-                  <RotateCw size={14} />
-                </button>
-              </div>
+              {/* Chuyển đổi giữa Xem PDF gốc và Bàn Cắt Khung */}
+              {documentData?.isPdf && documentData?.fileBase64 && (
+                <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('pdf_document')}
+                    className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                      viewMode === 'pdf_document' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText size={13} />
+                    <span>File PDF Gốc</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('canvas')}
+                    className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                      viewMode === 'canvas' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Scissors size={13} />
+                    <span>Bàn Cắt Khung</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Các công cụ zoom và xoay (khi ở chế độ canvas) */}
+              {viewMode === 'canvas' && (
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.15))}
+                    className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
+                    title="Thu nhỏ"
+                  >
+                    <ZoomOut size={14} />
+                  </button>
+                  <span className="px-1 text-[11px] font-mono">{Math.round(zoomLevel * 100)}%</span>
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel((z) => Math.min(2.0, z + 0.15))}
+                    className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
+                    title="Phóng to"
+                  >
+                    <ZoomIn size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel(1)}
+                    className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
+                    title="Vừa màn hình"
+                  >
+                    <Maximize2 size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRotationAngle((r) => (r + 90) % 360)}
+                    className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
+                    title="Xoay 90 độ"
+                  >
+                    <RotateCw size={14} />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* VÙNG HIỂN THỊ TÀI LIỆU & CẮT KHUNG */}
-            <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[460px] max-h-[640px] flex items-center justify-center select-none overflow-auto">
-              <div
-                ref={containerRef}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                style={{
-                  transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
-                  transformOrigin: 'center center',
-                  transition: isDrawingCrop ? 'none' : 'transform 0.15s ease',
-                }}
-                className="relative cursor-crosshair max-w-full"
-              >
-                {documentData?.fileBase64 && !documentData.isPdf ? (
-                  <img
-                    ref={imageElementRef}
-                    src={documentData.fileBase64}
-                    alt="Tài liệu đề thi"
-                    className="max-w-full h-auto object-contain pointer-events-none"
-                  />
-                ) : (
-                  // Giả lập giao diện trang đề thi để giáo viên kéo thả cắt câu hỏi trực tiếp
-                  <div className="w-[520px] min-h-[700px] bg-white text-slate-800 p-8 shadow-2xl font-serif text-xs space-y-4">
-                    <div className="text-center border-b pb-3 border-slate-200">
-                      <p className="font-bold uppercase tracking-wider text-[11px] text-slate-500">
-                        {documentData?.fileName || 'ĐỀ THI TOÁN THPT NĂM HỌC 2024 - 2025'}
-                      </p>
-                      <h4 className="font-extrabold text-sm text-slate-900 mt-0.5">
-                        {examTitle}
-                      </h4>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Thời gian: {examDuration} phút | Môn: Toán học | Khối {examGrade}
-                      </p>
-                    </div>
-
-                    <div className="space-y-4 font-sans text-xs leading-relaxed text-slate-700">
-                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="font-bold text-indigo-700">PHẦN I. TRẮC NGHIỆM 4 PHƯƠNG ÁN</span>
-                        <div className="mt-1 font-semibold text-slate-800">
-                          <MathView math="Câu 1: Cho hàm số $y = x^3 - 3x + 1$. Điểm cực tiểu của đồ thị hàm số là:" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 mt-2 font-mono text-[11px]">
-                          <div><MathView math="A. $M(1; -1)$" /></div>
-                          <div><MathView math="B. $N(-1; 3)$" /></div>
-                          <div><MathView math="C. $P(0; 1)$" /></div>
-                          <div><MathView math="D. $Q(2; 3)$" /></div>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="font-bold text-indigo-700">PHẦN II. TRẮC NGHIỆM ĐÚNG / SAI</span>
-                        <div className="mt-1 font-semibold text-slate-800">
-                          <MathView math="Câu 2: Cho khối chóp $S.ABCD$ có đáy $ABCD$ là hình vuông cạnh $a$, $SA \perp (ABCD)$." />
-                        </div>
-                        <div className="space-y-1 mt-1.5 pl-2 text-[11px]">
-                          <div><MathView math="a) $SA \perp BC$" /></div>
-                          <div><MathView math={'b) Thể tích $V = \\frac{a^3\\sqrt{3}}{3}$'} /></div>
-                          <div><MathView math="c) $BD \perp (SAC)$" /></div>
-                          <div><MathView math={'d) Góc giữa $SC$ và đáy bằng $45^\\circ$'} /></div>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="font-bold text-indigo-700">PHẦN III. TRẢ LỜI NGẮN</span>
-                        <div className="mt-1 font-semibold text-slate-800">
-                          <MathView math={'Câu 3: Một hình chữ nhật có chu vi $40\\text{ m}$. Diện tích lớn nhất của hình chữ nhật bằng bao nhiêu mét vuông?'} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* KHUNG CẮT ĐANG KÉO (CROP BOUNDING BOX) */}
-                {cropBox && cropBox.w > 5 && cropBox.h > 5 && (
-                  <div
-                    style={{
-                      left: cropBox.x,
-                      top: cropBox.y,
-                      width: cropBox.w,
-                      height: cropBox.h,
-                    }}
-                    className="absolute border-2 border-dashed border-emerald-400 bg-emerald-500/20 pointer-events-none z-20 flex items-start justify-end p-1.5"
-                  >
-                    <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shadow-md">
-                      Vùng Câu {questions.length + 1} ({Math.round(cropBox.w)} × {Math.round(cropBox.h)})
-                    </span>
-                  </div>
-                )}
+            {viewMode === 'pdf_document' && documentData?.fileBase64 ? (
+              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[500px] h-[640px] flex items-center justify-center">
+                <object
+                  data={documentData.fileBase64}
+                  type="application/pdf"
+                  className="w-full h-full rounded-2xl"
+                  title="Tài liệu PDF đề thi"
+                >
+                  <iframe src={documentData.fileBase64} className="w-full h-full rounded-2xl" title="PDF Frame" />
+                </object>
               </div>
-            </div>
+            ) : (
+              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[460px] max-h-[640px] flex items-center justify-center select-none overflow-auto">
+                <div
+                  ref={containerRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  style={{
+                    transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
+                    transformOrigin: 'center center',
+                    transition: isDrawingCrop ? 'none' : 'transform 0.15s ease',
+                  }}
+                  className="relative cursor-crosshair max-w-full"
+                >
+                  {documentData?.fileBase64 && !documentData.isPdf ? (
+                    <img
+                      ref={imageElementRef}
+                      src={documentData.fileBase64}
+                      alt="Tài liệu đề thi"
+                      className="max-w-full h-auto object-contain pointer-events-none"
+                    />
+                  ) : (
+                    // Giả lập giao diện trang đề thi để giáo viên kéo thả cắt câu hỏi trực tiếp
+                    <div className="w-[520px] min-h-[700px] bg-white text-slate-800 p-8 shadow-2xl font-serif text-xs space-y-4">
+                      <div className="text-center border-b pb-3 border-slate-200">
+                        <p className="font-bold uppercase tracking-wider text-[11px] text-slate-500">
+                          {documentData?.fileName || 'ĐỀ THI TOÁN THPT NĂM HỌC 2024 - 2025'}
+                        </p>
+                        <h4 className="font-extrabold text-sm text-slate-900 mt-0.5">
+                          {examTitle}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Thời gian: {examDuration} phút | Môn: Toán học | Khối {examGrade}
+                        </p>
+                      </div>
+
+                      <div className="space-y-4 font-sans text-xs leading-relaxed text-slate-700">
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                          <span className="font-bold text-indigo-700">PHẦN I. TRẮC NGHIỆM 4 PHƯƠNG ÁN</span>
+                          <div className="mt-1 font-semibold text-slate-800">
+                            <MathView math="Câu 1: Cho hàm số $y = x^3 - 3x + 1$. Điểm cực tiểu của đồ thị hàm số là:" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-2 font-mono text-[11px]">
+                            <div><MathView math="A. $M(1; -1)$" /></div>
+                            <div><MathView math="B. $N(-1; 3)$" /></div>
+                            <div><MathView math="C. $P(0; 1)$" /></div>
+                            <div><MathView math="D. $Q(2; 3)$" /></div>
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                          <span className="font-bold text-indigo-700">PHẦN II. TRẮC NGHIỆM ĐÚNG / SAI</span>
+                          <div className="mt-1 font-semibold text-slate-800">
+                            <MathView math="Câu 2: Cho khối chóp $S.ABCD$ có đáy $ABCD$ là hình vuông cạnh $a$, $SA \perp (ABCD)$." />
+                          </div>
+                          <div className="space-y-1 mt-1.5 pl-2 text-[11px]">
+                            <div><MathView math="a) $SA \perp BC$" /></div>
+                            <div><MathView math={'b) Thể tích $V = \\frac{a^3\\sqrt{3}}{3}$'} /></div>
+                            <div><MathView math="c) $BD \perp (SAC)$" /></div>
+                            <div><MathView math={'d) Góc giữa $SC$ và đáy bằng $45^\\circ$'} /></div>
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                          <span className="font-bold text-indigo-700">PHẦN III. TRẢ LỜI NGẮN</span>
+                          <div className="mt-1 font-semibold text-slate-800">
+                            <MathView math={'Câu 3: Một hình chữ nhật có chu vi $40\\text{ m}$. Diện tích lớn nhất của hình chữ nhật bằng bao nhiêu mét vuông?'} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* KHUNG CẮT ĐANG KÉO (CROP BOUNDING BOX) */}
+                  {cropBox && cropBox.w > 5 && cropBox.h > 5 && (
+                    <div
+                      style={{
+                        left: cropBox.x,
+                        top: cropBox.y,
+                        width: cropBox.w,
+                        height: cropBox.h,
+                      }}
+                      className="absolute border-2 border-dashed border-emerald-400 bg-emerald-500/20 pointer-events-none z-20 flex items-start justify-end p-1.5"
+                    >
+                      <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shadow-md">
+                        Vùng Câu {questions.length + 1} ({Math.round(cropBox.w)} × {Math.round(cropBox.h)})
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* BẢNG HÀNH ĐỘNG CẮT CÂU */}
             <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 space-y-3">

@@ -1009,29 +1009,39 @@ function legacyParseExamFromLatexOrText(rawInput: string, grade: number = 12, du
 // Hàm trích xuất an toàn JSON chứa công thức toán học LaTeX từ Gemini AI
 function safeParseJsonWithLatex(jsonStr: string): any {
   if (!jsonStr) return null;
-  let clean = jsonStr.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  // Làm sạch các khối markdown code fence ```json ... ```
+  let clean = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
   const firstBrace = clean.indexOf('{');
-  const lastBrace = clean.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    clean = clean.slice(firstBrace, lastBrace + 1);
+  if (firstBrace !== -1) {
+    const lastBrace = clean.lastIndexOf('}');
+    if (lastBrace !== -1 && lastBrace > firstBrace) {
+      clean = clean.slice(firstBrace, lastBrace + 1);
+    } else {
+      clean = clean.slice(firstBrace);
+    }
   }
 
-  // 1. Thử parse trực tiếp nếu chuỗi JSON đã hoàn hảo
-  try {
-    return JSON.parse(clean);
-  } catch {
-    // 2. Xử lý chuyên sâu ký tự thoát LaTeX và ký tự điều khiển trong chuỗi JSON
+  // Helper hàm thử parse hoặc phục hồi ký tự escape của LaTeX
+  const tryParseOrRepair = (inputStr: string): any => {
+    // 1. Thử parse trực tiếp nếu chuỗi JSON đã hoàn hảo
+    try {
+      return JSON.parse(inputStr);
+    } catch {
+      // Tiếp tục xử lý chuyên sâu
+    }
+
+    // 2. Xử lý ký tự thoát LaTeX và ký tự điều khiển trong chuỗi JSON
     try {
       let inString = false;
       let out = '';
-      for (let i = 0; i < clean.length; i++) {
-        const char = clean[i];
+      for (let i = 0; i < inputStr.length; i++) {
+        const char = inputStr[i];
 
         if (char === '"') {
           // Kiểm tra xem dấu ngoặc kép này có bị escape bằng số lượng lẻ dấu backslash trước nó không
           let slashCount = 0;
           let k = i - 1;
-          while (k >= 0 && clean[k] === '\\') {
+          while (k >= 0 && inputStr[k] === '\\') {
             slashCount++;
             k--;
           }
@@ -1048,26 +1058,24 @@ function safeParseJsonWithLatex(jsonStr: string): any {
           } else if (char === '\t') {
             out += ' ';
           } else if (char === '\\') {
-            const next = clean[i + 1] || '';
-            const charAfterNext = clean[i + 2] || '';
+            const next = inputStr[i + 1] || '';
+            const charAfterNext = inputStr[i + 2] || '';
 
             if (next === '"' || next === '\\' || next === '/') {
               out += '\\' + next;
               i++;
-            } else if (next === 'u' && /^[0-9a-fA-F]{4}/.test(clean.slice(i + 2, i + 6))) {
+            } else if (next === 'u' && /^[0-9a-fA-F]{4}/.test(inputStr.slice(i + 2, i + 6))) {
               out += '\\u';
             } else if (next === 'b' || next === 'f' || next === 'n' || next === 'r' || next === 't') {
-              // Nếu ký tự sau [bfnrt] là một chữ cái [a-zA-Z] -> Đó là lệnh LaTeX (ví dụ: \frac, \text, \times, \to, \nabla, \right, \begin, \beta)
+              // Nếu ký tự sau [bfnrt] là chữ cái [a-zA-Z] -> Đó là lệnh LaTeX (ví dụ: \frac, \text, \to, \right, \beta)
               if (/[a-zA-Z]/.test(charAfterNext)) {
                 out += '\\\\';
               } else {
-                // Thoát JSON chuẩn (\n, \t, \r, \b, \f)
                 out += '\\' + next;
                 i++;
               }
             } else {
-              // Bất kỳ ký tự nào khác sau backslash trong chuỗi JSON (ví dụ: \sqrt, \alpha, \cos, \int, \{, \})
-              // Bắt buộc phải nhân đôi backslash để JSON hợp lệ
+              // Bất kỳ ký tự nào khác sau backslash trong chuỗi JSON (ví dụ: \sqrt, \alpha, \cos, \int)
               out += '\\\\';
             }
           } else {
@@ -1082,46 +1090,68 @@ function safeParseJsonWithLatex(jsonStr: string): any {
       out = out.replace(/,\s*([\]}])/g, '$1');
 
       return JSON.parse(out);
-    } catch (e2) {
-      console.warn('[safeParseJsonWithLatex] Thử phân tích nâng cao thất bại, chuyển sang bộ trích xuất câu hỏi:', (e2 as Error).message);
-
-      // 3. Fallback: Bóc tách bằng biểu thức chính quy (Regex Extraction)
-      try {
-        const questionMatches = clean.match(/\{[^{}]*"part"\s*:\s*"[^"]+"[\s\S]*?\}/g);
-        if (questionMatches && questionMatches.length > 0) {
-          const salvagedQuestions: any[] = [];
-          for (const qStr of questionMatches) {
-            try {
-              let sanitizedQ = qStr
-                .replace(/\\([a-zA-Z]+)/g, '\\\\$1')
-                .replace(/,\s*([\]}])/g, '$1');
-              const qObj = JSON.parse(sanitizedQ);
-              if (qObj && qObj.part) {
-                salvagedQuestions.push(qObj);
-              }
-            } catch {
-              // bỏ qua khối câu hỏi lỗi lẻ
-            }
-          }
-          if (salvagedQuestions.length > 0) {
-            return {
-              metadata: {
-                title: 'Đề Thi Toán THPT (Trích Xuất AI Cứu Hộ)',
-                grade: 12,
-                year: 2025,
-                durationMinutes: 90,
-                totalPoints: salvagedQuestions.length * 0.25,
-              },
-              questions: salvagedQuestions,
-            };
-          }
-        }
-      } catch (e3) {
-        console.warn('[safeParseJsonWithLatex] Regex fallback thất bại:', (e3 as Error).message);
-      }
+    } catch {
       return null;
     }
+  };
+
+  // Thử parse chuỗi chuẩn ban đầu
+  let parsed = tryParseOrRepair(clean);
+  if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+    return parsed;
   }
+
+  // 3. Phục hồi JSON bị cắt ngắn do độ dài (Truncated JSON Recovery)
+  // Nếu Gemini bị cắt ngang ở câu hỏi thứ N, tìm dấu đóng ngoặc } cuối cùng của mảng questions và đóng lại hợp lệ
+  const questionsIdx = clean.indexOf('"questions"');
+  if (questionsIdx !== -1) {
+    const questionsSlice = clean.slice(questionsIdx);
+    const lastObjectClose = questionsSlice.lastIndexOf('}');
+    if (lastObjectClose !== -1) {
+      const repaired = clean.slice(0, questionsIdx + lastObjectClose + 1) + '\n  ]\n}';
+      parsed = tryParseOrRepair(repaired);
+      if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+        return parsed;
+      }
+    }
+  }
+
+  // 4. Fallback: Bóc tách từng khối câu hỏi bằng biểu thức chính quy (Regex Extraction)
+  try {
+    const questionMatches = clean.match(/\{[^{}]*"part"\s*:\s*"[^"]+"[\s\S]*?\}/g);
+    if (questionMatches && questionMatches.length > 0) {
+      const salvagedQuestions: any[] = [];
+      for (const qStr of questionMatches) {
+        try {
+          const sanitizedQ = qStr
+            .replace(/\\([a-zA-Z]+)/g, '\\\\$1')
+            .replace(/,\s*([\]}])/g, '$1');
+          const qObj = JSON.parse(sanitizedQ);
+          if (qObj && qObj.part) {
+            salvagedQuestions.push(qObj);
+          }
+        } catch {
+          // Bỏ qua khối lỗi lẻ
+        }
+      }
+      if (salvagedQuestions.length > 0) {
+        return {
+          metadata: {
+            title: 'Đề Thi Toán THPT (Trích Xuất AI Cứu Hộ)',
+            grade: 12,
+            year: 2025,
+            durationMinutes: 90,
+            totalPoints: salvagedQuestions.length * 0.25,
+          },
+          questions: salvagedQuestions,
+        };
+      }
+    }
+  } catch (e3) {
+    console.warn('[safeParseJsonWithLatex] Regex fallback thất bại:', (e3 as Error).message);
+  }
+
+  return null;
 }
 
 // API 3: AI PDF & LATEX EXAM PARSER (3 PHẦN CHUẨN BGD 2025)
@@ -1130,10 +1160,11 @@ app.post('/api/gemini/parse-pdf', async (req, res) => {
   let extractedPdfText = pdfText || '';
 
   try {
-    // 1. Nếu có pdfBase64, trích xuất text nhị phân trực tiếp bằng pdf-parse (dùng làm dự phòng)
+    // 1. Nếu có pdfBase64, làm sạch tiền tố và trích xuất text nhị phân trực tiếp bằng pdf-parse
+    let cleanBase64 = '';
     if (pdfBase64) {
       try {
-        const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+        cleanBase64 = String(pdfBase64).replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
         const pdfBuffer = Buffer.from(cleanBase64, 'base64');
         const parser = new PDFParse({ data: pdfBuffer });
         const textResult = await parser.getText();
@@ -1180,6 +1211,7 @@ HƯỚNG DẪN QUAN TRỌNG ĐỂ KHÔNG QUÉT SAI CÂU HỎI VÀ LỖI PHÔNG C
    - Nếu câu hỏi có trích dẫn xuất xứ ở đầu (ví dụ: '[Chuyên Lam Sơn 2025]', '(Đề tham khảo BGD)', '\\textit{(Đề thi HSG)}'), hãy GIỮ NGUYÊN trích dẫn này ở đầu prompt dưới dạng '[Trích dẫn: ...]'.
    - Nếu có đoạn văn bản trích dẫn dữ kiện chung cho nhiều câu (ví dụ: 'Dựa vào thông tin sau để trả lời Câu 1 và Câu 2:', 'Dữ kiện chung cho các câu 4, 5:'), hãy gắn kèm dữ kiện này vào phần đầu prompt của TẤT CẢ các câu hỏi liên quan để câu hỏi có đầy đủ dữ kiện giải toán.
    - TUYỆT ĐỐI KHÔNG tạo câu hỏi giả mạo từ các câu hướng dẫn quy chế phần thi (ví dụ: 'Thí sinh trả lời từ câu 1 đến câu 12', 'Mỗi câu hỏi thí sinh chỉ chọn một phương án').
+   - Lời giải (explanation) viết ngắn gọn 1-2 dòng xúc tích để đảm bảo phản hồi không bị quá tải.
 
 Cấu trúc JSON đầu ra bắt buộc:
 {
@@ -1235,8 +1267,11 @@ Trả về DUY NHẤT chuỗi JSON hợp lệ, không có văn bản giải thí
 
     let contentsPayload: any;
 
-    if (pdfBase64) {
-      const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+    if (cleanBase64) {
+      const textInstruction = extractedPdfText && extractedPdfText.length > 20
+        ? `${systemPrompt}\n\n[DỮ LIỆU BỔ TRỢ TỪ TỆP]: Dưới đây là chuỗi ký tự text trích xuất từ file PDF (hãy kết hợp đọc cùng các trang in PDF ở trên để nhận diện chính xác câu hỏi, công thức KaTeX và bảng đáp án):\n${extractedPdfText.slice(0, 45000)}`
+        : systemPrompt;
+
       contentsPayload = {
         parts: [
           {
@@ -1246,7 +1281,7 @@ Trả về DUY NHẤT chuỗi JSON hợp lệ, không có văn bản giải thí
             },
           },
           {
-            text: systemPrompt,
+            text: textInstruction,
           },
         ],
       };
@@ -1287,11 +1322,11 @@ Trả về DUY NHẤT chuỗi JSON hợp lệ, không có văn bản giải thí
       return res.json({ success: true, parsedExam, source: 'gemini', textExtracted: Boolean(extractedPdfText) });
     }
 
-    const fallbackExam = parseExamFromLatexOrText(rawContent, grade, durationMinutes, examTitle);
+    const fallbackExam = parseExamFromLatexOrText(rawContent || 'Đề Thi Toán THPT', grade, durationMinutes, examTitle);
     res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser', textExtracted: Boolean(extractedPdfText) });
   } catch (error: any) {
     console.warn('[Gemini PDF Parser] Model error or JSON parse issue, using intelligent LaTeX/PDF parser:', error?.message);
-    const rawFallbackContent = latexText || extractedPdfText || pdfText || '';
+    const rawFallbackContent = latexText || extractedPdfText || pdfText || examTitle || 'Đề Thi Toán THPT';
     const fallbackExam = parseExamFromLatexOrText(rawFallbackContent, grade, durationMinutes, examTitle);
     res.json({
       success: true,

@@ -411,7 +411,10 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
       // Bước 2: Dự phòng thông minh - Nếu server chưa trả về câu hỏi, chạy bộ giải mã trực tiếp trên trình duyệt
       if (!parsed || !parsed.questions || parsed.questions.length === 0) {
-        const localParsed = parseExamFromLatexOrText(aiLatexText || '', aiGrade, aiDuration, aiExamTitle);
+        const textToFallback = aiInputMethod === 'latex'
+          ? (aiLatexText || '')
+          : (aiPdfFile?.fileName || 'Đề Thi Toán THPT');
+        const localParsed = parseExamFromLatexOrText(textToFallback, aiGrade, aiDuration, aiExamTitle || aiPdfFile?.fileName);
         if (localParsed && localParsed.questions && localParsed.questions.length > 0) {
           parsed = localParsed;
           scanSource = 'Bộ Phân Tích Cú Pháp Chuẩn Hóa Nội Bộ';
