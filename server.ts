@@ -1016,43 +1016,109 @@ function safeParseJsonWithLatex(jsonStr: string): any {
     clean = clean.slice(firstBrace, lastBrace + 1);
   }
 
+  // 1. Thử parse trực tiếp nếu chuỗi JSON đã hoàn hảo
   try {
     return JSON.parse(clean);
-  } catch (e1) {
+  } catch {
+    // 2. Xử lý chuyên sâu ký tự thoát LaTeX và ký tự điều khiển trong chuỗi JSON
     try {
       let inString = false;
-      let escaped = false;
       let out = '';
       for (let i = 0; i < clean.length; i++) {
         const char = clean[i];
-        if (char === '"' && !escaped) {
-          inString = !inString;
+
+        if (char === '"') {
+          // Kiểm tra xem dấu ngoặc kép này có bị escape bằng số lượng lẻ dấu backslash trước nó không
+          let slashCount = 0;
+          let k = i - 1;
+          while (k >= 0 && clean[k] === '\\') {
+            slashCount++;
+            k--;
+          }
+          if (slashCount % 2 === 0) {
+            inString = !inString;
+          }
           out += char;
-        } else if (inString && char === '\\') {
-          const next = clean[i + 1] || '';
-          if (next === '"' || next === '\\' || next === '/') {
-            out += '\\' + next;
-            i++;
-          } else if (next === 'b' || next === 'f' || next === 'n' || next === 'r' || next === 't') {
-            const nextWord = clean.slice(i + 1, i + 8);
-            if (/^(frac|text|times|theta|tau|nabla|ne|neq|right|rho|rangle|binom|bar|beta|bf|sqrt|sum|prod|nu)/.test(nextWord)) {
-              out += '\\\\';
+        } else if (inString) {
+          // Xử lý các ký tự điều khiển bị xuống dòng trực tiếp trong chuỗi JSON
+          if (char === '\n') {
+            out += '\\n';
+          } else if (char === '\r') {
+            // bỏ qua \r
+          } else if (char === '\t') {
+            out += ' ';
+          } else if (char === '\\') {
+            const next = clean[i + 1] || '';
+            const charAfterNext = clean[i + 2] || '';
+
+            if (next === '"' || next === '\\' || next === '/') {
+              out += '\\' + next;
+              i++;
+            } else if (next === 'u' && /^[0-9a-fA-F]{4}/.test(clean.slice(i + 2, i + 6))) {
+              out += '\\u';
+            } else if (next === 'b' || next === 'f' || next === 'n' || next === 'r' || next === 't') {
+              // Nếu ký tự sau [bfnrt] là một chữ cái [a-zA-Z] -> Đó là lệnh LaTeX (ví dụ: \frac, \text, \times, \to, \nabla, \right, \begin, \beta)
+              if (/[a-zA-Z]/.test(charAfterNext)) {
+                out += '\\\\';
+              } else {
+                // Thoát JSON chuẩn (\n, \t, \r, \b, \f)
+                out += '\\' + next;
+                i++;
+              }
             } else {
-              out += '\\';
+              // Bất kỳ ký tự nào khác sau backslash trong chuỗi JSON (ví dụ: \sqrt, \alpha, \cos, \int, \{, \})
+              // Bắt buộc phải nhân đôi backslash để JSON hợp lệ
+              out += '\\\\';
             }
-          } else if (next === 'u' && /^[0-9a-fA-F]{4}/.test(clean.slice(i + 2, i + 6))) {
-            out += '\\';
           } else {
-            out += '\\\\';
+            out += char;
           }
         } else {
           out += char;
         }
-        escaped = inString && char === '\\' && !escaped;
       }
+
+      // Xóa dấu phẩy thừa trước dấu đóng ngoặc } hoặc ]
+      out = out.replace(/,\s*([\]}])/g, '$1');
+
       return JSON.parse(out);
     } catch (e2) {
-      console.warn('[safeParseJsonWithLatex] Lỗi parse JSON:', (e1 as Error).message);
+      console.warn('[safeParseJsonWithLatex] Thử phân tích nâng cao thất bại, chuyển sang bộ trích xuất câu hỏi:', (e2 as Error).message);
+
+      // 3. Fallback: Bóc tách bằng biểu thức chính quy (Regex Extraction)
+      try {
+        const questionMatches = clean.match(/\{[^{}]*"part"\s*:\s*"[^"]+"[\s\S]*?\}/g);
+        if (questionMatches && questionMatches.length > 0) {
+          const salvagedQuestions: any[] = [];
+          for (const qStr of questionMatches) {
+            try {
+              let sanitizedQ = qStr
+                .replace(/\\([a-zA-Z]+)/g, '\\\\$1')
+                .replace(/,\s*([\]}])/g, '$1');
+              const qObj = JSON.parse(sanitizedQ);
+              if (qObj && qObj.part) {
+                salvagedQuestions.push(qObj);
+              }
+            } catch {
+              // bỏ qua khối câu hỏi lỗi lẻ
+            }
+          }
+          if (salvagedQuestions.length > 0) {
+            return {
+              metadata: {
+                title: 'Đề Thi Toán THPT (Trích Xuất AI Cứu Hộ)',
+                grade: 12,
+                year: 2025,
+                durationMinutes: 90,
+                totalPoints: salvagedQuestions.length * 0.25,
+              },
+              questions: salvagedQuestions,
+            };
+          }
+        }
+      } catch (e3) {
+        console.warn('[safeParseJsonWithLatex] Regex fallback thất bại:', (e3 as Error).message);
+      }
       return null;
     }
   }

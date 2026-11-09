@@ -7,24 +7,59 @@
 import { Question } from '../types/math';
 
 // Trích xuất các khối ngoặc nhọn { ... } lồng nhau cho công thức LaTeX
+// Trích xuất các khối ngoặc nhọn { ... } lồng nhau cho công thức LaTeX (bỏ qua tham số tùy chọn [...])
 export function extractBalancedBraces(text: string, startIndex: number, maxGroups: number = 4): string[] {
   const groups: string[] = [];
   let i = startIndex;
+
+  // Bỏ qua tên lệnh ban đầu (ví dụ: \choice, \choiceTF, \shortans) và các tham số tùy chọn [...]
+  while (i < text.length && text[i] !== '{') {
+    if (text[i] === '[') {
+      let optDepth = 1;
+      i++;
+      while (i < text.length && optDepth > 0) {
+        if (text[i] === '[') optDepth++;
+        else if (text[i] === ']') optDepth--;
+        i++;
+      }
+    } else {
+      i++;
+    }
+  }
+
   while (i < text.length && groups.length < maxGroups) {
     if (text[i] === '{') {
       let depth = 1;
       const start = i + 1;
       i++;
       while (i < text.length && depth > 0) {
-        if (text[i] === '{' && (i === 0 || text[i - 1] !== '\\')) {
-          depth++;
-        } else if (text[i] === '}' && (i === 0 || text[i - 1] !== '\\')) {
-          depth--;
+        // Kiểm tra xem ký tự { hoặc } có bị escape bằng số lượng lẻ dấu backslash không
+        if (text[i] === '{') {
+          let slashCount = 0;
+          let k = i - 1;
+          while (k >= start && text[k] === '\\') {
+            slashCount++;
+            k--;
+          }
+          if (slashCount % 2 === 0) depth++;
+        } else if (text[i] === '}') {
+          let slashCount = 0;
+          let k = i - 1;
+          while (k >= start && text[k] === '\\') {
+            slashCount++;
+            k--;
+          }
+          if (slashCount % 2 === 0) depth--;
         }
         i++;
       }
       if (depth === 0) {
-        groups.push(text.slice(start, i - 1).trim());
+        let content = text.slice(start, i - 1).trim();
+        // Xóa cặp ngoặc nhọn bọc ngoài nếu bị lồng thừa
+        if (content.startsWith('{') && content.endsWith('}')) {
+          content = content.slice(1, -1).trim();
+        }
+        groups.push(content);
       }
     } else {
       i++;
@@ -86,7 +121,7 @@ export function extractExamMetadataFromHeader(raw: string): {
   return result;
 }
 
-// Làm sạch và chuẩn hóa font Unicode, xóa lỗi ký tự đặc biệt của Word/PDF/TCVN3 và các dòng tiêu đề rác
+// Làm sạch và chuẩn hóa font Unicode, xóa lỗi ký tự đặc biệt của Word/PDF/TCVN3, TikZ và các dòng tiêu đề rác
 export function cleanRawLatexText(raw: string): string {
   if (!raw) return '';
 
@@ -97,10 +132,11 @@ export function cleanRawLatexText(raw: string): string {
   cleaned = cleaned
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
-    .replace(/[\u200B\uFEFF\u200E\u200F]/g, '') // Zero-width spaces
+    .replace(/[\u200B\uFEFF\u200E\u200F\u00AD]/g, '') // Zero-width spaces & soft hyphens
     .replace(/\u00A0/g, ' ') // Non-breaking space
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
+    .replace(/\uFFFD/g, '') // Replacement character
+    .replace(/[“”„‟«»]/g, '"')
+    .replace(/[‘’`]/g, "'")
     .replace(/[–—]/g, '-')
     .replace(/−/g, '-');
 
@@ -112,15 +148,57 @@ export function cleanRawLatexText(raw: string): string {
     // Xóa bỏ các lệnh tiền xử lý preamble \documentclass, \usepackage...
     cleaned = cleaned.replace(/\\documentclass(?:\s*\[[^\]]*\])?\{[^\}]*\}/g, '');
     cleaned = cleaned.replace(/\\usepackage(?:\s*\[[^\]]*\])?\{[^\}]*\}/g, '');
+    cleaned = cleaned.replace(/\\(?:newcounter|newtheorem|newcommand|def|DeclareMathOperator)\{[^\}]*\}\s*(?:\{[^\}]*\})?/g, '');
   }
 
-  // 4. Loại bỏ các dòng chú thích % ... (giữ nguyên \% nếu là dấu phần trăm)
+  // 4. Khử các khối đồ thị TikZ, Asymptote, hình vẽ để tránh KaTeX bị vỡ hoặc in hàng chục dòng mã tọa độ
+  cleaned = cleaned
+    .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/gi, '\n[Hình vẽ đồ thị / hình học]\n')
+    .replace(/\\begin\{asy\}[\s\S]*?\\end\{asy\}/gi, '\n[Hình vẽ minh họa]\n')
+    .replace(/\\includegraphics(?:\s*\[[^\]]*\])?\{[^\}]*\}/gi, '\n[Hình ảnh minh họa]\n');
+
+  // 5. Khử các môi trường căn dòng và chia cột văn bản thuần LaTeX
+  cleaned = cleaned
+    .replace(/\\begin\{center\}/gi, '\n')
+    .replace(/\\end\{center\}/gi, '\n')
+    .replace(/\\begin\{flushleft\}/gi, '')
+    .replace(/\\end\{flushleft\}/gi, '')
+    .replace(/\\begin\{flushright\}/gi, '')
+    .replace(/\\end\{flushright\}/gi, '')
+    .replace(/\\begin\{multicols\}\{\d+\}/gi, '\n')
+    .replace(/\\end\{multicols\}/gi, '\n')
+    .replace(/\\begin\{minipage\}(?:\s*\[[^\]]*\])?\{[^\}]*\}/gi, '\n')
+    .replace(/\\end\{minipage\}/gi, '\n')
+    .replace(/\\(?:noindent|vfill|hfill|newpage|clearpage|hrulefill|dotfill)\b/gi, '')
+    .replace(/\\(?:motcot|haicot|bacot|boncot)\b/gi, '')
+    .replace(/\\(?:vspace|hspace)\*?\{[^\}]*\}/gi, '');
+
+  // 6. Chuẩn hóa các macro toán học thường gặp của giáo viên Việt Nam
+  cleaned = cleaned
+    .replace(/\\dfrac(?![a-zA-Z])/g, '\\frac')
+    .replace(/\\tbinom(?![a-zA-Z])/g, '\\binom')
+    .replace(/\\dbinom(?![a-zA-Z])/g, '\\binom')
+    .replace(/\\leqslant(?![a-zA-Z])/g, '\\leq')
+    .replace(/\\geqslant(?![a-zA-Z])/g, '\\geq')
+    .replace(/\\(?:vect|vt|vv)\{/g, '\\vec{')
+    .replace(/\\degree(?![a-zA-Z])/g, '^\\circ')
+    .replace(/\\tg(?![a-zA-Z])/g, '\\tan')
+    .replace(/\\cotg(?![a-zA-Z])/g, '\\cot')
+    .replace(/\\R(?![a-zA-Z])/g, '\\mathbb{R}')
+    .replace(/\\N(?![a-zA-Z])/g, '\\mathbb{N}')
+    .replace(/\\Z(?![a-zA-Z])/g, '\\mathbb{Z}')
+    .replace(/\\Q(?![a-zA-Z])/g, '\\mathbb{Q}')
+    .replace(/\\C(?![a-zA-Z])/g, '\\mathbb{C}');
+
+  // 7. Loại bỏ các dòng chú thích % ... (giữ nguyên \% nếu là dấu phần trăm)
   cleaned = cleaned.replace(/(^|[^\\])%.*$/gm, '$1');
 
-  // 5. Loại bỏ các dòng tiêu đề trang, mã đề, số báo danh và quy chế thi boilerplate
+  // 8. Loại bỏ các dòng tiêu đề trang, mã đề, số báo danh và quy chế thi boilerplate
   cleaned = cleaned
-    .replace(/^[ \t]*Trang\s+\d+(?:\s*\/\s*\d+)?[ \t]*$/gim, '')
-    .replace(/^[ \t]*Mã\s+đề(?:\s+thi)?\s*[:\.]?\s*\d+[ \t]*$/gim, '')
+    .replace(/^[ \t]*(?:Trang|Page)\s+\d+(?:\s*(?:\/|of|trên)\s*\d+)?[ \t]*$/gim, '')
+    .replace(/^[ \t]*[-–—]\s*\d+\s*[-–—][ \t]*$/gm, '')
+    .replace(/^[ \t]*\d{1,2}\s*\/\s*\d{1,2}[ \t]*$/gm, '')
+    .replace(/^[ \t]*Mã\s+đề(?:\s+thi)?\s*[:\.]?\s*\w+[ \t]*$/gim, '')
     .replace(/^[ \t]*Họ,?\s*tên\s+thí\s+sinh\s*[:\.]?.*$/gim, '')
     .replace(/^[ \t]*Số\s+báo\s+danh\s*[:\.]?.*$/gim, '')
     .replace(/^[ \t]*\(Đề\s+thi\s+gồm\s+có\s+\d+\s+trang\)[ \t]*$/gim, '')
@@ -348,8 +426,8 @@ export function parseExamFromLatexOrText(
 
   const questions: Question[] = [];
 
-  // Tách các khối câu hỏi:
-  // Ưu tiên 1: Các môi trường câu hỏi LaTeX (\begin{ex}[Citation], \begin{bt}, \begin{vd}, \begin{cau}, \begin{exercise})
+  // Tách các khối câu hỏi đa năng:
+  // Hỗ trợ cả môi trường LaTeX (\begin{ex}...\end{ex}), \textbf{Câu X:}, **Câu X:**, [Câu X], Câu X., Bài X.
   const envRegex = /\\begin\{(?:ex|bt|vd|cau|exercise|question)\}(?:\[([^\]]*)\])?([\s\S]*?)\\end\{(?:ex|bt|vd|cau|exercise|question)\}/gi;
   interface RawBlockItem {
     body: string;
@@ -366,15 +444,33 @@ export function parseExamFromLatexOrText(
     }
   }
 
-  // Ưu tiên 2: Nếu không dùng môi trường LaTeX, tách theo các dấu hiệu đánh số câu hỏi, phần thi hoặc lời dẫn chung
+  // Nếu không dùng môi trường hoàn chỉnh \begin{ex}...\end{ex} hoặc còn câu hỏi khác ngoài môi trường
   if (rawBlocks.length === 0 && text) {
-    const splitByQuestion = text.split(
-      /(?=(?:\\section\*?\{|PHẦN\s+[I|V|X\d]+|(?:\r?\n|^)\s*(?:\\item\s+|\[?Câu\s*\d+\]?|\[?CÂU\s*\d+\]?|\[?Bài\s*\d+\]?|Question\s*\d+|Dữ\s+kiện\s+sau|Dựa\s+vào\s+thông\s+tin|Trích\s+đoạn\s+sau|Thông\s+tin\s+chung)[\.:\s]))/gi
-    );
+    const questionBoundaryRegex = /(?=(?:\\begin\{(?:ex|bt|vd|cau|exercise|question)\}|\\section\*?\{|PHẦN\s+[I|V|X\d]+|(?:\r?\n|^)\s*(?:\\textbf\{|\\bfseries\s+|{\\bf\s+|\*\*|<b>)?\s*(?:\\item\s+(?:\[[^\]]*\]\s*)?)?(?:(?:Câu|CÂU|Bài|BÀI|Ví\s+dụ|VD|Question|Q)\s*\d+|\[(?:Câu|CÂU|Bài|Question)\s*\d+\]|Dữ\s+kiện\s+sau|Dựa\s+vào\s+thông\s+tin|Trích\s+đoạn\s+sau|Thông\s+tin\s+chung)[\.:\-\/\s\)\b]))/gi;
+    const splitByQuestion = text.split(questionBoundaryRegex);
 
     for (const b of splitByQuestion) {
       const trimmed = b.trim();
       if (trimmed.length > 8) {
+        const headCitMatch = trimmed.match(/^\\begin\{(?:ex|bt|vd|cau|exercise|question)\}(?:\[([^\]]*)\])?([\s\S]*)$/i);
+        if (headCitMatch) {
+          rawBlocks.push({
+            body: headCitMatch[2].replace(/\\end\{(?:ex|bt|vd|cau|exercise|question)\}/gi, '').trim(),
+            citation: headCitMatch[1]?.trim(),
+          });
+        } else {
+          rawBlocks.push({ body: trimmed });
+        }
+      }
+    }
+  }
+
+  // Nếu vẫn chưa tách được câu nào mà văn bản có nhiều đoạn, thử tách theo dòng trống kép \n\n
+  if (rawBlocks.length === 0 && text.length > 15) {
+    const paragraphs = text.split(/\n\s*\n+/);
+    for (const p of paragraphs) {
+      const trimmed = p.trim();
+      if (trimmed.length > 10) {
         rawBlocks.push({ body: trimmed });
       }
     }
@@ -477,12 +573,12 @@ export function parseExamFromLatexOrText(
     const hasChoice = /\\choice(?![a-zA-Z])/.test(questionBody) && !hasChoiceTF;
     const hasTasks = /\\begin\{tasks\}/i.test(questionBody);
     const hasSubABCD =
-      /(?:^|\n|\s{2,}|\t)\s*[a-d]\s*[\)\.\:]/i.test(questionBody) ||
+      /(?:^|\n|\s{2,}|\t)\s*(?:\\textbf\{|{\\bf\s+|\*\*|<b>|\\item\s*(?:\[[^\]]*\]\s*)?)?\s*(?:[a-d]\s*[\)\.\:\-\/]|\\?[a-d]\s*[\)]|\([a-d]\)|\[[a-d]\])/i.test(questionBody) ||
       questionBody.includes('(Đúng)') ||
       questionBody.includes('(Sai)') ||
       questionBody.includes('[Đúng]') ||
       questionBody.includes('[Sai]');
-    const hasMcqABCD = /(?:^|\s{2,}|\n|\t)\s*(?:[A-D]\s*[\.\:\)]|\([A-D]\)|\[[A-D]\])/.test(questionBody);
+    const hasMcqABCD = /(?:^|\s{2,}|\n|\t)\s*(?:\\textbf\{|{\\bf\s+|\*\*|\*|<b>|\\item\s*(?:\[[^\]]*\]\s*)?)?\s*(?:[A-D]\s*[\.\:\-\/\)]|\([A-D]\)|\[[A-D]\])/i.test(questionBody);
     const hasShortAns =
       questionBody.includes('\\shortans') ||
       /(?:Đáp án|Đáp số|Kết quả|=)\s*[:\.]?\s*[-+]?\d+/i.test(questionBody);
@@ -520,6 +616,25 @@ export function parseExamFromLatexOrText(
       return result;
     };
 
+    // Hàm phụ trợ làm sạch nội dung phương án lựa chọn
+    const cleanOptText = (txt: string): { clean: string; isTrue: boolean } => {
+      let isTrue = false;
+      let t = (txt || '').trim();
+      if (t.includes('\\True') || t.includes('(Đúng)') || t.includes('[Đúng]') || t.startsWith('*')) {
+        isTrue = true;
+      }
+      t = t
+        .replace(/\\True(?![a-zA-Z])/g, '')
+        .replace(/\\textbf\{[A-D]\.?\}/gi, '')
+        .replace(/\((?:Đúng|Sai)\)/gi, '')
+        .replace(/\[(?:Đúng|Sai)\]/gi, '')
+        .trim();
+      if (t.startsWith('{') && t.endsWith('}')) {
+        t = t.slice(1, -1).trim();
+      }
+      return { clean: t, isTrue };
+    };
+
     // ==========================================
     // 1. XỬ LÝ PHẦN 1: MCQ 4 PHƯƠNG ÁN LỰA CHỌN
     // ==========================================
@@ -533,21 +648,14 @@ export function parseExamFromLatexOrText(
         prompt = questionBody.slice(0, choiceIdx);
         const optionsBraces = extractBalancedBraces(questionBody, choiceIdx, 4);
         if (optionsBraces.length >= 4) {
-          optA = optionsBraces[0];
-          optB = optionsBraces[1];
-          optC = optionsBraces[2];
-          optD = optionsBraces[3];
-
-          // Kiểm tra xem phương án nào có \True
-          if (optA.includes('\\True') || optA.includes('\\textbf{A}')) { correct = 'A'; }
-          if (optB.includes('\\True') || optB.includes('\\textbf{B}')) { correct = 'B'; }
-          if (optC.includes('\\True') || optC.includes('\\textbf{C}')) { correct = 'C'; }
-          if (optD.includes('\\True') || optD.includes('\\textbf{D}')) { correct = 'D'; }
-
-          optA = optA.replace(/\\(?:True|textbf\{A\})/g, '').trim();
-          optB = optB.replace(/\\(?:True|textbf\{B\})/g, '').trim();
-          optC = optC.replace(/\\(?:True|textbf\{C\})/g, '').trim();
-          optD = optD.replace(/\\(?:True|textbf\{D\})/g, '').trim();
+          const resA = cleanOptText(optionsBraces[0]);
+          const resB = cleanOptText(optionsBraces[1]);
+          const resC = cleanOptText(optionsBraces[2]);
+          const resD = cleanOptText(optionsBraces[3]);
+          optA = resA.clean; if (resA.isTrue) correct = 'A';
+          optB = resB.clean; if (resB.isTrue) correct = 'B';
+          optC = resC.clean; if (resC.isTrue) correct = 'C';
+          optD = resD.clean; if (resD.isTrue) correct = 'D';
         }
       } else if (hasTasks) {
         const tasksMatch = questionBody.match(/\\begin\{tasks\}(?:\[\d+\]|\(\d+\))?([\s\S]*?)\\end\{tasks\}/i);
@@ -555,33 +663,33 @@ export function parseExamFromLatexOrText(
           prompt = questionBody.slice(0, tasksMatch.index);
           const taskItems = tasksMatch[1].split(/\\task/gi).map((t) => t.trim()).filter(Boolean);
           if (taskItems.length >= 4) {
-            optA = taskItems[0];
-            optB = taskItems[1];
-            optC = taskItems[2];
-            optD = taskItems[3];
-
-            if (optA.includes('\\True')) { correct = 'A'; }
-            if (optB.includes('\\True')) { correct = 'B'; }
-            if (optC.includes('\\True')) { correct = 'C'; }
-            if (optD.includes('\\True')) { correct = 'D'; }
-
-            optA = optA.replace(/\\True/g, '').trim();
-            optB = optB.replace(/\\True/g, '').trim();
-            optC = optC.replace(/\\True/g, '').trim();
-            optD = optD.replace(/\\True/g, '').trim();
+            const resA = cleanOptText(taskItems[0]);
+            const resB = cleanOptText(taskItems[1]);
+            const resC = cleanOptText(taskItems[2]);
+            const resD = cleanOptText(taskItems[3]);
+            optA = resA.clean; if (resA.isTrue) correct = 'A';
+            optB = resB.clean; if (resB.isTrue) correct = 'B';
+            optC = resC.clean; if (resC.isTrue) correct = 'C';
+            optD = resD.clean; if (resD.isTrue) correct = 'D';
           }
         }
       } else {
-        // Tách A. B. C. D. thông minh (hỗ trợ cả cùng dòng, xuống dòng, hoặc có tab)
-        const parts = questionBody.split(/(?=(?:^|\s{2,}|\n|\t)\s*(?:[A-D]\s*[\.\:\)]|\([A-D]\)|\[[A-D]\]))/);
-        if (parts.length >= 4) {
+        // Tách A. B. C. D. thông minh (hỗ trợ \textbf{A.}, **A.**, (A), [A], A., A/, A-...)
+        const optSplitRegex = /(?=(?:^|\n|\s{2,}|\t)\s*(?:\\textbf\{|{\\bf\s+|\*\*|\*|<b>|\\item\s*(?:\[[^\]]*\]\s*)?)?\s*(?:[A-D]\s*[\.\:\-\/\)]|\([A-D]\)|\[[A-D]\]))/i;
+        const parts = questionBody.split(optSplitRegex);
+        if (parts.length >= 2) {
           prompt = parts[0];
           for (let i = 1; i < parts.length; i++) {
             const p = parts[i].trim();
-            if (/^(?:A\s*[\.\:\)]|\(A\)|\[A\])/i.test(p)) optA = p.replace(/^(?:A\s*[\.\:\)]|\(A\)|\[A\])\s*/i, '').trim();
-            else if (/^(?:B\s*[\.\:\)]|\(B\)|\[B\])/i.test(p)) optB = p.replace(/^(?:B\s*[\.\:\)]|\(B\)|\[B\])\s*/i, '').trim();
-            else if (/^(?:C\s*[\.\:\)]|\(C\)|\[C\])/i.test(p)) optC = p.replace(/^(?:C\s*[\.\:\)]|\(C\)|\[C\])\s*/i, '').trim();
-            else if (/^(?:D\s*[\.\:\)]|\(D\)|\[D\])/i.test(p)) optD = p.replace(/^(?:D\s*[\.\:\)]|\(D\)|\[D\])\s*/i, '').trim();
+            const optMatch = p.match(/^(?:\\textbf\{|{\\bf\s+|\*\*|\*|<b>|\\item\s*(?:\[[^\]]*\]\s*)?)?\s*(?:([A-D])\s*[\.\:\-\/\)]|\(([A-D])\)|\[([A-D])\])\s*\}?\s*([\s\S]*)$/i);
+            if (optMatch) {
+              const key = (optMatch[1] || optMatch[2] || optMatch[3]).toUpperCase();
+              const { clean, isTrue } = cleanOptText(optMatch[4] || '');
+              if (key === 'A') { optA = clean; if (isTrue) correct = 'A'; }
+              else if (key === 'B') { optB = clean; if (isTrue) correct = 'B'; }
+              else if (key === 'C') { optC = clean; if (isTrue) correct = 'C'; }
+              else if (key === 'D') { optD = clean; if (isTrue) correct = 'D'; }
+            }
           }
         }
       }
@@ -599,12 +707,12 @@ export function parseExamFromLatexOrText(
         correct = tableAnswers.mcqAnswers[globalCount];
       }
 
-      if (prompt && (optA || optB)) {
+      if (optA || optB) {
         questions.push({
           id: `q_p1_${Date.now()}_${globalCount}`,
           part: 'part_1_mcq',
           questionNumber: globalCount,
-          prompt: formatFullPrompt(prompt),
+          prompt: formatFullPrompt(prompt || 'Chọn phương án đúng nhất trong các phương án sau:'),
           options: [
             { key: 'A' as const, text: optA || 'Phương án A' },
             { key: 'B' as const, text: optB || 'Phương án B' },
@@ -639,9 +747,12 @@ export function parseExamFromLatexOrText(
           }
           cleanText = cleanText
             .replace(/\\(?:True|False|TrueTF|FalseTF)/g, '')
-            .replace(/\((?:Đúng|Sai|Đ|S)\)/gi, '')
-            .replace(/\[(?:Đúng|Sai|Đ|S)\]/gi, '')
+            .replace(/\((?:Đúng|Sai|Đ|S|True|False)\)/gi, '')
+            .replace(/\[(?:Đúng|Sai|Đ|S|True|False)\]/gi, '')
             .trim();
+          if (cleanText.startsWith('{') && cleanText.endsWith('}')) {
+            cleanText = cleanText.slice(1, -1).trim();
+          }
           subItems.push({
             id: `tf_${subKeys[idx]}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
             subKey: subKeys[idx],
@@ -650,32 +761,38 @@ export function parseExamFromLatexOrText(
           });
         });
       } else {
-        // Tách chính xác các ý a), b), c), d) kể cả khi cùng dòng hoặc nhiều khoảng trắng
-        const chunks = questionBody.split(/(?=(?:^|\n|\s{2,}|\t)\s*(?:[a-d]\s*[\)\.\:]|\([a-d]\)|\[[a-d]\]))/i);
+        // Tách chính xác các ý a), b), c), d) hỗ trợ \textbf{a)}, **a)**, \item a), a., a)...
+        const tfSplitRegex = /(?=(?:^|\n|\s{2,}|\t)\s*(?:\\textbf\{|{\\bf\s+|\*\*|<b>|\\item\s*(?:\[[^\]]*\]\s*)?)?\s*(?:[a-d]\s*[\)\.\:\-\/]|\\?[a-d]\s*[\)]|\([a-d]\)|\[[a-d]\]))/i;
+        const chunks = questionBody.split(tfSplitRegex);
         if (chunks.length > 1) {
           prompt = chunks[0];
           for (let i = 1; i < chunks.length; i++) {
             const chunk = chunks[i].trim();
-            const chunkMatch = chunk.match(/^(?:([a-d])\s*[\)\.\:]|\(([a-d])\)\s*|\[([a-d])\])\s*([\s\S]*)$/i);
+            const chunkMatch = chunk.match(/^(?:\\textbf\{|{\\bf\s+|\*\*|<b>|\\item\s*(?:\[[^\]]*\]\s*)?)?\s*(?:([a-d])\s*[\)\.\:\-\/]|\\?([a-d])\s*[\)]|\(([a-d])\)|\[([a-d])\])\s*\}?\s*([\s\S]*)$/i);
             if (chunkMatch) {
-              const subKey = (chunkMatch[1] || chunkMatch[2] || chunkMatch[3]).toLowerCase();
-              let itemText = chunkMatch[4].trim();
+              const subKey = (chunkMatch[1] || chunkMatch[2] || chunkMatch[3] || chunkMatch[4]).toLowerCase();
+              let itemText = chunkMatch[5].trim();
               let isCorrect = true;
 
-              // Kiểm tra xem ý này có ghi rõ (Đúng) hoặc (Sai) không
+              // Kiểm tra xem ý này có ghi rõ Đúng hoặc Sai không
               if (
-                /(?:\(|\[)\s*(?:Sai|S)\s*(?:\)|\])/i.test(itemText) ||
+                /(?:\(|\[)\s*(?:Sai|S|False|F)\s*(?:\)|\])/i.test(itemText) ||
                 itemText.includes('\\False') ||
+                itemText.includes('\\FalseTF') ||
                 itemText.toLowerCase().endsWith('sai')
               ) {
                 isCorrect = false;
               }
 
               itemText = itemText
-                .replace(/\((?:Đúng|Sai|Đ|S)\)/gi, '')
-                .replace(/\[(?:Đúng|Sai|Đ|S)\]/gi, '')
+                .replace(/\((?:Đúng|Sai|Đ|S|True|False)\)/gi, '')
+                .replace(/\[(?:Đúng|Sai|Đ|S|True|False)\]/gi, '')
                 .replace(/\\(?:True|False|TrueTF|FalseTF)/g, '')
                 .trim();
+
+              if (itemText.startsWith('{') && itemText.endsWith('}')) {
+                itemText = itemText.slice(1, -1).trim();
+              }
 
               if (itemText) {
                 subItems.push({
@@ -703,7 +820,7 @@ export function parseExamFromLatexOrText(
         });
       }
 
-      if (prompt && subItems.length > 0) {
+      if (subItems.length > 0) {
         const presentKeys = subItems.map((s) => s.subKey);
         ['a', 'b', 'c', 'd'].forEach((k) => {
           if (!presentKeys.includes(k)) {
@@ -732,7 +849,6 @@ export function parseExamFromLatexOrText(
     // ==========================================
     // 3. XỬ LÝ PHẦN 3: TRẮC NGHIỆM TRẢ LỜI NGẮN
     // ==========================================
-    // Chỉ tạo câu hỏi Phần 3 nếu là section part 3 hoặc nội dung thực sự chứa câu hỏi toán học
     const isMathQuestionSentence =
       /(?:tính|tìm|bao\s+nhiêu|hỏi|giá\s+trị|đáp\s+án|đáp\s+số|kết\s+quả|bằng|nghiệm|cho|thể\s+tích|khoảng\s+cách|đạo\s+hàm|tích\s+phân|nguyên\s+hàm|tọa\s+độ|xác\s+suất|hàm\s+số|\?|\$)/i.test(questionBody);
 
@@ -744,13 +860,19 @@ export function parseExamFromLatexOrText(
         const shortIdx = questionBody.indexOf('\\shortans');
         const ansBraces = extractBalancedBraces(questionBody, shortIdx, 1);
         if (ansBraces.length > 0) {
-          ans = ansBraces[0].trim().slice(0, 4);
+          ans = ansBraces[0].replace(/[\$\{\}]/g, '').trim().slice(0, 4);
         }
         prompt = questionBody.slice(0, shortIdx);
       } else {
         const numMatch = questionBody.match(/(?:Đáp án|Đáp số|Kết quả|=\s*)\s*[:\.]?\s*([-+]?\d+(?:[\.,\/]\d+)?)/i);
         if (numMatch) {
           ans = numMatch[1].replace(',', '.').slice(0, 4);
+        } else {
+          // Thử trích xuất từ phần Lời giải nếu có câu kết: "Vậy đáp số là 15"
+          const expNumMatch = explanationText.match(/(?:Vậy|Đáp số|kết quả)(?:[^\d\n\r]*)([-+]?\d+(?:[\.,]\d+)?)/i);
+          if (expNumMatch) {
+            ans = expNumMatch[1].replace(',', '.').slice(0, 4);
+          }
         }
       }
 
@@ -764,7 +886,7 @@ export function parseExamFromLatexOrText(
         ans = tableAnswers.shortAnswers[globalCount];
       }
 
-      const formattedPrompt = formatFullPrompt(prompt);
+      const formattedPrompt = formatFullPrompt(prompt || 'Tính giá trị của biểu thức toán học hoặc bài toán sau:');
       if (formattedPrompt.length > 5) {
         questions.push({
           id: `q_p3_${Date.now()}_${globalCount}`,

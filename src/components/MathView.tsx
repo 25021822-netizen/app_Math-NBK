@@ -39,9 +39,7 @@ function isPureLatexFormula(str: string): boolean {
 }
 
 // Bổ sung các Macro toán học đặc thù của giáo viên Việt Nam (Hệ phương trình \heva, \hoac, vi phân, vector...)
-const VIETNAMESE_MATH_MACROS = {
-  '\\heva': '\\begin{cases}#1\\end{cases}',
-  '\\hoac': '\\left[\\begin{array}{l}#1\\end{array}\\right.',
+const VIETNAMESE_MATH_MACROS: Record<string, string> = {
   '\\dd': '\\mathrm{d}',
   '\\dx': '\\mathrm{d}x',
   '\\dy': '\\mathrm{d}y',
@@ -52,19 +50,60 @@ const VIETNAMESE_MATH_MACROS = {
   '\\False': '',
   '\\TrueTF': '',
   '\\FalseTF': '',
-  '\\vt': '\\overrightarrow{#1}',
-  '\\vect': '\\overrightarrow{#1}',
-  '\\vv': '\\overrightarrow{#1}',
   '\\degree': '^\\circ',
   '\\deg': '^\\circ',
+  '\\arctg': '\\arctan',
+  '\\tg': '\\tan',
+  '\\cotg': '\\cot',
+  '\\arcsin': '\\arcsin',
+  '\\arccos': '\\arccos',
 };
 
-function cleanMathFormula(f: string): string {
+export function cleanMathFormula(f: string): string {
+  if (!f) return '';
   return f
+    // Khử các macro đánh dấu đáp án của gói test/ex_test
     .replace(/\\True(?![a-zA-Z])/g, '')
     .replace(/\\False(?![a-zA-Z])/g, '')
     .replace(/\\TrueTF(?![a-zA-Z])/g, '')
     .replace(/\\FalseTF(?![a-zA-Z])/g, '')
+    // Chuyển đổi hệ phương trình \heva thành \begin{cases} ... \end{cases}
+    .replace(/\\heva\*?\{([\s\S]*?)\}/g, '\\begin{cases}$1\\end{cases}')
+    // Chuyển đổi tuyển chọn \hoac thành ngoặc vuông hệ phương trình
+    .replace(/\\hoac\*?\{([\s\S]*?)\}/g, '\\left[\\begin{array}{l}$1\\end{array}\\right.')
+    // Chuẩn hóa phân số và nhị thức
+    .replace(/\\dfrac(?![a-zA-Z])/g, '\\frac')
+    .replace(/\\tbinom(?![a-zA-Z])/g, '\\binom')
+    .replace(/\\dbinom(?![a-zA-Z])/g, '\\binom')
+    // Chuẩn hóa bất đẳng thức
+    .replace(/\\leqslant(?![a-zA-Z])/g, '\\leq')
+    .replace(/\\geqslant(?![a-zA-Z])/g, '\\geq')
+    // Chuẩn hóa vector: \vect, \vt, \vv -> \vec
+    .replace(/\\(?:vect|vt|vv)\{/g, '\\vec{')
+    // Chuẩn hóa tập số thực, số tự nhiên, nguyên, hữu tỉ, phức
+    .replace(/\\R(?![a-zA-Z])/g, '\\mathbb{R}')
+    .replace(/\\N(?![a-zA-Z])/g, '\\mathbb{N}')
+    .replace(/\\Z(?![a-zA-Z])/g, '\\mathbb{Z}')
+    .replace(/\\Q(?![a-zA-Z])/g, '\\mathbb{Q}')
+    .replace(/\\C(?![a-zA-Z])/g, '\\mathbb{C}')
+    // Chuẩn hóa độ góc: \degree, \deg -> ^\circ
+    .replace(/\\degree(?![a-zA-Z])/g, '^\\circ')
+    // Chuẩn hóa hàm số lượng giác kiểu cũ của SGK VN: \tg -> \tan, \cotg -> \cot
+    .replace(/\\tg(?![a-zA-Z])/g, '\\tan')
+    .replace(/\\cotg(?![a-zA-Z])/g, '\\cot')
+    // Chuẩn hóa giới hạn, tích phân limits
+    .replace(/\\lim\\limits/g, '\\lim')
+    .replace(/\\int\\limits/g, '\\int')
+    .replace(/\\sum\\limits/g, '\\sum')
+    .replace(/\\prod\\limits/g, '\\prod')
+    .replace(/\\min\\limits/g, '\\min')
+    .replace(/\\max\\limits/g, '\\max')
+    .replace(/\\inf\\limits/g, '\\inf')
+    .replace(/\\sup\\limits/g, '\\sup')
+    // Khử dấu phần trăm chưa escape gây cắt cụt công thức trong LaTeX
+    .replace(/(^|[^\\])%/g, '$1\\%')
+    // Khử các khối TikZ lọt vào công thức
+    .replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '[Hình vẽ đồ thị]')
     .trim();
 }
 
@@ -74,6 +113,12 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
 
   // 1. Chuẩn hóa font Unicode tiếng Việt (NFC) tránh lỗi phông chữ gõ kiểu cũ (TCVN3 / NFD)
   let normalized = rawInput.normalize('NFC').trim();
+
+  // Tự động đóng dấu $ lẻ nếu bị thiếu ở cuối chuỗi
+  const unescapedDollars = (normalized.match(/(^|[^\\])\$/g) || []).length;
+  if (unescapedDollars % 2 !== 0) {
+    normalized += '$';
+  }
 
   // 2. Nếu chuỗi bắt đầu và kết thúc bằng $$...$$ hoặc \[...\]
   if (
@@ -135,13 +180,8 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
     }
   }
 
-  // 5. Tách văn bản hỗn hợp chứa các khối $...$, $$...$$, \(...\), \[...\]
-  // Regex bắt các công thức toán:
-  // - $$...$$ (Block)
-  // - \[...\] (Block)
-  // - $...$ (Inline)
-  // - \(...\) (Inline)
-  const mathRegex = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\$[^\$\n\r]+?\$|\\\([\s\S]+?\\\))/g;
+  // 5. Tách văn bản hỗn hợp chứa các khối $...$, $$...$$, \(...\), \[...\], và các môi trường toán không bọc $
+  const mathRegex = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\begin\{(?:cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|aligned|align\*?|gather\*?|array)\}[\s\S]*?\\end\{(?:cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|aligned|align\*?|gather\*?|array)\}|\\(?:heva|hoac)\*?\{[\s\S]*?\}|\$[^\$]+?\$|\\\([\s\S]+?\\\))/g;
 
   const parts = normalized.split(mathRegex);
   let resultHtml = '';
@@ -169,7 +209,26 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
         resultHtml += `<div class="katex-fallback font-mono text-xs my-2">${escapeHtml(formula)}</div>`;
       }
     }
-    // B. Khối toán Inline: $...$ hoặc \(...\)
+    // B. Môi trường toán đứng độc lập (như \begin{cases}...\end{cases}, \heva{...}, \hoac{...})
+    else if (
+      part.startsWith('\\begin{') ||
+      part.startsWith('\\heva') ||
+      part.startsWith('\\hoac')
+    ) {
+      const formula = cleanMathFormula(part);
+      try {
+        resultHtml += katex.renderToString(formula, {
+          displayMode: true,
+          throwOnError: false,
+          strict: false,
+          trust: true,
+          macros: VIETNAMESE_MATH_MACROS,
+        });
+      } catch {
+        resultHtml += `<span class="katex-fallback font-mono text-xs">${escapeHtml(formula)}</span>`;
+      }
+    }
+    // C. Khối toán Inline: $...$ hoặc \(...\)
     else if (
       (part.startsWith('$') && part.endsWith('$') && part.length >= 2) ||
       (part.startsWith('\\(') && part.endsWith('\\)') && part.length >= 4)
@@ -188,7 +247,7 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
         resultHtml += `<span class="katex-fallback font-mono text-xs">${escapeHtml(formula)}</span>`;
       }
     }
-    // C. Văn bản tiếng Việt thông thường
+    // D. Văn bản tiếng Việt thông thường
     else {
       // Escape HTML và bảo lưu các ký tự xuống dòng
       const safeText = escapeHtml(part).replace(/\r?\n/g, '<br />');
