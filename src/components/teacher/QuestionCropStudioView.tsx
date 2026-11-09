@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Question, Exam, QuestionPart1MCQ, QuestionPart2TrueFalse, QuestionPart3ShortAnswer } from '../../types/math';
+import { Question, Exam, QuestionPart1MCQ, QuestionPart2TrueFalse, QuestionPart3ShortAnswer, Classroom } from '../../types/math';
 import { MathView } from '../MathView';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
 import { cleanPdfNoiseAndOcr } from '../../lib/ocrNoiseCleaner';
@@ -46,6 +46,7 @@ interface QuestionCropStudioViewProps {
   initialTitle?: string;
   initialGrade?: 10 | 11 | 12;
   initialDuration?: number;
+  classrooms?: Classroom[];
   onPublishExam: (exam: Exam) => void;
   onTransferToManualEditor: (questions: Question[], examMeta: { title: string; grade: 10 | 11 | 12; duration: number }) => void;
   onBackToUpload: () => void;
@@ -58,6 +59,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   initialTitle = '',
   initialGrade = 12,
   initialDuration = 90,
+  classrooms = [],
   onPublishExam,
   onTransferToManualEditor,
   onBackToUpload,
@@ -71,6 +73,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [examDuration, setExamDuration] = useState<number>(initialDuration);
   const [enableScreenMonitoring, setEnableScreenMonitoring] = useState<boolean>(true);
   const [maxInfractions, setMaxInfractions] = useState<number>(3);
+  const [distributionType, setDistributionType] = useState<'classroom' | 'repository' | 'both'>('classroom');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>(() =>
+    classrooms && classrooms.length > 0 ? classrooms.map((c) => c.id) : []
+  );
 
   // Danh sách câu hỏi đã cắt vào đề (KHÔNG chứa câu hỏi mẫu mặc định)
   const [questions, setQuestions] = useState<Question[]>(() => {
@@ -279,7 +285,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     }
   };
 
-  // Trích xuất ảnh cắt chất lượng cao từ canvas hoặc hình ảnh thực tế
+  // Trích xuất ảnh cắt chất lượng cao từ canvas hoặc hình ảnh thực tế (nén nhẹ JPEG 0.88 để giữ độ nét nhưng không làm phình dung lượng đề thi)
   const getCroppedDataUrl = (): string => {
     const source = pageCanvasRef.current || imageElementRef.current;
     const container = containerRef.current;
@@ -301,15 +307,25 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
       if (srcW <= 0 || srcH <= 0) return '';
 
+      // Tối ưu hóa kích thước tối đa 1200px để giữ nguyên tỉ lệ và độ phân giải cao cho công thức toán
+      let outW = srcW;
+      let outH = srcH;
+      const MAX_WIDTH = 1200;
+      if (outW > MAX_WIDTH) {
+        outH = Math.round((outH * MAX_WIDTH) / outW);
+        outW = MAX_WIDTH;
+      }
+
       const cropCanvas = document.createElement('canvas');
-      cropCanvas.width = srcW;
-      cropCanvas.height = srcH;
+      cropCanvas.width = outW;
+      cropCanvas.height = outH;
       const ctx = cropCanvas.getContext('2d');
       if (ctx) {
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, srcW, srcH);
-        ctx.drawImage(source, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
-        return cropCanvas.toDataURL('image/png');
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.drawImage(source, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+        // Dùng JPEG 0.88 để ảnh siêu nét cho KaTeX và đồ thị mà dung lượng chỉ ~15-30KB, không bị mất khi giao vào lớp
+        return cropCanvas.toDataURL('image/jpeg', 0.88);
       }
     } catch (err) {
       console.warn('Lỗi cắt ảnh từ tài liệu:', err);
@@ -333,6 +349,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         questionNumber: newQNumber,
         prompt: `Câu ${newQNumber}. Xét tính đúng/sai của các mệnh đề sau:`,
         pdfAttachmentUrl: snippetDataUrl || undefined,
+        imageAttachment: snippetDataUrl || undefined,
         items: [
           { id: `tf_a_${Date.now()}`, subKey: 'a', text: '', isCorrect: true },
           { id: `tf_b_${Date.now()}`, subKey: 'b', text: '', isCorrect: true },
@@ -349,6 +366,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         questionNumber: newQNumber,
         prompt: `Câu ${newQNumber}. Điền đáp số của bài toán:`,
         pdfAttachmentUrl: snippetDataUrl || undefined,
+        imageAttachment: snippetDataUrl || undefined,
         correctAnswer: '',
         explanation: '',
         points: 0.5,
@@ -360,6 +378,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         questionNumber: newQNumber,
         prompt: `Câu ${newQNumber}. Chọn một phương án đúng nhất:`,
         pdfAttachmentUrl: snippetDataUrl || undefined,
+        imageAttachment: snippetDataUrl || undefined,
         options: [
           { key: 'A', text: '' },
           { key: 'B', text: '' },
@@ -393,7 +412,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       return;
     }
 
-    handleUpdateQuestion(activeQuestionId, { pdfAttachmentUrl: snippetDataUrl });
+    handleUpdateQuestion(activeQuestionId, {
+      pdfAttachmentUrl: snippetDataUrl,
+      imageAttachment: snippetDataUrl,
+    });
     const targetQ = questions.find((q) => q.id === activeQuestionId);
     setStatusMessage(`Đã cập nhật ảnh đề bài cho Câu ${targetQ?.questionNumber || ''}!`);
     setCropBox(null);
@@ -645,6 +667,15 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       return;
     }
 
+    const finalTargetClassIds =
+      distributionType === 'repository'
+        ? undefined
+        : selectedClassIds.length > 0
+        ? selectedClassIds
+        : classrooms && classrooms.length > 0
+        ? classrooms.map((c) => c.id)
+        : undefined;
+
     const newExam: Exam = {
       id: `exam_crop_${Date.now()}`,
       title: examTitle.trim() || 'Đề Thi Biên Soạn Từ Phòng Cắt Câu',
@@ -656,7 +687,8 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       createdBy: currentUserName || 'Giáo viên',
       createdAt: new Date().toISOString(),
       questions,
-      distributionType: 'repository',
+      distributionType,
+      targetClassIds: finalTargetClassIds,
       allowViewAnswersAfterSubmit: true,
       enableScreenMonitoring,
       maxInfractions,
@@ -762,9 +794,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
           </div>
         )}
 
-        {/* THANH CẤU HÌNH THÔNG SỐ ĐỀ THI */}
+        {/* THANH CẤU HÌNH THÔNG SỐ ĐỀ THI & GIAO LỚP */}
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs pt-1">
-          <div className="sm:col-span-6 space-y-1">
+          <div className="sm:col-span-5 space-y-1">
             <label className="font-bold text-slate-700">Tên Đề Thi *</label>
             <input
               type="text"
@@ -775,33 +807,75 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
             />
           </div>
 
-          <div className="sm:col-span-3 space-y-1">
+          <div className="sm:col-span-2 space-y-1">
             <label className="font-bold text-slate-700">Khối Lớp *</label>
             <select
               value={examGrade}
               onChange={(e) => setExamGrade(Number(e.target.value) as 10 | 11 | 12)}
               className="w-full h-9 px-3 rounded-xl border border-slate-300 font-bold focus:border-indigo-600 focus:outline-none bg-white cursor-pointer"
             >
-              <option value={10}>Lớp 10 (Chương trình mới)</option>
-              <option value={11}>Lớp 11 (Chương trình mới)</option>
-              <option value={12}>Lớp 12 (Tốt Nghiệp THPT)</option>
+              <option value={10}>Lớp 10</option>
+              <option value={11}>Lớp 11</option>
+              <option value={12}>Lớp 12</option>
             </select>
           </div>
 
-          <div className="sm:col-span-3 space-y-1">
-            <label className="font-bold text-slate-700">Thời Gian Làm Bài *</label>
+          <div className="sm:col-span-2 space-y-1">
+            <label className="font-bold text-slate-700">Thời Gian *</label>
             <select
               value={examDuration}
               onChange={(e) => setExamDuration(Number(e.target.value))}
               className="w-full h-9 px-3 rounded-xl border border-slate-300 font-bold focus:border-indigo-600 focus:outline-none bg-white cursor-pointer"
             >
-              <option value={45}>45 Phút (1 tiết)</option>
-              <option value={60}>60 Phút (Giữa kỳ)</option>
-              <option value={90}>90 Phút (Chuẩn BGD)</option>
-              <option value={120}>120 Phút (Khảo sát)</option>
+              <option value={45}>45 Phút</option>
+              <option value={60}>60 Phút</option>
+              <option value={90}>90 Phút</option>
+              <option value={120}>120 Phút</option>
+            </select>
+          </div>
+
+          <div className="sm:col-span-3 space-y-1">
+            <label className="font-bold text-slate-700">Phân Phối / Giao Đề *</label>
+            <select
+              value={distributionType}
+              onChange={(e) => setDistributionType(e.target.value as any)}
+              className="w-full h-9 px-3 rounded-xl border border-indigo-300 font-bold text-indigo-900 bg-indigo-50/60 focus:outline-none cursor-pointer"
+            >
+              <option value="classroom">Giao trực tiếp cho Nhóm Lớp</option>
+              <option value="both">Cả hai (Kho Đề & Nhóm Lớp)</option>
+              <option value="repository">Chỉ lưu vào Kho Đề</option>
             </select>
           </div>
         </div>
+
+        {/* Danh sách nhóm lớp được giao nếu chọn classroom / both */}
+        {distributionType !== 'repository' && classrooms && classrooms.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap text-xs pt-2 border-t border-slate-100">
+            <span className="font-bold text-slate-600 text-[11px]">Nhóm lớp nhận đề thi:</span>
+            {classrooms.map((cls) => {
+              const isSelected = selectedClassIds.includes(cls.id);
+              return (
+                <button
+                  key={cls.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedClassIds((prev) =>
+                      prev.includes(cls.id) ? prev.filter((id) => id !== cls.id) : [...prev, cls.id]
+                    );
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                  }`}
+                >
+                  {isSelected ? '✓ ' : '+ '}
+                  {cls.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ========================================================= */}

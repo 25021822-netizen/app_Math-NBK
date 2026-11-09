@@ -2887,6 +2887,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           initialTitle={aiExamTitle || 'Đề Thi Phân Đoạn Mới'}
           initialGrade={aiGrade}
           initialDuration={aiDuration}
+          classrooms={classrooms}
           currentUserName={currentUserName}
           onPublishExam={(newExam) => {
             onPublishExam?.(newExam);

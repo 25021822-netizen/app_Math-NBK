@@ -433,9 +433,16 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                     <p className="font-semibold text-slate-900">{q.prompt}</p>
 
                     {/* Ảnh đính kèm nếu có */}
-                    {q.imageAttachment && (
+                    {(q.pdfAttachmentUrl || q.imageAttachment) && (
                       <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block">
-                        <img src={q.imageAttachment} alt="Ảnh đề bài" className="max-h-40 rounded-lg object-contain bg-white" />
+                        <img src={q.pdfAttachmentUrl || q.imageAttachment} alt="Ảnh đề bài" className="max-h-40 rounded-lg object-contain bg-white" />
+                      </div>
+                    )}
+
+                    {/* Ảnh khối đáp án nếu có */}
+                    {q.optionsAttachmentUrl && (
+                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block">
+                        <img src={q.optionsAttachmentUrl} alt="Khối đáp án" className="max-h-40 rounded-lg object-contain bg-white" />
                       </div>
                     )}
 

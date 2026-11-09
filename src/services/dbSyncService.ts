@@ -701,15 +701,24 @@ function sanitizeExamForFirestore(exam: Exam): any {
       if (q.explanation) cleanQ.explanation = q.explanation;
       if (q.pdfAttachmentName) cleanQ.pdfAttachmentName = q.pdfAttachmentName;
 
-      // Không lưu ảnh base64 vượt quá 300KB vào trực tiếp tài liệu Firestore để tránh vượt quota document
-      if (q.imageAttachment) {
-        cleanQ.imageAttachment = q.imageAttachment.length > 300000 ? '' : q.imageAttachment;
+      // Bảo toàn ảnh cắt đề bài (hỗ trợ cả pdfAttachmentUrl và imageAttachment)
+      const promptImg = q.pdfAttachmentUrl || q.imageAttachment;
+      if (promptImg) {
+        cleanQ.pdfAttachmentUrl = promptImg;
+        cleanQ.imageAttachment = promptImg;
+      }
+
+      // Bảo toàn khối ảnh cắt đáp án (A-B-C-D hoặc a-b-c-d liền nhau)
+      if (q.optionsAttachmentUrl) {
+        cleanQ.optionsAttachmentUrl = q.optionsAttachmentUrl;
       }
 
       if (q.part === 'part_1_mcq') {
         cleanQ.options = (q.options || []).map((opt) => ({
           key: opt.key,
           text: opt.text || '',
+          imageUrl: opt.imageUrl || undefined,
+          latex: opt.latex || undefined,
         }));
         cleanQ.correctAnswer = q.correctAnswer || 'A';
       } else if (q.part === 'part_2_true_false') {
@@ -718,6 +727,8 @@ function sanitizeExamForFirestore(exam: Exam): any {
           subKey: item.subKey,
           text: item.text || '',
           isCorrect: Boolean(item.isCorrect),
+          imageUrl: item.imageUrl || undefined,
+          latex: item.latex || undefined,
         }));
       } else if (q.part === 'part_3_short_answer') {
         cleanQ.correctAnswer = String(q.correctAnswer || '').trim().slice(0, 4);

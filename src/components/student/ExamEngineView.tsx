@@ -831,11 +831,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     </div>
 
                     {/* Ảnh đính kèm câu hỏi nếu có */}
-                    {q.imageAttachment && (
+                    {(q.pdfAttachmentUrl || q.imageAttachment) && (
                       <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
-                        <div className="relative group cursor-pointer" onClick={() => setZoomedImage(q.imageAttachment!)}>
+                        <div className="relative group cursor-pointer" onClick={() => setZoomedImage((q.pdfAttachmentUrl || q.imageAttachment)!)}>
                           <img
-                            src={q.imageAttachment}
+                            src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt="Hình vẽ đính kèm đề bài"
                             className="max-h-52 rounded-xl object-contain bg-white"
                           />
@@ -974,11 +974,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     </div>
 
                     {/* Ảnh đính kèm */}
-                    {q.imageAttachment && (
+                    {(q.pdfAttachmentUrl || q.imageAttachment) && (
                       <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
-                        <div className="relative group cursor-pointer" onClick={() => setZoomedImage(q.imageAttachment!)}>
+                        <div className="relative group cursor-pointer" onClick={() => setZoomedImage((q.pdfAttachmentUrl || q.imageAttachment)!)}>
                           <img
-                            src={q.imageAttachment}
+                            src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt="Hình vẽ đính kèm đề bài"
                             className="max-h-52 rounded-xl object-contain bg-white"
                           />
@@ -1115,11 +1115,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     </div>
 
                     {/* Ảnh đính kèm */}
-                    {q.imageAttachment && (
+                    {(q.pdfAttachmentUrl || q.imageAttachment) && (
                       <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
-                        <div className="relative group cursor-pointer" onClick={() => setZoomedImage(q.imageAttachment!)}>
+                        <div className="relative group cursor-pointer" onClick={() => setZoomedImage((q.pdfAttachmentUrl || q.imageAttachment)!)}>
                           <img
-                            src={q.imageAttachment}
+                            src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt="Hình vẽ đính kèm đề bài"
                             className="max-h-52 rounded-xl object-contain bg-white"
                           />
@@ -1127,6 +1127,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                             <ZoomIn size={16} className="mr-1" /> Phóng to hình ảnh
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Ảnh khối đáp án / lời giải nếu có */}
+                    {q.optionsAttachmentUrl && (
+                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2">
+                        <img src={q.optionsAttachmentUrl} alt="Đáp án/lời giải đính kèm" className="max-h-56 rounded-xl object-contain bg-white" />
                       </div>
                     )}
 
