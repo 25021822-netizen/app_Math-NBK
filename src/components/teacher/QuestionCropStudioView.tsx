@@ -30,6 +30,9 @@ import {
   X,
   RefreshCw,
   Copy,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
 } from 'lucide-react';
 
 export interface CropDocumentData {
@@ -82,9 +85,13 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [isAiCroppingAll, setIsAiCroppingAll] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'canvas' | 'pdf_document'>(
-    documentData?.isPdf && documentData?.fileBase64 ? 'pdf_document' : 'canvas'
-  );
+  const [viewMode, setViewMode] = useState<'canvas' | 'pdf_document'>('canvas');
+
+  // Điều khiển trang PDF
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [isRenderingPdf, setIsRenderingPdf] = useState<boolean>(false);
+  const [pdfRenderError, setPdfRenderError] = useState<string | null>(null);
 
   // Canvas & tương tác cắt khung
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -95,8 +102,111 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [lastCroppedSnippetUrl, setLastCroppedSnippetUrl] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pageCanvasRef = useRef<HTMLCanvasElement>(null);
   const imageElementRef = useRef<HTMLImageElement>(null);
+  const pdfDocRef = useRef<any>(null);
+
+  // Khởi tạo tài liệu PDF qua PDF.js khi có documentData
+  useEffect(() => {
+    if (!documentData?.isPdf || !documentData?.fileBase64) return;
+    let isMounted = true;
+
+    const loadPdfDoc = async () => {
+      try {
+        setIsRenderingPdf(true);
+        setPdfRenderError(null);
+
+        let pdfjs = (window as any).pdfjsLib;
+        if (!pdfjs) {
+          let attempts = 0;
+          while (!pdfjs && attempts < 30) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            pdfjs = (window as any).pdfjsLib;
+            attempts++;
+          }
+        }
+
+        if (!pdfjs) {
+          if (isMounted) {
+            setPdfRenderError('Đang khởi tạo trình hiển thị PDF...');
+            setIsRenderingPdf(false);
+          }
+          return;
+        }
+
+        const rawBase64 = documentData?.fileBase64 || '';
+        const cleanB64 = rawBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+        if (!cleanB64) {
+          setIsRenderingPdf(false);
+          return;
+        }
+        const binaryString = atob(cleanB64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const loadingTask = pdfjs.getDocument({ data: bytes });
+        const pdf = await loadingTask.promise;
+        if (!isMounted) return;
+
+        pdfDocRef.current = pdf;
+        setTotalPages(pdf.numPages);
+        setCurrentPage(1);
+      } catch (err: any) {
+        console.warn('Lỗi phân giải tệp PDF trên canvas:', err);
+        if (isMounted) {
+          setPdfRenderError('Không thể nạp trực tiếp PDF lên canvas. Thầy/Cô có thể bấm xem "File PDF Gốc".');
+        }
+      } finally {
+        if (isMounted) setIsRenderingPdf(false);
+      }
+    };
+
+    loadPdfDoc();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [documentData?.fileBase64, documentData?.isPdf]);
+
+  // Render trang PDF hiện tại lên Canvas khi trang hoặc tài liệu thay đổi
+  useEffect(() => {
+    if (!pdfDocRef.current) return;
+    let isMounted = true;
+
+    const renderCurrentPdfPage = async () => {
+      try {
+        setIsRenderingPdf(true);
+        const page = await pdfDocRef.current.getPage(currentPage);
+        if (!isMounted) return;
+
+        const canvas = pageCanvasRef.current;
+        if (!canvas) return;
+
+        // Render ở độ nét cao (scale 1.8) để công thức KaTeX không bị vỡ hạt
+        const viewport = page.getViewport({ scale: 1.8 });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+      } catch (err: any) {
+        console.warn('Lỗi vẽ trang PDF lên canvas:', err);
+      } finally {
+        if (isMounted) setIsRenderingPdf(false);
+      }
+    };
+
+    renderCurrentPdfPage();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentPage, totalPages]);
 
   // Nếu chưa có câu hỏi nào và có tài liệu, tự động bóc tách ban đầu
   useEffect(() => {
@@ -105,13 +215,21 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     }
   }, [documentData]);
 
-  // Bắt đầu vẽ khung cắt
+  // Bắt đầu vẽ khung cắt với tính toán tọa độ chính xác tuyệt đối
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / zoomLevel;
-    const y = (e.clientY - rect.top) / zoomLevel;
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const scaleX = container.offsetWidth / rect.width;
+    const scaleY = container.offsetHeight / rect.height;
+
+    const rawX = (e.clientX - rect.left) * scaleX;
+    const rawY = (e.clientY - rect.top) * scaleY;
+
+    const x = Math.max(0, Math.min(container.offsetWidth, rawX));
+    const y = Math.max(0, Math.min(container.offsetHeight, rawY));
 
     setIsDrawingCrop(true);
     setCropStart({ x, y });
@@ -121,9 +239,15 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   // Kéo chuột để mở rộng khung cắt
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDrawingCrop || !cropStart || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const currentX = (e.clientX - rect.left) / zoomLevel;
-    const currentY = (e.clientY - rect.top) / zoomLevel;
+    const container = containerRef.current;
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const scaleX = container.offsetWidth / rect.width;
+    const scaleY = container.offsetHeight / rect.height;
+
+    const currentX = Math.max(0, Math.min(container.offsetWidth, (e.clientX - rect.left) * scaleX));
+    const currentY = Math.max(0, Math.min(container.offsetHeight, (e.clientY - rect.top) * scaleY));
 
     const x = Math.min(cropStart.x, currentX);
     const y = Math.min(cropStart.y, currentY);
@@ -138,28 +262,71 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     setIsDrawingCrop(false);
   };
 
+  // Trích xuất ảnh cắt chất lượng cao từ canvas hoặc hình ảnh thực tế
+  const getCroppedDataUrl = (): string => {
+    const source = pageCanvasRef.current || imageElementRef.current;
+    const container = containerRef.current;
+    if (!source || !cropBox || cropBox.w < 10 || cropBox.h < 10 || !container) {
+      return '';
+    }
+
+    try {
+      const actualWidth = 'naturalWidth' in source ? (source as HTMLImageElement).naturalWidth : (source as HTMLCanvasElement).width;
+      const actualHeight = 'naturalHeight' in source ? (source as HTMLImageElement).naturalHeight : (source as HTMLCanvasElement).height;
+
+      const scaleX = actualWidth / container.offsetWidth;
+      const scaleY = actualHeight / container.offsetHeight;
+
+      const srcX = Math.max(0, Math.round(cropBox.x * scaleX));
+      const srcY = Math.max(0, Math.round(cropBox.y * scaleY));
+      const srcW = Math.min(actualWidth - srcX, Math.round(cropBox.w * scaleX));
+      const srcH = Math.min(actualHeight - srcY, Math.round(cropBox.h * scaleY));
+
+      if (srcW <= 0 || srcH <= 0) return '';
+
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = srcW;
+      cropCanvas.height = srcH;
+      const ctx = cropCanvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, srcW, srcH);
+        ctx.drawImage(source, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+        const dataUrl = cropCanvas.toDataURL('image/png');
+        setLastCroppedSnippetUrl(dataUrl);
+        return dataUrl;
+      }
+    } catch (err) {
+      console.warn('Lỗi cắt ảnh từ tài liệu:', err);
+    }
+    return '';
+  };
+
+  // Gắn ảnh vùng cắt vào câu hỏi đang chọn
+  const handleAttachCropToActiveQuestion = () => {
+    if (!activeQuestionId) {
+      setStatusMessage('Vui lòng chọn một câu hỏi ở cột bên phải để gắn ảnh!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+    const snippetDataUrl = getCroppedDataUrl();
+    if (!snippetDataUrl) {
+      setStatusMessage('Vui lòng khoanh vùng một khu vực trên bàn cắt trước khi gắn!');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+
+    handleUpdateQuestion(activeQuestionId, { pdfAttachmentUrl: snippetDataUrl });
+    const targetQ = questions.find((q) => q.id === activeQuestionId);
+    setStatusMessage(`Đã gắn hình ảnh vừa cắt vào Câu ${targetQ?.questionNumber || ''}!`);
+    setCropBox(null);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
   // Thực hiện cắt khung hiện tại và tạo câu hỏi mới vào danh sách
   const handleCommitCropToQuestion = (part: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = 'part_1_mcq') => {
     const newQNumber = questions.length + 1;
-    let snippetDataUrl = '';
-
-    // Nếu có ảnh hiển thị, trích xuất vùng cắt sang canvas
-    if (imageElementRef.current && cropBox && cropBox.w > 20 && cropBox.h > 20) {
-      try {
-        const img = imageElementRef.current;
-        const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = cropBox.w;
-        cropCanvas.height = cropBox.h;
-        const ctx = cropCanvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, cropBox.x, cropBox.y, cropBox.w, cropBox.h, 0, 0, cropBox.w, cropBox.h);
-          snippetDataUrl = cropCanvas.toDataURL('image/png');
-          setLastCroppedSnippetUrl(snippetDataUrl);
-        }
-      } catch (err) {
-        console.warn('Lỗi trích xuất ảnh cắt từ canvas:', err);
-      }
-    }
+    const snippetDataUrl = getCroppedDataUrl();
 
     let newQuestion: Question;
 
@@ -488,22 +655,45 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Crop size={18} className="text-indigo-600" />
-                <h3 className="font-extrabold text-sm text-slate-900">Bàn Cắt Tài Liệu & Đọc File</h3>
+                <h3 className="font-extrabold text-sm text-slate-900">Bàn Cắt Tài Liệu Trực Quan</h3>
               </div>
+
+              {/* Chuyển trang PDF */}
+              {documentData?.isPdf && totalPages > 1 && (
+                <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 p-1 rounded-xl text-xs font-bold text-indigo-950">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1 || isRenderingPdf}
+                    onClick={() => {
+                      setCurrentPage((p) => Math.max(1, p - 1));
+                      setCropBox(null);
+                    }}
+                    className="p-1 rounded-lg hover:bg-indigo-100 disabled:opacity-40 transition-colors cursor-pointer"
+                    title="Trang trước"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span className="px-1 text-[11px] font-mono">
+                    Trang {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages || isRenderingPdf}
+                    onClick={() => {
+                      setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      setCropBox(null);
+                    }}
+                    className="p-1 rounded-lg hover:bg-indigo-100 disabled:opacity-40 transition-colors cursor-pointer"
+                    title="Trang sau"
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              )}
 
               {/* Chuyển đổi giữa Xem PDF gốc và Bàn Cắt Khung */}
               {documentData?.isPdf && documentData?.fileBase64 && (
                 <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('pdf_document')}
-                    className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                      viewMode === 'pdf_document' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <FileText size={13} />
-                    <span>File PDF Gốc</span>
-                  </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('canvas')}
@@ -514,6 +704,16 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                     <Scissors size={13} />
                     <span>Bàn Cắt Khung</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('pdf_document')}
+                    className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                      viewMode === 'pdf_document' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText size={13} />
+                    <span>File PDF Gốc</span>
+                  </button>
                 </div>
               )}
 
@@ -522,7 +722,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
                   <button
                     type="button"
-                    onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.15))}
+                    onClick={() => setZoomLevel((z) => Math.max(0.5, z - 0.15))}
                     className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
                     title="Thu nhỏ"
                   >
@@ -531,7 +731,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                   <span className="px-1 text-[11px] font-mono">{Math.round(zoomLevel * 100)}%</span>
                   <button
                     type="button"
-                    onClick={() => setZoomLevel((z) => Math.min(2.0, z + 0.15))}
+                    onClick={() => setZoomLevel((z) => Math.min(2.5, z + 0.15))}
                     className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
                     title="Phóng to"
                   >
@@ -559,7 +759,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
             {/* VÙNG HIỂN THỊ TÀI LIỆU & CẮT KHUNG */}
             {viewMode === 'pdf_document' && documentData?.fileBase64 ? (
-              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[500px] h-[640px] flex items-center justify-center">
+              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[520px] h-[660px] flex items-center justify-center">
                 <object
                   data={documentData.fileBase64}
                   type="application/pdf"
@@ -570,7 +770,27 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 </object>
               </div>
             ) : (
-              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[460px] max-h-[640px] flex items-center justify-center select-none overflow-auto">
+              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[480px] max-h-[660px] flex flex-col items-center justify-start select-none overflow-auto p-4">
+                {isRenderingPdf && (
+                  <div className="absolute inset-0 bg-slate-950/70 z-30 flex flex-col items-center justify-center gap-2 text-white">
+                    <Loader2 size={28} className="animate-spin text-indigo-400" />
+                    <span className="text-xs font-bold">Đang tải và hiển thị Trang {currentPage}...</span>
+                  </div>
+                )}
+
+                {pdfRenderError && (
+                  <div className="p-3 mb-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-2 z-20 w-full max-w-md">
+                    <span>{pdfRenderError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('pdf_document')}
+                      className="px-2 py-1 rounded bg-amber-400 text-slate-900 font-bold text-[10px]"
+                    >
+                      Mở PDF Gốc
+                    </button>
+                  </div>
+                )}
+
                 <div
                   ref={containerRef}
                   onMouseDown={handleMouseDown}
@@ -578,17 +798,22 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                   onMouseUp={handleMouseUp}
                   style={{
                     transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
-                    transformOrigin: 'center center',
+                    transformOrigin: 'top center',
                     transition: isDrawingCrop ? 'none' : 'transform 0.15s ease',
                   }}
-                  className="relative cursor-crosshair max-w-full"
+                  className="relative cursor-crosshair inline-block max-w-full shadow-2xl rounded-lg overflow-hidden bg-white"
                 >
-                  {documentData?.fileBase64 && !documentData.isPdf ? (
+                  {documentData?.isPdf && documentData?.fileBase64 ? (
+                    <canvas
+                      ref={pageCanvasRef}
+                      className="max-w-full h-auto object-contain block mx-auto"
+                    />
+                  ) : documentData?.fileBase64 && !documentData.isPdf ? (
                     <img
                       ref={imageElementRef}
                       src={documentData.fileBase64}
                       alt="Tài liệu đề thi"
-                      className="max-w-full h-auto object-contain pointer-events-none"
+                      className="max-w-full h-auto object-contain block mx-auto pointer-events-none"
                     />
                   ) : (
                     // Giả lập giao diện trang đề thi để giáo viên kéo thả cắt câu hỏi trực tiếp
@@ -651,10 +876,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                         width: cropBox.w,
                         height: cropBox.h,
                       }}
-                      className="absolute border-2 border-dashed border-emerald-400 bg-emerald-500/20 pointer-events-none z-20 flex items-start justify-end p-1.5"
+                      className="absolute border-2 border-dashed border-emerald-400 bg-emerald-500/20 pointer-events-none z-20 flex items-start justify-end p-1.5 shadow-lg"
                     >
                       <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shadow-md">
-                        Vùng Câu {questions.length + 1} ({Math.round(cropBox.w)} × {Math.round(cropBox.h)})
+                        Vùng Cắt: {Math.round(cropBox.w)} × {Math.round(cropBox.h)} px
                       </span>
                     </div>
                   )}
@@ -664,19 +889,44 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
             {/* BẢNG HÀNH ĐỘNG CẮT CÂU */}
             <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
                   <Scissors size={14} className="text-indigo-600" />
-                  <span>Cắt Vùng Đã Khoanh Vào Đề Thành:</span>
+                  <span>Hành Động Cắt Khung Vào Đề:</span>
                 </span>
-                {cropBox && cropBox.w > 20 && (
-                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                    Sẵn sàng cắt ({Math.round(cropBox.w)} × {Math.round(cropBox.h)} px)
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {cropBox && cropBox.w > 20 && (
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                      Đã khoanh: {Math.round(cropBox.w)} × {Math.round(cropBox.h)} px
+                    </span>
+                  )}
+                  {cropBox && (
+                    <button
+                      type="button"
+                      onClick={() => setCropBox(null)}
+                      className="text-[11px] font-bold text-rose-600 hover:text-rose-700 underline cursor-pointer"
+                    >
+                      Hủy vùng cắt
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              {/* Nút gắn ảnh vào câu hỏi đang chọn (nếu có câu đang chọn) */}
+              {activeQuestionId && cropBox && cropBox.w > 20 && cropBox.h > 20 && (
+                <button
+                  type="button"
+                  onClick={handleAttachCropToActiveQuestion}
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Check size={14} />
+                  <span>
+                    Gắn Vùng Cắt Này Vào Câu {questions.find((q) => q.id === activeQuestionId)?.questionNumber || ''} Đang Chọn
+                  </span>
+                </button>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => handleCommitCropToQuestion('part_1_mcq')}
@@ -701,7 +951,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               </div>
 
               <p className="text-[11px] text-indigo-900/70">
-                💡 Mẹo: Dùng chuột khoanh vùng đề bài hoặc hình vẽ trên bàn cắt bên trên, sau đó bấm một trong 3 nút để phân loại thẳng vào đề thi.
+                💡 Mẹo: Kéo chuột khoanh vùng câu hỏi hoặc hình vẽ trên bàn cắt trực quan, sau đó bấm nút để phân loại câu vào đề thi.
               </p>
             </div>
           </div>
