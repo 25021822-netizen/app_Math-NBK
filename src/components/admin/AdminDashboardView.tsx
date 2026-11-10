@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { UserProfile, CheatLog, UserRole, AccountTier } from '../../types/math';
+import React, { useState, useMemo, useEffect } from 'react';
+import { UserProfile, CheatLog, UserRole, AccountTier, AutoApprovalSettings } from '../../types/math';
 import {
   Users,
   ShieldAlert,
@@ -26,6 +26,11 @@ import {
   RefreshCw,
   Edit3,
   Trash2,
+  ToggleLeft,
+  ToggleRight,
+  SlidersHorizontal,
+  CheckCheck,
+  UserCheck,
 } from 'lucide-react';
 
 interface AdminDashboardViewProps {
@@ -37,6 +42,9 @@ interface AdminDashboardViewProps {
   onDeleteUser?: (userId: string) => void;
   onApproveUser?: (userId: string) => void;
   onRejectUser?: (userId: string, reason?: string) => void;
+  autoApprovalSettings?: AutoApprovalSettings;
+  onUpdateAutoApprovalSettings?: (settings: AutoApprovalSettings) => void;
+  onApproveAllUsers?: (targetRole?: 'all' | 'student' | 'teacher', tier?: AccountTier) => void;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
@@ -48,9 +56,47 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onDeleteUser,
   onApproveUser,
   onRejectUser,
+  autoApprovalSettings: propAutoApprovalSettings,
+  onUpdateAutoApprovalSettings,
+  onApproveAllUsers,
 }) => {
   const [activeTab, setActiveTab] = useState<'tokens' | 'users' | 'pending_requests' | 'cheat_logs'>('users');
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [isBulkApproving, setIsBulkApproving] = useState(false);
+
+  // Auto-Approval Configuration State
+  const [autoApproval, setAutoApproval] = useState<AutoApprovalSettings>(
+    propAutoApprovalSettings || {
+      enabled: true,
+      autoApproveStudents: true,
+      autoApproveTeachers: true,
+      defaultTier: 'free',
+      notifyAdminOnAutoApproval: true,
+    }
+  );
+
+  useEffect(() => {
+    if (propAutoApprovalSettings) {
+      setAutoApproval(propAutoApprovalSettings);
+    }
+  }, [propAutoApprovalSettings]);
+
+  const handleToggleAutoApproval = (key: keyof AutoApprovalSettings, value?: any) => {
+    const updated: AutoApprovalSettings = {
+      ...autoApproval,
+      [key]: value !== undefined ? value : !autoApproval[key],
+    };
+    setAutoApproval(updated);
+    if (onUpdateAutoApprovalSettings) {
+      onUpdateAutoApprovalSettings(updated);
+    }
+    setApprovalMessage(
+      key === 'enabled'
+        ? `Đã ${updated.enabled ? 'BẬT' : 'TẮT'} chế độ Duyệt Tự Động của Admin!`
+        : 'Đã cập nhật cấu hình duyệt tự động!'
+    );
+    setTimeout(() => setApprovalMessage(null), 3500);
+  };
 
   // Internal user state if not provided via props (Duy nhất 1 tài khoản Admin có sẵn)
   const [internalUsers, setInternalUsers] = useState<UserProfile[]>([]);
@@ -83,6 +129,30 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     const target = usersList.find((u) => u.id === userId);
     setApprovalMessage(`Đã từ chối yêu cầu đăng ký của "${target ? target.name : userId}".`);
     setTimeout(() => setApprovalMessage(null), 3500);
+  };
+
+  const handleBulkApprove = async () => {
+    if (pendingCount === 0) return;
+    setIsBulkApproving(true);
+    try {
+      if (onApproveAllUsers) {
+        await onApproveAllUsers('all', autoApproval.defaultTier || 'free');
+      } else {
+        setInternalUsers((prev) =>
+          prev.map((u) =>
+            u.status === 'pending_approval'
+              ? { ...u, status: 'active', tier: autoApproval.defaultTier || 'free' }
+              : u
+          )
+        );
+      }
+      setApprovalMessage(`⚡ Đã tự động phê duyệt và kích hoạt thành công tất cả ${pendingCount} tài khoản!`);
+      setTimeout(() => setApprovalMessage(null), 4000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsBulkApproving(false);
+    }
   };
 
   // Search & Filter state in User Management
@@ -397,13 +467,23 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setActiveTab('pending_requests')}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5"
-              >
-                <Clock size={14} />
-                <span>Xem & Phê Duyệt Ngay →</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleBulkApprove}
+                  disabled={isBulkApproving}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs transition-all shrink-0 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Zap size={14} className="fill-current" />
+                  <span>{isBulkApproving ? 'Đang duyệt...' : `⚡ Phê Duyệt Tự Động Tất Cả (${pendingCount})`}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('pending_requests')}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Clock size={14} />
+                  <span>Xem Chi Tiết →</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -651,17 +731,156 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {/* TAB: YÊU CẦU ĐĂNG KÝ TÀI KHOẢN CHỜ ADMIN PHÊ DUYỆT */}
       {activeTab === 'pending_requests' && (
         <div className="space-y-6">
+          {/* BẢNG ĐIỀU KHIỂN CHẾ ĐỘ DUYỆT TỰ ĐỘNG CỦA ADMIN */}
+          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 border border-indigo-500/30 text-white shadow-xl relative overflow-hidden space-y-5">
+            {/* Ambient background glow */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-60 h-60 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/30 text-cyan-300 font-mono text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <Zap size={12} className="text-cyan-400 animate-pulse" />
+                    <span>Hệ Thống Duyệt Tự Động Admin</span>
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                    autoApproval.enabled
+                      ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-300'
+                      : 'bg-slate-700/50 border border-slate-600/40 text-slate-400'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${autoApproval.enabled ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                    <span>{autoApproval.enabled ? 'Đang BẬT' : 'Đang TẮT'}</span>
+                  </span>
+                </div>
+
+                <h3 className="text-lg font-black text-white flex items-center gap-2 mt-1">
+                  <span>Cấu Hình Tự Động Phê Duyệt Tài Khoản</span>
+                  <Sparkles size={18} className="text-amber-400" />
+                </h3>
+                <p className="text-xs text-blue-200/80 max-w-2xl leading-relaxed">
+                  Khi kích hoạt, tài khoản đăng ký mới sẽ được tự động kích hoạt ngay lập tức mà không cần quản trị viên can thiệp thủ công.
+                </p>
+              </div>
+
+              {/* Master Switch Button */}
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleToggleAutoApproval('enabled')}
+                  className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all flex items-center gap-2 shadow-lg cursor-pointer ${
+                    autoApproval.enabled
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-emerald-500/25 ring-2 ring-emerald-400/30'
+                      : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 shadow-black/20'
+                  }`}
+                >
+                  {autoApproval.enabled ? <ToggleRight size={20} className="text-white" /> : <ToggleLeft size={20} className="text-slate-400" />}
+                  <span>{autoApproval.enabled ? 'Chế Độ: ĐANG BẬT' : 'Chế Độ: ĐANG TẮT'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Granular Options & Toggles */}
+            <div className="relative z-10 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              {/* Auto-approve Students */}
+              <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoApproval.autoApproveStudents}
+                  onChange={(e) => handleToggleAutoApproval('autoApproveStudents', e.target.checked)}
+                  className="w-4 h-4 rounded-md accent-cyan-500 text-cyan-600 focus:ring-0 cursor-pointer"
+                />
+                <div>
+                  <span className="font-bold text-white block">Tự duyệt Học sinh</span>
+                  <span className="text-[10px] text-blue-200/60 block">Kích hoạt ngay khi HS đăng ký</span>
+                </div>
+              </label>
+
+              {/* Auto-approve Teachers */}
+              <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoApproval.autoApproveTeachers}
+                  onChange={(e) => handleToggleAutoApproval('autoApproveTeachers', e.target.checked)}
+                  className="w-4 h-4 rounded-md accent-cyan-500 text-cyan-600 focus:ring-0 cursor-pointer"
+                />
+                <div>
+                  <span className="font-bold text-white block">Tự duyệt Giáo viên</span>
+                  <span className="text-[10px] text-blue-200/60 block">Kích hoạt ngay khi GV đăng ký</span>
+                </div>
+              </label>
+
+              {/* Default Account Tier */}
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col justify-between">
+                <span className="text-[10px] text-blue-200/70 font-semibold uppercase tracking-wider block">
+                  Gói mặc định khi duyệt:
+                </span>
+                <select
+                  value={autoApproval.defaultTier || 'free'}
+                  onChange={(e) => handleToggleAutoApproval('defaultTier', e.target.value as AccountTier)}
+                  className="mt-1 bg-black/40 border border-white/15 rounded-xl px-2.5 py-1 text-white font-bold text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                >
+                  <option value="free" className="bg-slate-900 text-white">Miễn Phí (Free Tier)</option>
+                  <option value="premium" className="bg-slate-900 text-white">Nâng Cao (Premium Tier)</option>
+                </select>
+              </div>
+
+              {/* Notify Admin */}
+              <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoApproval.notifyAdminOnAutoApproval ?? true}
+                  onChange={(e) => handleToggleAutoApproval('notifyAdminOnAutoApproval', e.target.checked)}
+                  className="w-4 h-4 rounded-md accent-cyan-500 text-cyan-600 focus:ring-0 cursor-pointer"
+                />
+                <div>
+                  <span className="font-bold text-white block">Thông báo cho Admin</span>
+                  <span className="text-[10px] text-blue-200/60 block">Gửi push notification khi duyệt</span>
+                </div>
+              </label>
+            </div>
+
+            {/* Quick Bulk Approval Action Banner */}
+            <div className="relative z-10 pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-white/5">
+              <div className="text-xs text-blue-200/80 flex items-center gap-2">
+                <UserCheck size={16} className="text-cyan-400 shrink-0" />
+                <span>
+                  Hàng đợi: <strong className="text-amber-300 font-mono font-bold text-sm">{pendingCount}</strong> tài khoản đang chờ phê duyệt.
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleBulkApprove}
+                disabled={pendingCount === 0 || isBulkApproving}
+                className={`px-5 py-2.5 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
+                  pendingCount === 0
+                    ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                    : 'bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 shadow-orange-500/25 active:scale-95'
+                }`}
+              >
+                <Zap size={16} className={pendingCount > 0 ? 'fill-current' : ''} />
+                <span>
+                  {isBulkApproving
+                    ? 'Đang Tự Động Kích Hoạt...'
+                    : `Phê Duyệt Tự Động Tất Cả (${pendingCount} Yêu Cầu)`}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Tiêu đề danh sách yêu cầu chờ duyệt */}
           <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
                 <Clock size={16} />
-                <span>Phê Duyệt Đăng Ký Tài Khoản ({pendingUsers.length})</span>
+                <span>Danh Sách Chờ Phê Duyệt Thủ Công ({pendingUsers.length})</span>
               </span>
               <h3 className="text-xl font-black text-slate-900 mt-1">
                 Yêu Cầu Tài Khoản Mới Đang Chờ Duyệt
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Người dùng đăng ký từ màn hình đăng nhập công khai bắt buộc phải được Quản trị viên đối chiếu và phê duyệt trước khi có thể đăng nhập.
+                Bạn có thể bấm &quot;Phê Duyệt Tự Động Tất Cả&quot; ở trên hoặc kiểm tra và phê duyệt từng tài khoản bên dưới.
               </p>
             </div>
 

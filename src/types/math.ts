@@ -24,6 +24,14 @@ export interface UserProfile {
   subject?: string; // Tổ chuyên môn hoặc bộ môn giảng dạy
 }
 
+export interface AutoApprovalSettings {
+  enabled: boolean;
+  autoApproveStudents: boolean;
+  autoApproveTeachers: boolean;
+  defaultTier: AccountTier;
+  notifyAdminOnAutoApproval?: boolean;
+}
+
 export type MathTopic = 
   | 'algebra' 
   | 'geometry_plane' 

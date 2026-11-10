@@ -4,7 +4,18 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { UserProfile, UserRole, AccountTier, CheatLog, Exam, Classroom, StudentExamSubmission, ClassroomLesson, ClassroomChatMessage } from './types/math';
+import {
+  UserProfile,
+  UserRole,
+  AccountTier,
+  CheatLog,
+  Exam,
+  Classroom,
+  StudentExamSubmission,
+  ClassroomLesson,
+  ClassroomChatMessage,
+  AutoApprovalSettings,
+} from './types/math';
 import {
   INITIAL_USER_PROFILE,
   SAMPLE_CHEAT_LOGS,
@@ -17,6 +28,9 @@ import {
   fetchDbState,
   startDbPolling,
   dbApproveUser,
+  dbApproveAllUsers,
+  dbFetchAdminSettings,
+  dbSaveAdminSettings,
   dbRejectUser,
   dbDeleteUser,
   dbUpdateUser,
@@ -128,6 +142,24 @@ export default function App() {
   const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
   const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
   const [classroomMessages, setClassroomMessages] = useState<Record<string, ClassroomChatMessage[]>>({});
+
+  // Cấu hình Duyệt Tự Động của Admin (Auto-Approval Settings)
+  const [autoApprovalSettings, setAutoApprovalSettings] = useState<AutoApprovalSettings>({
+    enabled: true,
+    autoApproveStudents: true,
+    autoApproveTeachers: true,
+    defaultTier: 'free',
+    notifyAdminOnAutoApproval: true,
+  });
+
+  // Tải cấu hình duyệt tự động từ Server DB hoặc Cache
+  useEffect(() => {
+    dbFetchAdminSettings().then((settings) => {
+      if (settings) {
+        setAutoApprovalSettings(settings);
+      }
+    }).catch(console.error);
+  }, []);
 
   // Quản lý thông báo đẩy (Push Notifications)
   const [notifications, setNotifications] = useState<PushNotificationItem[]>([
@@ -501,6 +533,47 @@ export default function App() {
     const approvedUser = allUsers.find((u) => u.id === userId);
     triggerPushNotification('Phê duyệt tài khoản thành công', {
       message: `Tài khoản của ${approvedUser ? approvedUser.name : userId} đã được kích hoạt thành công!`,
+      type: 'system',
+      targetTab: 'admin_dashboard',
+    });
+  };
+
+  // Admin lưu cấu hình duyệt tự động (Auto-Approval Settings)
+  const handleUpdateAutoApprovalSettings = (newSettings: AutoApprovalSettings) => {
+    setAutoApprovalSettings(newSettings);
+    dbSaveAdminSettings(newSettings).catch(console.error);
+    triggerPushNotification('Cấu hình duyệt tự động', {
+      message: `Đã ${newSettings.enabled ? 'BẬT' : 'TẮT'} chế độ tự động phê duyệt tài khoản mới!`,
+      type: 'system',
+      targetTab: 'admin_dashboard',
+    });
+  };
+
+  // Admin phê duyệt tự động toàn bộ người dùng đang ở trạng thái pending_approval
+  const handleApproveAllUsers = async (
+    targetRole: 'all' | 'student' | 'teacher' = 'all',
+    tier: AccountTier = 'free'
+  ) => {
+    setAllUsers((prev) =>
+      prev.map((u) => {
+        if (u.status === 'pending_approval') {
+          if (targetRole === 'all' || u.role === targetRole) {
+            return {
+              ...u,
+              status: 'active',
+              tier: tier || u.tier || 'free',
+              rejectionReason: undefined,
+              approvedAt: new Date().toISOString(),
+            };
+          }
+        }
+        return u;
+      })
+    );
+
+    const res = await dbApproveAllUsers(targetRole, tier);
+    triggerPushNotification('Phê duyệt tự động hoàn tất', {
+      message: `Đã tự động phê duyệt và kích hoạt thành công ${res.approvedCount} tài khoản!`,
       type: 'system',
       targetTab: 'admin_dashboard',
     });
@@ -1000,6 +1073,9 @@ export default function App() {
           onDeleteUser={handleDeleteUser}
           onApproveUser={handleApproveUser}
           onRejectUser={handleRejectUser}
+          autoApprovalSettings={autoApprovalSettings}
+          onUpdateAutoApprovalSettings={handleUpdateAutoApprovalSettings}
+          onApproveAllUsers={handleApproveAllUsers}
         />
       );
     }
@@ -1248,6 +1324,7 @@ export default function App() {
         allUsers={allUsers}
         onLoginSuccess={handleLoginSuccess}
         onRegisterUser={handleCreateUser}
+        autoApprovalSettings={autoApprovalSettings}
       />
     );
   }

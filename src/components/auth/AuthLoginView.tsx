@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserProfile, UserRole } from '../../types/math';
+import { UserProfile, UserRole, AutoApprovalSettings } from '../../types/math';
 import { dbRegisterUser } from '../../services/dbSyncService';
 import {
   BookOpen,
@@ -21,18 +21,21 @@ import {
   FileCheck,
   MessageSquare,
   Key,
+  Zap,
 } from 'lucide-react';
 
 interface AuthLoginViewProps {
   allUsers: UserProfile[];
   onLoginSuccess: (user: UserProfile) => void;
   onRegisterUser: (newUser: UserProfile) => void;
+  autoApprovalSettings?: AutoApprovalSettings;
 }
 
 export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   allUsers,
   onLoginSuccess,
   onRegisterUser,
+  autoApprovalSettings,
 }) => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
@@ -163,12 +166,22 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 
     const finalId = trimmedId;
 
+    // Kiểm tra cấu hình Duyệt Tự Động của Admin
+    const isAutoApproved = Boolean(
+      autoApprovalSettings?.enabled &&
+      ((regRole === 'student' && autoApprovalSettings.autoApproveStudents) ||
+       (regRole === 'teacher' && autoApprovalSettings.autoApproveTeachers))
+    );
+
+    const initialStatus = isAutoApproved ? 'active' : 'pending_approval';
+    const initialTier = isAutoApproved ? (autoApprovalSettings?.defaultTier || 'free') : 'free';
+
     const newApplicant: UserProfile = {
       id: finalId,
       name: regName.trim(),
       email: regEmail.trim().toLowerCase(),
       role: regRole, // 'student' or 'teacher' (TUYỆT ĐỐI KHÔNG CHO PHÉP TẠO ADMIN)
-      tier: 'free',
+      tier: initialTier,
       xp: 100,
       streakDays: 1,
       lastActiveDate: new Date().toISOString().split('T')[0],
@@ -180,8 +193,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       bio: `${regRole === 'teacher' ? 'Giáo viên THPT' : `Học sinh lớp ${regGrade} THPT`}, tài khoản đăng ký mới trên nền tảng Toán Học LIKI.`,
       subject: 'Toán Học THPT',
       password: regPassword,
-      status: 'pending_approval',
+      status: initialStatus,
       requestedAt: new Date().toISOString(),
+      ...(isAutoApproved ? { approvedAt: new Date().toISOString() } : {}),
     };
 
     // 1. Cập nhật vào state React ứng dụng
@@ -199,8 +213,10 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       const event = new CustomEvent('math_nbk_push_notification', {
         detail: {
           id: `notif_${Date.now()}`,
-          title: 'Yêu Cầu Cấp Tài Khoản Mới',
-          message: `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${newApplicant.id}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
+          title: isAutoApproved ? 'Tài Khoản Mới Đã Tự Động Kích Hoạt' : 'Yêu Cầu Cấp Tài Khoản Mới',
+          message: isAutoApproved
+            ? `Tài khoản ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${newApplicant.id}) đã được hệ thống tự động phê duyệt và kích hoạt thành công.`
+            : `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${newApplicant.id}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
           type: 'system',
           timestamp: new Date().toISOString(),
           isRead: false,
@@ -729,53 +745,113 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
         </div>
       )}
 
-      {/* MODAL: THÔNG BÁO GỬI YÊU CẦU ĐẾN ADMIN THÀNH CÔNG */}
+      {/* MODAL: THÔNG BÁO KẾT QUẢ ĐĂNG KÝ (DUYỆT TỰ ĐỘNG HOẶC CHỜ DUYỆT) */}
       {pendingModalUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
           <div className="bg-slate-900 border border-cyan-500/40 max-w-md w-full rounded-3xl p-6 space-y-4 shadow-2xl relative text-slate-100 animate-in zoom-in-95">
-            <div className="w-14 h-14 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
-              <ShieldCheck size={32} />
-            </div>
+            {pendingModalUser.status === 'active' ? (
+              <>
+                <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <CheckCircle2 size={32} />
+                </div>
 
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">
-                Gửi yêu cầu đăng ký thành công
-              </span>
-              <h3 className="text-xl font-black text-white mt-1">Đã Chuyển Đến Ban Quản Trị</h3>
-              <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-                Yêu cầu cấp tài khoản cho <strong className="text-white">{pendingModalUser.name}</strong> (
-                {pendingModalUser.role === 'teacher' ? 'Giáo viên THPT' : 'Học sinh THPT'}) với email{' '}
-                <span className="font-mono text-cyan-300">{pendingModalUser.email}</span> đã được ghi nhận trên hệ thống.
-              </p>
-            </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                    <Zap size={12} className="fill-current" />
+                    <span>Duyệt Tự Động Thành Công</span>
+                  </span>
+                  <h3 className="text-xl font-black text-white mt-1">Tài Khoản Đã Kích Hoạt!</h3>
+                  <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                    Chúc mừng <strong className="text-white">{pendingModalUser.name}</strong>! Hệ thống Duyệt Tự Động của Admin đã kích hoạt ngay lập tức tài khoản ({pendingModalUser.role === 'teacher' ? 'Giáo viên THPT' : 'Học sinh THPT'}) của bạn.
+                  </p>
+                </div>
 
-            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1">
-              <div className="font-bold flex items-center gap-1.5 text-amber-300">
-                <AlertCircle size={15} />
-                <span>Quy định bảo mật GDPT 2018:</span>
-              </div>
-              <p className="text-[11px] text-slate-300">
-                Người dùng không có quyền tự kích hoạt hay tự tạo Admin. Quản Trị Viên (Admin) sẽ đối chiếu thông tin và phê duyệt tài khoản. Bạn sẽ có thể đăng nhập ngay sau khi được Admin duyệt!
-              </p>
-            </div>
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-xs space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Mã ID đăng nhập:</span>
+                    <code className="font-mono font-bold text-cyan-300">{pendingModalUser.id}</code>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Gói tài khoản:</span>
+                    <span className="font-bold text-amber-300 uppercase">{pendingModalUser.tier}</span>
+                  </div>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                const userEmail = pendingModalUser.email;
-                setPendingModalUser(null);
-                setAuthMode('login');
-                setLoginIdentifier(userEmail);
-                setLoginPassword('');
-                setRegPendingNotice(
-                  `Yêu cầu tạo tài khoản cho "${userEmail}" đang chờ Admin duyệt. Bạn sẽ đăng nhập được ngay sau khi Ban Quản Trị phê duyệt.`
-                );
-              }}
-              className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-extrabold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>Tôi Đã Hiểu - Quay Lại Đăng Nhập</span>
-              <ArrowRight size={16} />
-            </button>
+                <div className="flex flex-col gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onLoginSuccess(pendingModalUser);
+                      setPendingModalUser(null);
+                    }}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Zap size={16} className="fill-current" />
+                    <span>Vào Học / Giảng Dạy Ngay</span>
+                    <ArrowRight size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const userEmail = pendingModalUser.email;
+                      setPendingModalUser(null);
+                      setAuthMode('login');
+                      setLoginIdentifier(userEmail);
+                      setLoginPassword('');
+                    }}
+                    className="w-full py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs transition-colors"
+                  >
+                    Quay Lại Màn Hình Đăng Nhập
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-14 h-14 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                  <ShieldCheck size={32} />
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">
+                    Gửi yêu cầu đăng ký thành công
+                  </span>
+                  <h3 className="text-xl font-black text-white mt-1">Đã Chuyển Đến Ban Quản Trị</h3>
+                  <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                    Yêu cầu cấp tài khoản cho <strong className="text-white">{pendingModalUser.name}</strong> (
+                    {pendingModalUser.role === 'teacher' ? 'Giáo viên THPT' : 'Học sinh THPT'}) với email{' '}
+                    <span className="font-mono text-cyan-300">{pendingModalUser.email}</span> đã được ghi nhận trên hệ thống.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                    <AlertCircle size={15} />
+                    <span>Quy định bảo mật GDPT 2018:</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    Người dùng không có quyền tự kích hoạt hay tự tạo Admin. Quản Trị Viên (Admin) sẽ đối chiếu thông tin và phê duyệt tài khoản. Bạn sẽ có thể đăng nhập ngay sau khi được Admin duyệt!
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const userEmail = pendingModalUser.email;
+                    setPendingModalUser(null);
+                    setAuthMode('login');
+                    setLoginIdentifier(userEmail);
+                    setLoginPassword('');
+                    setRegPendingNotice(
+                      `Yêu cầu tạo tài khoản cho "${userEmail}" đang chờ Admin duyệt. Bạn sẽ đăng nhập được ngay sau khi Ban Quản Trị phê duyệt.`
+                    );
+                  }}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-extrabold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>Tôi Đã Hiểu - Quay Lại Đăng Nhập</span>
+                  <ArrowRight size={16} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

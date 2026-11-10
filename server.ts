@@ -1269,6 +1269,15 @@ interface ServerDatabase {
   classroomLessons: any[];
   classroomMessages: Record<string, any[]>;
   exams: any[];
+  adminSettings?: {
+    autoApproval?: {
+      enabled: boolean;
+      autoApproveStudents: boolean;
+      autoApproveTeachers: boolean;
+      defaultTier: 'free' | 'premium';
+      notifyAdminOnAutoApproval?: boolean;
+    };
+  };
 }
 
 const DEFAULT_ADMIN_USER = {
@@ -1312,6 +1321,15 @@ function getCleanInitialDb(): ServerDatabase {
     classroomLessons: [],
     classroomMessages: {},
     exams: [],
+    adminSettings: {
+      autoApproval: {
+        enabled: true,
+        autoApproveStudents: true,
+        autoApproveTeachers: true,
+        defaultTier: 'free',
+        notifyAdminOnAutoApproval: true,
+      },
+    },
   };
 }
 
@@ -1328,6 +1346,18 @@ function loadDatabase(): ServerDatabase {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
     parsed.exams = parsed.exams || [];
+    // Cấu hình duyệt tự động mặc định nếu chưa có
+    if (!parsed.adminSettings || !parsed.adminSettings.autoApproval) {
+      parsed.adminSettings = {
+        autoApproval: {
+          enabled: true,
+          autoApproveStudents: true,
+          autoApproveTeachers: true,
+          defaultTier: 'free',
+          notifyAdminOnAutoApproval: true,
+        },
+      };
+    }
     // Loại bỏ tài khoản admin mẫu cũ usr_admin_01
     parsed.users = (parsed.users || []).filter((u: any) => u.id !== 'usr_admin_01');
     // Đảm bảo luôn có tài khoản Admin duy nhất đã cấu hình
@@ -1399,12 +1429,26 @@ app.post('/api/db/register', (req, res) => {
     return res.status(400).json({ success: false, error: 'Mật khẩu phải có tối thiểu 8 ký tự!' });
   }
 
-  // Đăng ký mới luôn ở trạng thái chờ duyệt (Admin phê duyệt)
+  // Kiểm tra cấu hình Duyệt Tự Động của Admin
+  const autoApproval = serverDb.adminSettings?.autoApproval;
+  const isAutoApprove = Boolean(
+    autoApproval?.enabled &&
+    ((user.role === 'student' && autoApproval.autoApproveStudents) ||
+     (user.role === 'teacher' && autoApproval.autoApproveTeachers))
+  );
+
+  const initialStatus = isAutoApprove ? 'active' : 'pending_approval';
+  const initialTier = isAutoApprove ? (autoApproval?.defaultTier || 'free') : (user.tier || 'free');
+
+  // Khởi tạo tài khoản người dùng
   const newUser = {
     ...user,
     id: idLower,
-    status: 'pending_approval',
+    status: initialStatus,
+    tier: initialTier,
     requestedAt: new Date().toISOString(),
+    autoApproved: isAutoApprove,
+    ...(isAutoApprove ? { approvedAt: new Date().toISOString() } : {}),
   };
 
   serverDb.users.push(newUser);
@@ -1414,6 +1458,7 @@ app.post('/api/db/register', (req, res) => {
   res.json({
     success: true,
     user: newUser,
+    isAutoApproved: isAutoApprove,
     version: serverDb.version,
   });
 });
@@ -1425,7 +1470,7 @@ app.post('/api/db/user/approve', (req, res) => {
   serverDb.users = serverDb.users.map((u) => {
     if (u.id === userId) {
       found = true;
-      return { ...u, status: 'active', rejectionReason: undefined };
+      return { ...u, status: 'active', rejectionReason: undefined, approvedAt: new Date().toISOString() };
     }
     return u;
   });
@@ -1436,6 +1481,91 @@ app.post('/api/db/user/approve', (req, res) => {
   }
 
   res.json({ success: found, version: serverDb.version });
+});
+
+// 3b. Admin Phê Duyệt Tự Động Toàn Bộ Người Dùng Chờ Duyệt (Bulk Auto-Approve)
+app.post('/api/db/user/approve-all', (req, res) => {
+  const { targetRole, tier } = req.body || {};
+  let approvedCount = 0;
+  const approvedIds: string[] = [];
+
+  serverDb.users = serverDb.users.map((u) => {
+    if (u.status === 'pending_approval') {
+      if (!targetRole || targetRole === 'all' || u.role === targetRole) {
+        approvedCount++;
+        approvedIds.push(u.id);
+        return {
+          ...u,
+          status: 'active',
+          tier: tier || u.tier || 'free',
+          rejectionReason: undefined,
+          approvedAt: new Date().toISOString(),
+        };
+      }
+    }
+    return u;
+  });
+
+  if (approvedCount > 0) {
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+
+  res.json({
+    success: true,
+    approvedCount,
+    approvedIds,
+    version: serverDb.version,
+    users: serverDb.users,
+  });
+});
+
+// 3c. Lấy cấu hình Admin Settings (Duyệt tự động, ...)
+app.get('/api/db/admin/settings', (_req, res) => {
+  res.json({
+    success: true,
+    settings: serverDb.adminSettings || {
+      autoApproval: {
+        enabled: true,
+        autoApproveStudents: true,
+        autoApproveTeachers: true,
+        defaultTier: 'free',
+        notifyAdminOnAutoApproval: true,
+      },
+    },
+  });
+});
+
+// 3d. Cập nhật cấu hình Admin Settings (Duyệt tự động, ...)
+app.post('/api/db/admin/settings', (req, res) => {
+  const { autoApproval } = req.body || {};
+  if (!serverDb.adminSettings) {
+    serverDb.adminSettings = {
+      autoApproval: {
+        enabled: true,
+        autoApproveStudents: true,
+        autoApproveTeachers: true,
+        defaultTier: 'free',
+        notifyAdminOnAutoApproval: true,
+      },
+    };
+  }
+
+  if (autoApproval) {
+    serverDb.adminSettings.autoApproval = {
+      ...serverDb.adminSettings.autoApproval,
+      ...autoApproval,
+    };
+  }
+
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+
+  res.json({
+    success: true,
+    settings: serverDb.adminSettings,
+    version: serverDb.version,
+  });
 });
 
 // 4. Admin từ chối phê duyệt

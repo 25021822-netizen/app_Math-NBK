@@ -19,6 +19,7 @@ import {
   ClassroomLesson,
   ClassroomChatMessage,
   Exam,
+  AutoApprovalSettings,
 } from '../types/math';
 
 export enum OperationType {
@@ -142,9 +143,69 @@ export async function fetchDbState(): Promise<DatabaseState | null> {
 }
 
 /**
- * Gửi yêu cầu đăng ký tài khoản mới lên Firestore (Đồng bộ mọi thiết bị: Điện thoại, Laptop, PC)
+ * Lấy cấu hình Admin Settings (Duyệt tự động, v.v.)
  */
-export async function dbRegisterUser(newUser: UserProfile): Promise<{ success: boolean; error?: string; user?: UserProfile }> {
+export async function dbFetchAdminSettings(): Promise<AutoApprovalSettings> {
+  const defaultSettings: AutoApprovalSettings = {
+    enabled: true,
+    autoApproveStudents: true,
+    autoApproveTeachers: true,
+    defaultTier: 'free',
+    notifyAdminOnAutoApproval: true,
+  };
+
+  try {
+    const res = await fetch('/api/db/admin/settings');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.settings?.autoApproval) {
+        localStorage.setItem('math_liki_auto_approval_settings', JSON.stringify(data.settings.autoApproval));
+        return data.settings.autoApproval;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi lấy cấu hình admin từ server, sử dụng bộ nhớ cục bộ:', err);
+  }
+
+  try {
+    const local = localStorage.getItem('math_liki_auto_approval_settings');
+    if (local) {
+      return JSON.parse(local);
+    }
+  } catch {}
+
+  return defaultSettings;
+}
+
+/**
+ * Lưu cấu hình Admin Settings (Duyệt tự động)
+ */
+export async function dbSaveAdminSettings(settings: AutoApprovalSettings): Promise<boolean> {
+  try {
+    localStorage.setItem('math_liki_auto_approval_settings', JSON.stringify(settings));
+
+    const res = await fetch('/api/db/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoApproval: settings }),
+    });
+
+    try {
+      const ref = doc(db, 'system_settings', 'admin_config');
+      await setDoc(ref, { autoApproval: settings, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch {}
+
+    return res.ok;
+  } catch (err) {
+    console.error('Lỗi lưu cấu hình admin settings:', err);
+    return false;
+  }
+}
+
+/**
+ * Gửi yêu cầu đăng ký tài khoản mới lên Firestore & Server (hỗ trợ Duyệt Tự Động)
+ */
+export async function dbRegisterUser(newUser: UserProfile): Promise<{ success: boolean; error?: string; user?: UserProfile; isAutoApproved?: boolean }> {
   try {
     const userRef = doc(db, 'users', newUser.id);
     const snap = await getDoc(userRef);
@@ -166,24 +227,42 @@ export async function dbRegisterUser(newUser: UserProfile): Promise<{ success: b
       };
     }
 
+    // Đọc cấu hình Duyệt Tự Động từ LocalStorage hoặc mặc định
+    let autoApproval: AutoApprovalSettings | null = null;
+    try {
+      const cached = localStorage.getItem('math_liki_auto_approval_settings');
+      if (cached) autoApproval = JSON.parse(cached);
+    } catch {}
+
+    const isAutoApprove = Boolean(
+      autoApproval?.enabled &&
+      ((newUser.role === 'student' && autoApproval.autoApproveStudents) ||
+       (newUser.role === 'teacher' && autoApproval.autoApproveTeachers))
+    );
+
+    const initialStatus = isAutoApprove ? 'active' : 'pending_approval';
+    const initialTier = isAutoApprove ? (autoApproval?.defaultTier || newUser.tier || 'free') : (newUser.tier || 'free');
+
     const payload = {
       ...newUser,
       id: newUser.id.trim().toLowerCase(),
       email: newUser.email.trim().toLowerCase(),
-      status: 'pending_approval' as const,
+      status: initialStatus as 'active' | 'pending_approval',
+      tier: initialTier,
       requestedAt: new Date().toISOString(),
+      ...(isAutoApprove ? { approvedAt: new Date().toISOString() } : {}),
     };
 
     await setDoc(userRef, payload);
 
-    // Cũng gửi tới server endpoint để đồng bộ song song
+    // Gửi tới server endpoint để đồng bộ song song
     fetch('/api/db/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user: payload }),
     }).catch(() => {});
 
-    return { success: true, user: payload };
+    return { success: true, user: payload, isAutoApproved: isAutoApprove };
   } catch (err: any) {
     // Fallback qua server nếu Firestore bị gián đoạn
     try {
@@ -192,7 +271,13 @@ export async function dbRegisterUser(newUser: UserProfile): Promise<{ success: b
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user: newUser }),
       });
-      return await res.json();
+      const data = await res.json();
+      return {
+        success: data.success,
+        error: data.error,
+        user: data.user,
+        isAutoApproved: data.isAutoApproved,
+      };
     } catch {
       return { success: false, error: err.message || 'Lỗi kết nối cơ sở dữ liệu đám mây.' };
     }
@@ -208,6 +293,7 @@ export async function dbApproveUser(userId: string): Promise<boolean> {
     await updateDoc(ref, {
       status: 'active',
       rejectionReason: '',
+      approvedAt: new Date().toISOString(),
     });
 
     fetch('/api/db/user/approve', {
@@ -219,6 +305,67 @@ export async function dbApproveUser(userId: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Admin phê duyệt tự động toàn bộ người dùng đang ở trạng thái pending_approval
+ */
+export async function dbApproveAllUsers(
+  targetRole: 'all' | 'student' | 'teacher' = 'all',
+  tier: 'free' | 'premium' = 'free'
+): Promise<{ success: boolean; approvedCount: number }> {
+  try {
+    const res = await fetch('/api/db/user/approve-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetRole, tier }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      
+      // Đồng bộ sang Firestore cho các user được approve
+      if (data.approvedIds && Array.isArray(data.approvedIds)) {
+        for (const uid of data.approvedIds) {
+          try {
+            const uRef = doc(db, 'users', uid);
+            await updateDoc(uRef, {
+              status: 'active',
+              rejectionReason: '',
+              approvedAt: new Date().toISOString(),
+              tier,
+            });
+          } catch {}
+        }
+      }
+
+      return { success: true, approvedCount: data.approvedCount || 0 };
+    }
+  } catch (err) {
+    console.error('Lỗi phê duyệt hàng loạt trên server:', err);
+  }
+
+  // Fallback qua Firestore query nếu server offline
+  try {
+    const q = query(collection(db, 'users'), where('status', '==', 'pending_approval'));
+    const snap = await getDocs(q);
+    let count = 0;
+    for (const d of snap.docs) {
+      const u = d.data();
+      if (targetRole === 'all' || u.role === targetRole) {
+        await updateDoc(d.ref, {
+          status: 'active',
+          rejectionReason: '',
+          approvedAt: new Date().toISOString(),
+          tier,
+        });
+        count++;
+      }
+    }
+    return { success: true, approvedCount: count };
+  } catch (err: any) {
+    return { success: false, approvedCount: 0 };
   }
 }
 
