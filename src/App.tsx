@@ -396,7 +396,55 @@ export default function App() {
           });
         }
         knownExamIds = new Set(validExams.map((ex) => ex.id));
-        setExamsList(validExams);
+        setExamsList((prevExams) => {
+          const prevMap = new Map<string, Exam>();
+          prevExams.forEach((e) => prevMap.set(e.id, e));
+
+          const merged = validExams.map((remoteEx) => {
+            const localEx = prevMap.get(remoteEx.id);
+            if (!localEx || !Array.isArray(localEx.questions)) return remoteEx;
+            // Bảo tồn ảnh đã cắt nếu bản ghi remote chưa kịp có
+            const mergedQuestions = (remoteEx.questions || []).map((rq) => {
+              const lq = localEx.questions.find((q) => q.id === rq.id || q.questionNumber === rq.questionNumber);
+              if (!lq) return rq;
+              return {
+                ...lq,
+                ...rq,
+                pdfAttachmentUrl: rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+                imageAttachment: rq.imageAttachment || lq.imageAttachment || rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+                optionsAttachmentUrl: rq.optionsAttachmentUrl || lq.optionsAttachmentUrl,
+                options: rq.part === 'part_1_mcq' && Array.isArray((rq as any).options) ? (rq as any).options.map((ropt: any) => {
+                  const lopt = lq.part === 'part_1_mcq' && Array.isArray((lq as any).options) ? (lq as any).options.find((o: any) => o.key === ropt.key) : null;
+                  return {
+                    ...ropt,
+                    imageUrl: ropt.imageUrl || lopt?.imageUrl,
+                  };
+                }) : (rq as any).options,
+                items: rq.part === 'part_2_true_false' && Array.isArray((rq as any).items) ? (rq as any).items.map((ritem: any) => {
+                  const litem = lq.part === 'part_2_true_false' && Array.isArray((lq as any).items) ? (lq as any).items.find((i: any) => i.subKey === ritem.subKey) : null;
+                  return {
+                    ...ritem,
+                    imageUrl: ritem.imageUrl || litem?.imageUrl,
+                  };
+                }) : (rq as any).items,
+              };
+            });
+            return {
+              ...localEx,
+              ...remoteEx,
+              questions: mergedQuestions,
+            };
+          });
+
+          // Giữ lại các đề thi vừa tạo cục bộ mà remote chưa kịp phản hồi
+          prevExams.forEach((localEx) => {
+            if (!merged.some((m) => m.id === localEx.id)) {
+              merged.push(localEx);
+            }
+          });
+
+          return merged;
+        });
       }
 
       // Đồng bộ Tin nhắn chat tức thời & Bắn thông báo khi được nhắc tên (@mention) hoặc giáo viên đăng tin

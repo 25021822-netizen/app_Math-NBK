@@ -1908,12 +1908,25 @@ app.get('/api/files/:filename', (req, res) => {
     // Lấy tên hiển thị gốc nếu có
     const originalName = safeFileName.replace(/^\d+-[a-f0-9]+-/, '') || 'tai_lieu.pdf';
 
-    res.setHeader('Content-Type', 'application/pdf');
+    // Xác định Content-Type theo đuôi file
+    const ext = path.extname(safeFileName).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.gif': 'image/gif',
+    };
+    const contentType = mimeMap[ext] || 'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(originalName)}"`);
     res.sendFile(filePath);
   } catch (err: any) {
-    console.error('Lỗi khi phục vụ file PDF:', err);
-    res.status(500).send('Lỗi khi tải tài liệu PDF!');
+    console.error('Lỗi khi phục vụ file tải lên:', err);
+    res.status(500).send('Lỗi khi tải tài liệu hoặc hình ảnh!');
   }
 });
 

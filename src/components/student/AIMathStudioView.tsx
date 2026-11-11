@@ -1193,7 +1193,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                 <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
                   <div className="flex items-center gap-1.5 font-bold text-amber-800">
                     <ShieldAlert size={14} className="text-amber-600 shrink-0" />
-                    <span>Lưu ý tệp PDF:</span>
+                    <span>Thông tin tệp:</span>
                   </div>
                   {customPdfFile.info.warnings.map((warn, wIdx) => (
                     <p key={wIdx} className="text-[11px] text-amber-700 pl-4">• {warn}</p>

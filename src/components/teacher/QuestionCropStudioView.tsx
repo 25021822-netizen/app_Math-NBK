@@ -1556,7 +1556,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                       </div>
 
                       {/* ẢNH ĐỀ BÀI ĐÃ CẮT (LẦN 1) */}
-                      {q.pdfAttachmentUrl && (
+                      {(q.pdfAttachmentUrl || q.imageAttachment) && (
                         <div className="mt-2.5 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 p-2 relative group">
                           <div className="flex items-center justify-between pb-1 text-[10px] font-bold text-slate-500">
                             <span>🖼️ Ảnh Đề Bài Đã Cắt:</span>
@@ -1564,7 +1564,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleUpdateQuestion(q.id, { pdfAttachmentUrl: undefined });
+                                handleUpdateQuestion(q.id, { pdfAttachmentUrl: undefined, imageAttachment: undefined });
                               }}
                               className="text-rose-600 hover:text-rose-800 underline cursor-pointer"
                             >
@@ -1572,7 +1572,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                             </button>
                           </div>
                           <img
-                            src={q.pdfAttachmentUrl}
+                            src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt={`Đề bài câu ${q.questionNumber}`}
                             className="max-h-36 object-contain mx-auto rounded"
                           />

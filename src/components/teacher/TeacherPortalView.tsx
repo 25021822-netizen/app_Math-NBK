@@ -153,6 +153,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // File đính kèm ảnh hoặc PDF cho câu hỏi (hỗ trợ dán clipboard Ctrl+V)
   const [modalImageAttachment, setModalImageAttachment] = useState<string | null>(null);
+  const [modalOptionsAttachmentUrl, setModalOptionsAttachmentUrl] = useState<string | null>(null);
   const [modalPdfName, setModalPdfName] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -563,6 +564,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     setModalLatex('');
     setModalExplanation('');
     setModalImageAttachment(null);
+    setModalOptionsAttachmentUrl(null);
     setModalPdfName(null);
     if (modalPart === 'part_1_mcq') {
       setModalOptA('');
@@ -589,7 +591,8 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     setModalLatex(q.latex || '');
     setModalExplanation(q.explanation || '');
     setModalPoints(q.points);
-    setModalImageAttachment(q.imageAttachment || null);
+    setModalImageAttachment(q.imageAttachment || q.pdfAttachmentUrl || null);
+    setModalOptionsAttachmentUrl(q.optionsAttachmentUrl || null);
     setModalPdfName(q.pdfAttachmentName || null);
 
     if (q.part === 'part_1_mcq') {
@@ -676,52 +679,66 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       ? manualQuestions.find((q) => q.id === editingQuestionId)?.questionNumber || 1
       : manualQuestions.length + 1;
 
+    const existingQ = editingQuestionId
+      ? manualQuestions.find((q) => q.id === editingQuestionId)
+      : null;
+
     let newQuestion: Question;
 
     if (modalPart === 'part_1_mcq') {
-      if (!modalOptA.trim() && !modalOptB.trim() && !modalOptC.trim() && !modalOptD.trim() && !modalImageAttachment) {
-        alert('Vui lòng nhập nội dung cho các phương án A, B, C, D!');
+      if (!modalOptA.trim() && !modalOptB.trim() && !modalOptC.trim() && !modalOptD.trim() && !modalImageAttachment && !modalOptionsAttachmentUrl && !existingQ?.optionsAttachmentUrl) {
+        alert('Vui lòng nhập nội dung cho các phương án A, B, C, D hoặc đính kèm ảnh cắt!');
         return;
       }
+
+      const mergedOptions = [
+        { key: 'A' as const, text: modalOptA.trim(), imageUrl: existingQ?.part === 'part_1_mcq' ? existingQ.options.find((o) => o.key === 'A')?.imageUrl : undefined },
+        { key: 'B' as const, text: modalOptB.trim(), imageUrl: existingQ?.part === 'part_1_mcq' ? existingQ.options.find((o) => o.key === 'B')?.imageUrl : undefined },
+        { key: 'C' as const, text: modalOptC.trim(), imageUrl: existingQ?.part === 'part_1_mcq' ? existingQ.options.find((o) => o.key === 'C')?.imageUrl : undefined },
+        { key: 'D' as const, text: modalOptD.trim(), imageUrl: existingQ?.part === 'part_1_mcq' ? existingQ.options.find((o) => o.key === 'D')?.imageUrl : undefined },
+      ];
+
       newQuestion = {
         id: editingQuestionId || `q_${Date.now()}`,
         part: 'part_1_mcq',
         questionNumber,
-        prompt: modalPrompt.trim(),
+        prompt: modalPrompt.trim() || `Câu ${questionNumber}. Chọn một phương án đúng nhất:`,
         latex: modalLatex.trim() || undefined,
-        options: [
-          { key: 'A', text: modalOptA.trim() },
-          { key: 'B', text: modalOptB.trim() },
-          { key: 'C', text: modalOptC.trim() },
-          { key: 'D', text: modalOptD.trim() },
-        ],
+        options: mergedOptions,
         correctAnswer: modalCorrectMcq,
         explanation: modalExplanation.trim(),
         points: modalPoints || 0.25,
-        imageAttachment: modalImageAttachment || undefined,
-        pdfAttachmentName: modalPdfName || undefined,
+        imageAttachment: modalImageAttachment || existingQ?.imageAttachment || existingQ?.pdfAttachmentUrl || undefined,
+        pdfAttachmentUrl: modalImageAttachment || existingQ?.pdfAttachmentUrl || existingQ?.imageAttachment || undefined,
+        optionsAttachmentUrl: modalOptionsAttachmentUrl || existingQ?.optionsAttachmentUrl || undefined,
+        pdfAttachmentName: modalPdfName || existingQ?.pdfAttachmentName || undefined,
       };
     } else if (modalPart === 'part_2_true_false') {
-      if (!modalTfA.text.trim() && !modalTfB.text.trim() && !modalTfC.text.trim() && !modalTfD.text.trim() && !modalImageAttachment) {
-        alert('Vui lòng nhập nội dung cho 4 ý mệnh đề a, b, c, d!');
+      if (!modalTfA.text.trim() && !modalTfB.text.trim() && !modalTfC.text.trim() && !modalTfD.text.trim() && !modalImageAttachment && !modalOptionsAttachmentUrl && !existingQ?.optionsAttachmentUrl) {
+        alert('Vui lòng nhập nội dung cho 4 ý mệnh đề a, b, c, d hoặc đính kèm ảnh cắt!');
         return;
       }
+
+      const mergedItems = [
+        { id: `tf_a_${Date.now()}`, subKey: 'a' as const, text: modalTfA.text.trim(), isCorrect: modalTfA.isCorrect, imageUrl: existingQ?.part === 'part_2_true_false' ? existingQ.items.find((i) => i.subKey === 'a')?.imageUrl : undefined },
+        { id: `tf_b_${Date.now()}`, subKey: 'b' as const, text: modalTfB.text.trim(), isCorrect: modalTfB.isCorrect, imageUrl: existingQ?.part === 'part_2_true_false' ? existingQ.items.find((i) => i.subKey === 'b')?.imageUrl : undefined },
+        { id: `tf_c_${Date.now()}`, subKey: 'c' as const, text: modalTfC.text.trim(), isCorrect: modalTfC.isCorrect, imageUrl: existingQ?.part === 'part_2_true_false' ? existingQ.items.find((i) => i.subKey === 'c')?.imageUrl : undefined },
+        { id: `tf_d_${Date.now()}`, subKey: 'd' as const, text: modalTfD.text.trim(), isCorrect: modalTfD.isCorrect, imageUrl: existingQ?.part === 'part_2_true_false' ? existingQ.items.find((i) => i.subKey === 'd')?.imageUrl : undefined },
+      ];
+
       newQuestion = {
         id: editingQuestionId || `q_${Date.now()}`,
         part: 'part_2_true_false',
         questionNumber,
-        prompt: modalPrompt.trim(),
+        prompt: modalPrompt.trim() || `Câu ${questionNumber}. Xét tính đúng/sai của các mệnh đề sau:`,
         latex: modalLatex.trim() || undefined,
-        items: [
-          { id: `tf_a_${Date.now()}`, subKey: 'a', text: modalTfA.text.trim(), isCorrect: modalTfA.isCorrect },
-          { id: `tf_b_${Date.now()}`, subKey: 'b', text: modalTfB.text.trim(), isCorrect: modalTfB.isCorrect },
-          { id: `tf_c_${Date.now()}`, subKey: 'c', text: modalTfC.text.trim(), isCorrect: modalTfC.isCorrect },
-          { id: `tf_d_${Date.now()}`, subKey: 'd', text: modalTfD.text.trim(), isCorrect: modalTfD.isCorrect },
-        ],
+        items: mergedItems,
         explanation: modalExplanation.trim(),
         points: modalPoints || 1.0,
-        imageAttachment: modalImageAttachment || undefined,
-        pdfAttachmentName: modalPdfName || undefined,
+        imageAttachment: modalImageAttachment || existingQ?.imageAttachment || existingQ?.pdfAttachmentUrl || undefined,
+        pdfAttachmentUrl: modalImageAttachment || existingQ?.pdfAttachmentUrl || existingQ?.imageAttachment || undefined,
+        optionsAttachmentUrl: modalOptionsAttachmentUrl || existingQ?.optionsAttachmentUrl || undefined,
+        pdfAttachmentName: modalPdfName || existingQ?.pdfAttachmentName || undefined,
       };
     } else {
       const sanitized = modalShortAnswer.trim().replace(/\s+/g, '');
@@ -737,13 +754,15 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         id: editingQuestionId || `q_${Date.now()}`,
         part: 'part_3_short_answer',
         questionNumber,
-        prompt: modalPrompt.trim(),
+        prompt: modalPrompt.trim() || `Câu ${questionNumber}. Điền đáp số của bài toán:`,
         latex: modalLatex.trim() || undefined,
         correctAnswer: sanitized,
         explanation: modalExplanation.trim(),
         points: modalPoints || 0.5,
-        imageAttachment: modalImageAttachment || undefined,
-        pdfAttachmentName: modalPdfName || undefined,
+        imageAttachment: modalImageAttachment || existingQ?.imageAttachment || existingQ?.pdfAttachmentUrl || undefined,
+        pdfAttachmentUrl: modalImageAttachment || existingQ?.pdfAttachmentUrl || existingQ?.imageAttachment || undefined,
+        optionsAttachmentUrl: modalOptionsAttachmentUrl || existingQ?.optionsAttachmentUrl || undefined,
+        pdfAttachmentName: modalPdfName || existingQ?.pdfAttachmentName || undefined,
       };
     }
 
@@ -1220,8 +1239,8 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   </div>
 
                   {classrooms.length === 0 ? (
-                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-                      Chưa có nhóm lớp nào. Đề thi sẽ tự động được phân phối vào <strong>Kho Đề Thi Tổng Hợp</strong> để học sinh toàn trường có thể làm ngay!
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs">
+                      Chưa có nhóm lớp nào trên hệ thống. Đề thi sẽ được lưu vào <strong>Kho Đề Thi</strong>.
                     </div>
                   ) : (
                     <div className="flex flex-wrap items-center gap-3">
@@ -2248,6 +2267,28 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                         <MathView latex={question.prompt} block={false} />
                       </div>
 
+                      {/* File ảnh đề bài đính kèm / cắt từ PDF */}
+                      {(question.pdfAttachmentUrl || question.imageAttachment) && (
+                        <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
+                          <img
+                            src={question.pdfAttachmentUrl || question.imageAttachment}
+                            alt={`Ảnh đề bài câu ${question.questionNumber}`}
+                            className="max-h-52 rounded-xl object-contain bg-white"
+                          />
+                        </div>
+                      )}
+
+                      {/* Khối đáp án cắt cả khối */}
+                      {question.optionsAttachmentUrl && (
+                        <div className="p-2 bg-teal-50 rounded-2xl border border-teal-200 inline-block">
+                          <img
+                            src={question.optionsAttachmentUrl}
+                            alt={`Khối đáp án câu ${question.questionNumber}`}
+                            className="max-h-48 rounded-xl object-contain bg-white"
+                          />
+                        </div>
+                      )}
+
                       {/* PHẦN 1: 4 LỰA CHỌN */}
                       {question.part === 'part_1_mcq' && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
@@ -2256,26 +2297,33 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                             return (
                               <div
                                 key={opt.key}
-                                className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs transition-colors ${
+                                className={`p-2.5 rounded-xl border flex flex-col gap-1.5 text-xs transition-colors ${
                                   isCorrect
                                     ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
                                     : 'bg-white border-slate-200 text-slate-700'
                                 }`}
                               >
-                                <span
-                                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
-                                    isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'
-                                  }`}
-                                >
-                                  {opt.key}
-                                </span>
-                                <div className="flex-1 min-w-0">
-                                  <MathView latex={opt.text} block={false} />
-                                </div>
-                                {isCorrect && (
-                                  <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.2 rounded-md font-bold uppercase shrink-0">
-                                    Đáp án đúng
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                                      isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'
+                                    }`}
+                                  >
+                                    {opt.key}
                                   </span>
+                                  <div className="flex-1 min-w-0">
+                                    <MathView latex={opt.text} block={false} />
+                                  </div>
+                                  {isCorrect && (
+                                    <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.2 rounded-md font-bold uppercase shrink-0">
+                                      Đáp án đúng
+                                    </span>
+                                  )}
+                                </div>
+                                {opt.imageUrl && (
+                                  <div className="rounded border border-slate-200 bg-white p-1 mt-1">
+                                    <img src={opt.imageUrl} alt={`Đáp án ${opt.key}`} className="max-h-20 object-contain mx-auto" />
+                                  </div>
                                 )}
                               </div>
                             );
@@ -2289,25 +2337,32 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                           {question.items.map((item) => (
                             <div
                               key={item.id || item.subKey}
-                              className="p-2.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between gap-3"
+                              className="p-2.5 rounded-xl border border-slate-200 bg-white flex flex-col gap-1.5"
                             >
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <span className="font-extrabold text-blue-700 text-xs shrink-0 uppercase">
-                                  {item.subKey})
-                                </span>
-                                <div className="min-w-0 text-slate-800">
-                                  <MathView latex={item.text} block={false} />
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className="font-extrabold text-blue-700 text-xs shrink-0 uppercase">
+                                    {item.subKey})
+                                  </span>
+                                  <div className="min-w-0 text-slate-800">
+                                    <MathView latex={item.text} block={false} />
+                                  </div>
                                 </div>
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0 ${
+                                    item.isCorrect
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-rose-100 text-rose-800'
+                                  }`}
+                                >
+                                  {item.isCorrect ? 'ĐÚNG' : 'SAI'}
+                                </span>
                               </div>
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0 ${
-                                  item.isCorrect
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-rose-100 text-rose-800'
-                                }`}
-                              >
-                                {item.isCorrect ? 'ĐÚNG' : 'SAI'}
-                              </span>
+                              {item.imageUrl && (
+                                <div className="rounded border border-slate-200 bg-white p-1 mt-1">
+                                  <img src={item.imageUrl} alt={`Ý ${item.subKey}`} className="max-h-20 object-contain mx-auto" />
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -2534,6 +2589,27 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     type="button"
                     onClick={() => setModalImageAttachment(null)}
                     className="absolute -top-2 -right-2 p-1 rounded-full bg-rose-600 text-white shadow-xs"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+
+              {/* Preview ảnh khối đáp án đã cắt */}
+              {modalOptionsAttachmentUrl && (
+                <div className="relative inline-block mt-2 ml-2">
+                  <div className="p-1 rounded-xl border border-teal-200 bg-teal-50 inline-block">
+                    <img
+                      src={modalOptionsAttachmentUrl}
+                      alt="Preview khối đáp án"
+                      className="max-h-36 rounded-lg object-contain bg-white"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setModalOptionsAttachmentUrl(null)}
+                    className="absolute -top-2 -right-2 p-1 rounded-full bg-rose-600 text-white shadow-xs"
+                    title="Xóa khối đáp án"
                   >
                     <X size={12} />
                   </button>

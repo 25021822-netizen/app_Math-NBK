@@ -889,22 +889,102 @@ function sanitizeExamForFirestore(exam: Exam): any {
 }
 
 /**
+ * Chuyển đổi các ảnh cắt dạng base64 thành file URL vĩnh viễn trên máy chủ (/api/files/...)
+ * Giúp giảm kích thước tài liệu Firestore từ vài MB xuống còn vài KB, loại bỏ hoàn toàn nguy cơ vượt giới hạn 1MB của Firestore
+ */
+async function persistExamSnippets(exam: Exam): Promise<Exam> {
+  if (!exam || !Array.isArray(exam.questions)) return exam;
+
+  try {
+    const updatedQuestions = await Promise.all(
+      exam.questions.map(async (q, qIdx) => {
+        const qCopy: any = { ...q };
+
+        // 1. Ảnh đề bài cắt từ PDF (hỗ trợ cả pdfAttachmentUrl và imageAttachment)
+        const promptImg = q.pdfAttachmentUrl || q.imageAttachment;
+        if (promptImg && typeof promptImg === 'string' && promptImg.startsWith('data:image/')) {
+          try {
+            const ext = promptImg.startsWith('data:image/png') ? '.png' : '.jpg';
+            const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_prompt_${Date.now()}${ext}`, promptImg);
+            if (res.success && res.fileUrl) {
+              qCopy.pdfAttachmentUrl = res.fileUrl;
+              qCopy.imageAttachment = res.fileUrl;
+            }
+          } catch {}
+        }
+
+        // 2. Ảnh khối đáp án cắt cả khối
+        if (q.optionsAttachmentUrl && typeof q.optionsAttachmentUrl === 'string' && q.optionsAttachmentUrl.startsWith('data:image/')) {
+          try {
+            const ext = q.optionsAttachmentUrl.startsWith('data:image/png') ? '.png' : '.jpg';
+            const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_opts_${Date.now()}${ext}`, q.optionsAttachmentUrl);
+            if (res.success && res.fileUrl) {
+              qCopy.optionsAttachmentUrl = res.fileUrl;
+            }
+          } catch {}
+        }
+
+        // 3. Ảnh từng phương án A, B, C, D
+        if (q.part === 'part_1_mcq' && Array.isArray((q as any).options)) {
+          qCopy.options = await Promise.all(
+            (q as any).options.map(async (opt: any) => {
+              if (opt.imageUrl && typeof opt.imageUrl === 'string' && opt.imageUrl.startsWith('data:image/')) {
+                try {
+                  const ext = opt.imageUrl.startsWith('data:image/png') ? '.png' : '.jpg';
+                  const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_opt_${opt.key}_${Date.now()}${ext}`, opt.imageUrl);
+                  if (res.success && res.fileUrl) {
+                    return { ...opt, imageUrl: res.fileUrl };
+                  }
+                } catch {}
+              }
+              return opt;
+            })
+          );
+        }
+
+        // 4. Ảnh từng mệnh đề a, b, c, d (Đúng/Sai)
+        if (q.part === 'part_2_true_false' && Array.isArray((q as any).items)) {
+          qCopy.items = await Promise.all(
+            (q as any).items.map(async (item: any) => {
+              if (item.imageUrl && typeof item.imageUrl === 'string' && item.imageUrl.startsWith('data:image/')) {
+                try {
+                  const ext = item.imageUrl.startsWith('data:image/png') ? '.png' : '.jpg';
+                  const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_item_${item.subKey}_${Date.now()}${ext}`, item.imageUrl);
+                  if (res.success && res.fileUrl) {
+                    return { ...item, imageUrl: res.fileUrl };
+                  }
+                } catch {}
+              }
+              return item;
+            })
+          );
+        }
+
+        return qCopy;
+      })
+    );
+
+    return {
+      ...exam,
+      questions: updatedQuestions,
+    };
+  } catch (err) {
+    console.warn('Lỗi khi tối ưu hóa ảnh cắt đề thi:', err);
+    return exam;
+  }
+}
+
+/**
  * Lưu 1 đề thi mới hoặc cập nhật đề thi (Đồng bộ Real-Time cả Firestore và Server)
  * Giúp học sinh thấy đề thi ngay lập tức khi giáo viên đăng bài
  */
 export async function dbSaveExam(exam: Exam): Promise<boolean> {
-  const cleanExam = sanitizeExamForFirestore(exam);
+  // 1. Chuyển đổi và lưu trữ vĩnh viễn các ảnh cắt đề thi
+  const persistedExam = await persistExamSnippets(exam);
+  const cleanExam = sanitizeExamForFirestore(persistedExam);
   if (!cleanExam || !cleanExam.id) return false;
 
-  console.log('[dbSaveExam] Đang đồng bộ đề thi lên Firestore & Server:', {
-    id: cleanExam.id,
-    title: cleanExam.title,
-    grade: cleanExam.grade,
-    questionCount: cleanExam.questions?.length,
-    distributionType: cleanExam.distributionType,
-  });
-
-  // 1. Lưu ngay vào localStorage để không bị mất khi F5 / làm mới trang
+  // 2. Lưu ngay vào localStorage để không bị mất khi F5 / làm mới trang
   try {
     const raw = localStorage.getItem('math_liki_exams');
     const existingList: Exam[] = raw ? JSON.parse(raw) : [];
@@ -912,7 +992,7 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
     localStorage.setItem('math_liki_exams', JSON.stringify(nextList));
   } catch {}
 
-  // 2. Gửi yêu cầu lưu tới Server API (/api/db/exam/save)
+  // 3. Gửi yêu cầu lưu tới Server API (/api/db/exam/save)
   const serverPromise = fetch('/api/db/exam/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -922,11 +1002,10 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
     return null;
   });
 
-  // 3. Đồng bộ lên Firestore Real-time Database
+  // 4. Đồng bộ lên Firestore Real-time Database
   const firestorePromise = (async () => {
     try {
       await setDoc(doc(db, 'exams', cleanExam.id), cleanExam, { merge: true });
-      console.log('[dbSaveExam] Đã lưu đề thi lên Firestore THÀNH CÔNG:', cleanExam.id);
     } catch (err) {
       console.warn('Lỗi dbSaveExam Firestore:', err);
     }
@@ -1020,8 +1099,10 @@ export async function dbDeleteExam(examId: string): Promise<boolean> {
  * Lưu danh sách đề thi đồng bộ lên Firestore & Server
  */
 export async function dbSaveExams(exams: Exam[]): Promise<boolean> {
-  const cleanExams = cleanForFirestore(exams);
-  if (!Array.isArray(cleanExams)) return false;
+  if (!Array.isArray(exams)) return false;
+
+  const persisted = await Promise.all(exams.map(persistExamSnippets));
+  const cleanExams = persisted.map(sanitizeExamForFirestore);
 
   try {
     localStorage.setItem('math_liki_exams', JSON.stringify(cleanExams));
@@ -1036,7 +1117,9 @@ export async function dbSaveExams(exams: Exam[]): Promise<boolean> {
   const firestorePromise = (async () => {
     try {
       for (const ex of cleanExams) {
-        await setDoc(doc(db, 'exams', ex.id), ex, { merge: true });
+        if (ex && ex.id) {
+          await setDoc(doc(db, 'exams', ex.id), ex, { merge: true });
+        }
       }
     } catch (err) {
       console.warn('Lỗi dbSaveExams Firestore:', err);
@@ -1404,7 +1487,43 @@ export function startDbPolling(
     if (list.length > 0) {
       const examMap = new Map<string, Exam>();
       stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
-      list.forEach((e) => examMap.set(e.id, e));
+      list.forEach((remoteExam) => {
+        const localExam = examMap.get(remoteExam.id);
+        if (localExam && Array.isArray(localExam.questions) && Array.isArray(remoteExam.questions)) {
+          const mergedQuestions = remoteExam.questions.map((rq) => {
+            const lq = localExam.questions.find((q) => q.id === rq.id || q.questionNumber === rq.questionNumber);
+            if (!lq) return rq;
+            return {
+              ...lq,
+              ...rq,
+              pdfAttachmentUrl: rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+              imageAttachment: rq.imageAttachment || lq.imageAttachment || rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+              optionsAttachmentUrl: rq.optionsAttachmentUrl || lq.optionsAttachmentUrl,
+              options: rq.part === 'part_1_mcq' && Array.isArray((rq as any).options) ? (rq as any).options.map((ropt: any) => {
+                const lopt = lq.part === 'part_1_mcq' && Array.isArray((lq as any).options) ? (lq as any).options.find((o: any) => o.key === ropt.key) : null;
+                return {
+                  ...ropt,
+                  imageUrl: ropt.imageUrl || lopt?.imageUrl,
+                };
+              }) : (rq as any).options,
+              items: rq.part === 'part_2_true_false' && Array.isArray((rq as any).items) ? (rq as any).items.map((ritem: any) => {
+                const litem = lq.part === 'part_2_true_false' && Array.isArray((lq as any).items) ? (lq as any).items.find((i: any) => i.subKey === ritem.subKey) : null;
+                return {
+                  ...ritem,
+                  imageUrl: ritem.imageUrl || litem?.imageUrl,
+                };
+              }) : (rq as any).items,
+            };
+          });
+          examMap.set(remoteExam.id, {
+            ...localExam,
+            ...remoteExam,
+            questions: mergedQuestions,
+          });
+        } else {
+          examMap.set(remoteExam.id, remoteExam);
+        }
+      });
       stateAccumulator.exams = Array.from(examMap.values());
       try {
         localStorage.setItem('math_liki_exams', JSON.stringify(stateAccumulator.exams));
@@ -1501,11 +1620,47 @@ export function startDbPolling(
               hasChanges = true;
             }
           }
-          // Đồng bộ Đề thi (hợp nhất thông minh)
+          // Đồng bộ Đề thi (hợp nhất thông minh, bảo tồn tối đa ảnh cắt)
           if (json.data.exams && Array.isArray(json.data.exams)) {
             const examMap = new Map<string, Exam>();
             stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
-            json.data.exams.forEach((e: Exam) => examMap.set(e.id, e));
+            json.data.exams.forEach((remoteExam: Exam) => {
+              const localExam = examMap.get(remoteExam.id);
+              if (localExam && Array.isArray(localExam.questions) && Array.isArray(remoteExam.questions)) {
+                const mergedQuestions = remoteExam.questions.map((rq) => {
+                  const lq = localExam.questions.find((q) => q.id === rq.id || q.questionNumber === rq.questionNumber);
+                  if (!lq) return rq;
+                  return {
+                    ...lq,
+                    ...rq,
+                    pdfAttachmentUrl: rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+                    imageAttachment: rq.imageAttachment || lq.imageAttachment || rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+                    optionsAttachmentUrl: rq.optionsAttachmentUrl || lq.optionsAttachmentUrl,
+                    options: rq.part === 'part_1_mcq' && Array.isArray((rq as any).options) ? (rq as any).options.map((ropt: any) => {
+                      const lopt = lq.part === 'part_1_mcq' && Array.isArray((lq as any).options) ? (lq as any).options.find((o: any) => o.key === ropt.key) : null;
+                      return {
+                        ...ropt,
+                        imageUrl: ropt.imageUrl || lopt?.imageUrl,
+                      };
+                    }) : (rq as any).options,
+                    items: rq.part === 'part_2_true_false' && Array.isArray((rq as any).items) ? (rq as any).items.map((ritem: any) => {
+                      const litem = lq.part === 'part_2_true_false' && Array.isArray((lq as any).items) ? (lq as any).items.find((i: any) => i.subKey === ritem.subKey) : null;
+                      return {
+                        ...ritem,
+                        imageUrl: ritem.imageUrl || litem?.imageUrl,
+                      };
+                    }) : (rq as any).items,
+                  };
+                });
+                examMap.set(remoteExam.id, {
+                  ...localExam,
+                  ...remoteExam,
+                  questions: mergedQuestions,
+                });
+              } else {
+                examMap.set(remoteExam.id, remoteExam);
+              }
+            });
             const mergedExams = Array.from(examMap.values());
             if (mergedExams.length !== stateAccumulator.exams.length || JSON.stringify(mergedExams) !== JSON.stringify(stateAccumulator.exams)) {
               stateAccumulator.exams = mergedExams;

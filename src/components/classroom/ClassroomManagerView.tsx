@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention } from '../../types/math';
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
-import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile } from '../../services/dbSyncService';
+import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import { isNotificationsEnabled, setNotificationsEnabled } from '../../utils/notificationService';
@@ -618,9 +618,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       );
 
       if (!existingStudent) {
-        setStudentLookupError(
-          `Không tìm thấy tài khoản học sinh mang ID "${trimmedId}". Lưu ý: Chỉ Quản Trị Viên (Admin) mới có quyền tạo tài khoản học sinh mới trong hệ thống.`
-        );
+        setStudentLookupError(`Không tìm thấy tài khoản học sinh mang ID "${trimmedId}".`);
         return;
       }
       studentIdToAdd = existingStudent.id;
@@ -1637,19 +1635,46 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   };
 
   // 5. Giao đề thi cho cả lớp
-  const handleAssignExamToClass = (examId: string) => {
+  const handleAssignExamToClass = async (examId: string) => {
     if (!currentClass) return;
 
+    // 1. Cập nhật assignedExamIds của nhóm lớp
     const updated = classrooms.map((cls) => {
       if (cls.id === currentClass.id) {
-        if (!cls.assignedExamIds.includes(examId)) {
-          return { ...cls, assignedExamIds: [...cls.assignedExamIds, examId] };
+        const currentAssigned = cls.assignedExamIds || [];
+        if (!currentAssigned.includes(examId)) {
+          return { ...cls, assignedExamIds: [...currentAssigned, examId] };
         }
       }
       return cls;
     });
 
     onUpdateClassrooms(updated);
+    dbSaveClassrooms(updated).catch(console.error);
+
+    // 2. Cập nhật targetClassIds của đề thi và đồng bộ lên Firestore & Server DB
+    if (onUpdateExamsList) {
+      const updatedExams = examsList.map((ex) => {
+        if (ex.id === examId) {
+          const currentTargets = ex.targetClassIds || [];
+          const nextTargets = currentTargets.includes(currentClass.id)
+            ? currentTargets
+            : [...currentTargets, currentClass.id];
+          return {
+            ...ex,
+            targetClassIds: nextTargets,
+            distributionType: ex.distributionType === 'repository' ? 'both' : (ex.distributionType || 'classroom'),
+          };
+        }
+        return ex;
+      });
+      onUpdateExamsList(updatedExams);
+
+      const targetExam = updatedExams.find((e) => e.id === examId);
+      if (targetExam) {
+        dbSaveExam(targetExam).catch(console.error);
+      }
+    }
   };
 
   // ==========================================
@@ -3595,9 +3620,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 Vào Lớp
               </button>
             </div>
-            <p className="text-[11px] text-slate-500 text-left">
-              🔒 Lưu ý bảo mật: Chỉ thành viên chính thức mới có thể xem bài học, tải tài liệu PDF và tham gia thảo luận.
-            </p>
+
           </div>
         </div>
       )}
@@ -3881,9 +3904,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 <strong className="text-slate-900 font-bold">"{examToRemoveFromClass.title}"</strong>{' '}
                 khỏi nhóm lớp <strong className="text-blue-600 font-bold">{currentClass.name}</strong> không?
               </p>
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] text-left">
-                ⚠️ <strong>Lưu ý:</strong> Sau khi xóa, học sinh trong nhóm lớp này sẽ không còn thấy đề thi trong danh sách làm bài. Điểm số các bài đã nộp trước đó vẫn được lưu trữ trong Bảng Điểm.
-              </div>
+
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 pt-2">
