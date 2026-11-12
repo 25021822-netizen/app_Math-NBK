@@ -532,16 +532,10 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
             <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
               Toán Học LIKI
             </span>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-              Tích Hợp: 3D Three.js · Tạo Ảnh AI · Search Grounding
-            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">
             Không Gian Trợ Lý Học Toán Liki
           </h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-2xl">
-            Đồng hành học Toán THPT toàn diện: Đàm thoại gợi mở Socratic, mô phỏng không gian Three.js 3D chân thực, xưởng tạo ảnh bài toán AI và quét đề tự động.
-          </p>
         </div>
 
         {/* Unified Liki Mode Switcher: 4 Chức năng tích hợp trực tiếp (2x2 trên mobile, flex trên desktop) */}
@@ -677,13 +671,10 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                     <Sparkles size={32} />
                   </div>
 
-                  <div className="space-y-1.5 max-w-lg mx-auto">
+                  <div className="space-y-1 max-w-lg mx-auto">
                     <h4 className="text-lg font-black text-slate-900">
                       Chào bạn! Mình là Liki - Trợ lý & Gia sư Toán AI
                     </h4>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Liki hỗ trợ bạn học Toán THPT theo phương pháp sư phạm của Thầy Nguyễn Bá Kỳ: gợi mở tư duy từng bước, kết nối trực tiếp với <strong>Không gian 3D</strong>, <strong>Xưởng tạo ảnh</strong> và <strong>Tra cứu Google Search thực tế</strong>.
-                    </p>
                   </div>
 
                   {/* 3 Quick Action Shortcuts directly into Liki features */}
@@ -697,7 +688,6 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                         <Box size={16} />
                       </div>
                       <div className="font-extrabold text-xs text-cyan-950">Không Gian 3D</div>
-                      <p className="text-[11px] text-cyan-700 mt-0.5">Mô phỏng chóp S.ABCD, nón, trụ, Oxyz 360°</p>
                     </button>
 
                     <button
@@ -709,7 +699,6 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                         <Wand2 size={16} />
                       </div>
                       <div className="font-extrabold text-xs text-pink-950">Tạo Ảnh AI</div>
-                      <p className="text-[11px] text-pink-700 mt-0.5">Vẽ sơ đồ, hình minh họa hình học & đề thi</p>
                     </button>
 
                     <button
@@ -1224,10 +1213,6 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                   </span>
                 </div>
 
-                <p className="text-[11px] text-indigo-900/80 leading-relaxed">
-                  Tự động khử đốm mực, watermark, zero-width space, số trang rác và chuyển đổi ký hiệu toán thô (x 2, vecto, //, can) thành định dạng LaTeX chuẩn Bộ GD&ĐT.
-                </p>
-
                 {ocrNoiseResult && ocrNoiseResult.removedNoiseCount > 0 && (
                   <div className="p-2.5 rounded-xl bg-white/90 border border-indigo-100 text-[11px] text-indigo-900 space-y-1">
                     <div className="flex items-center gap-1.5 font-bold text-emerald-700">
@@ -1512,9 +1497,6 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
               <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 space-y-3 shadow-xs">
                 <Camera size={48} className="mx-auto text-slate-300" />
                 <h4 className="font-bold text-base text-slate-700">Chưa có kết quả quét nào</h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Hãy kéo thả ảnh đề bài, chọn bài toán mẫu hoặc nhập văn bản rồi bấm <strong>"Quét OCR & Lọc Sạch Noise Tự Động"</strong> để hệ thống bóc tách.
-                </p>
               </div>
             )}
           </div>

@@ -451,9 +451,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               />
               <Lock size={15} className="absolute right-3 top-3 text-slate-400" />
             </div>
-            <p className="text-[10px] text-slate-400">
-              Họ và tên được định danh cố định theo hồ sơ đăng ký học sinh / giáo viên.
-            </p>
           </div>
 
           <div className="space-y-1">
@@ -520,9 +517,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                   />
                   <Lock size={15} className="absolute right-3 top-3 text-slate-400" />
                 </div>
-                <p className="text-[10px] text-slate-400">
-                  Khối học được xếp cố định theo lớp và niên khóa của học sinh trong trường.
-                </p>
               </div>
             )}
           </div>

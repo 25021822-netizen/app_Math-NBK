@@ -951,9 +951,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
             Biên Soạn & Xuất Bản Đề Thi THPT
           </h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-xl">
-            Tùy biến số lượt thi, cài đặt thời gian mở/đóng đề, dán ảnh clipboard, giao theo nhóm lớp hoặc đưa vào kho tổng hợp.
-          </p>
         </div>
 
         {/* Chế độ tạo đề */}
@@ -1448,9 +1445,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   <h4 className="font-extrabold text-base text-slate-900">
                     Chưa có câu hỏi nào trong đề thi
                   </h4>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Đề thi hiện đang trống, không có câu hỏi mẫu. Thầy/Cô hãy bấm vào các nút bên dưới để bắt đầu soạn câu hỏi theo chuẩn Bộ GD&ĐT 2025.
-                  </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                   <button
@@ -1677,9 +1671,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   <Sparkles size={20} className="text-blue-600" />
                   <span>Quét & Nhận Diện Đề Thi Tự Động (AI Vision & LaTeX)</span>
                 </h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-                  Tải lên tệp PDF đề thi gốc hoặc dán trực tiếp mã nguồn LaTeX chuẩn Bộ GD&ĐT. Hệ thống ứng dụng Gemini 3.8 Flash và bộ phân tích cú pháp để tự động nhận biết câu hỏi, công thức KaTeX và phân loại vào 3 phần chuẩn hóa.
-                </p>
               </div>
 
               {/* Chuyển đổi phương thức: File PDF hoặc Mã LaTeX */}
@@ -1757,9 +1748,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                       <h4 className="font-extrabold text-sm text-slate-800">
                         Kéo thả file PDF hoặc mã nguồn LaTeX (.tex, .txt) vào đây
                       </h4>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Hỗ trợ đề thi dạng <strong>.pdf, .tex, .txt, .latex</strong>. Thầy/Cô cũng có thể bấm <strong>Ctrl + V</strong> để dán trực tiếp.
-                      </p>
                     </div>
                   </div>
                 ) : (
@@ -2510,18 +2498,13 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
             {/* Nội dung đề bài & Hỗ trợ Dán ảnh clipboard */}
             <div className="space-y-1 text-xs">
-              <div className="flex items-center justify-between">
-                <label className="font-bold text-slate-700">Nội dung câu hỏi (Prompt) *</label>
-                <span className="text-[11px] text-blue-600 font-semibold">
-                  Mẹo: Nhấn Ctrl+V để dán ảnh chụp màn hình trực tiếp!
-                </span>
-              </div>
+              <label className="font-bold text-slate-700 block">Nội dung câu hỏi (Prompt) *</label>
               <textarea
                 rows={3}
                 value={modalPrompt}
                 onChange={(e) => setModalPrompt(e.target.value)}
                 onPaste={handlePasteImageFromClipboard}
-                placeholder="Nhập nội dung đề bài... Bạn có thể nhấn Ctrl+V để dán ảnh bài toán đã chụp."
+                placeholder="Nhập nội dung đề bài..."
                 className="w-full p-3 rounded-xl border border-slate-300 text-xs focus:border-blue-600 focus:outline-none"
               />
             </div>
@@ -2732,7 +2715,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                 rows={2}
                 value={modalExplanation}
                 onChange={(e) => setModalExplanation(e.target.value)}
-                placeholder="Hướng dẫn giải cho học sinh sau khi nộp bài..."
+                placeholder="Lời giải chi tiết (tùy chọn)..."
                 className="w-full p-2.5 rounded-xl border border-slate-300 text-xs"
               />
             </div>
@@ -2843,9 +2826,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               </div>
               <div>
                 <h4 className="font-extrabold text-base text-slate-900">Xác Nhận Xuất Bản Đề Thi</h4>
-                <p className="text-xs text-slate-500">
-                  Vui lòng kiểm tra lại cấu hình đề thi trước khi chính thức áp dụng:
-                </p>
               </div>
             </div>
 
@@ -2996,9 +2976,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   <Layers size={20} className="text-blue-600" />
                   <span>Danh Sách Đề Thi Đã Xuất Bản ({examsList.length})</span>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Quản lý kho đề thi, xem thử đề thi và xóa đề thi khỏi hệ thống kèm toàn bộ dữ liệu làm bài.
-                </p>
               </div>
               <button
                 type="button"
@@ -3014,9 +2991,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               <div className="p-12 text-center space-y-3 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
                 <FileText size={40} className="mx-auto text-slate-300" />
                 <h4 className="font-bold text-slate-700 text-sm">Chưa có đề thi nào trong kho!</h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Hãy nhấn nút "Tự Tạo Đề Thủ Công" hoặc "Tải Lên File PDF AI" để biên soạn đề thi đầu tiên.
-                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">

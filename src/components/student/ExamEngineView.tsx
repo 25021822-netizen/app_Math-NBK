@@ -579,9 +579,6 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               <Maximize size={18} className="text-indigo-600 shrink-0" />
               <div>
                 <span className="font-bold block">Chế độ thi yêu cầu Toàn Màn Hình</span>
-                <span className="text-indigo-700 text-[11px]">
-                  Để đảm bảo tính nghiêm túc và chống gian lận, vui lòng duy trì toàn màn hình khi làm bài.
-                </span>
               </div>
             </div>
             <button
@@ -641,12 +638,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
 
       {/* Auto-Save Draft Status Pill */}
       {lastAutoSaved && !isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
-        <div className="flex items-center justify-between text-xs text-slate-500 px-4">
+        <div className="flex items-center text-xs text-slate-500 px-4">
           <span className="flex items-center gap-1.5">
             <Save size={13} className="text-emerald-600" />
             <span>{lastAutoSaved}</span>
           </span>
-          <span className="text-slate-400">Tự động sao lưu vào bộ nhớ cục bộ chống mất điện/mất mạng</span>
         </div>
       )}
 

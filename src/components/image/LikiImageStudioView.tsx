@@ -380,7 +380,7 @@ export const LikiImageStudioView: React.FC<LikiImageStudioViewProps> = ({ onInse
 
               {imageDescription && (
                 <div className="mt-3 p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
-                  <span className="font-bold text-pink-400">Ghi chú AI:</span> {imageDescription}
+                  {imageDescription}
                 </div>
               )}
             </div>

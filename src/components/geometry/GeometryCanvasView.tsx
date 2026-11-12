@@ -3029,14 +3029,6 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
               </svg>
             )}
           </div>
-
-          {/* Hướng dẫn tương tác */}
-          <div className="flex items-center gap-2 mt-4 text-xs text-slate-500">
-            <Info size={15} className="text-blue-600" />
-            <span>
-              Nhấp giữ và kéo các chấm tròn để thay đổi độ dài cạnh và góc của hình phẳng.
-            </span>
-          </div>
         </div>
       </div>
       )}

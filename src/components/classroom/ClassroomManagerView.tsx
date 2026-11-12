@@ -2417,11 +2417,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <BookOpen size={16} className="text-blue-600" />
                       <span>Mục Lục Chương Trình & Chuyên Đề Toán THPT</span>
                     </h4>
-                    <p className="text-[11px] text-slate-600 mt-0.5">
-                      {userRole === 'teacher'
-                        ? 'Giáo viên xây dựng mục lục, đăng tải lý thuyết, sơ đồ tư duy và tài liệu PDF bài tập cho học sinh.'
-                        : 'Mục lục các chương học và từng bài học do thầy cô phân công. Nhấn vào bài để học và xem tài liệu.'}
-                    </p>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -2454,11 +2449,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <BookOpen size={28} />
                     </div>
                     <h5 className="font-extrabold text-sm text-slate-800">Lớp chưa có mục lục bài học nào</h5>
-                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      {userRole === 'teacher'
-                        ? 'Thầy/Cô hãy bắt đầu tạo chương học và tải lên bài học đầu tiên kèm tài liệu ôn thi.'
-                        : 'Giáo viên chưa đăng tải bài học cho lớp này. Vui lòng quay lại sau!'}
-                    </p>
                     {userRole === 'teacher' && (
                       <button
                         type="button"

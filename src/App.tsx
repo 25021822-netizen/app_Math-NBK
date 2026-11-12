@@ -1671,9 +1671,6 @@ export default function App() {
                 </span>
                 ) không?
               </p>
-              <p className="text-[11px] text-slate-500">
-                Sau khi đăng xuất, phiên làm việc sẽ kết thúc và bạn sẽ được chuyển về màn hình Đăng nhập.
-              </p>
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-1">

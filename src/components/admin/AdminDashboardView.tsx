@@ -879,9 +879,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               <h3 className="text-xl font-black text-slate-900 mt-1">
                 Yêu Cầu Tài Khoản Mới Đang Chờ Duyệt
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Bạn có thể bấm &quot;Phê Duyệt Tự Động Tất Cả&quot; ở trên hoặc kiểm tra và phê duyệt từng tài khoản bên dưới.
-              </p>
             </div>
 
             <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 font-mono text-xs font-bold shrink-0">

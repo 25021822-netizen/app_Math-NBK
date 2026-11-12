@@ -184,9 +184,6 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
             Bảng Điểm & Thống Kê Năng Lực Học Sinh
           </h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-2xl">
-            Tổng hợp kết quả làm bài thi chuẩn BGD 4 phần theo từng nhóm lớp, phân tích phổ điểm, giám sát vi phạm anti-cheat và theo dõi sự tiến bộ của học sinh.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">

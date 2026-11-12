@@ -104,9 +104,6 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
             Tổng Hợp Các Bài Thi Đã Làm
           </h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-xl">
-            Theo dõi tiến trình rèn luyện, xem lại chi tiết từng câu hỏi đúng/sai, thang điểm 4 phần và ôn luyện lại những phần còn yếu.
-          </p>
         </div>
 
         <button

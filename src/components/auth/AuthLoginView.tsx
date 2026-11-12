@@ -281,10 +281,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
               </span>
             </h1>
 
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl mx-auto lg:mx-0">
-              Đồng bộ dữ liệu học tập cá nhân hóa, làm đề thi trắc nghiệm 3 phần chuẩn BGD 2025, khám phá không gian 3D Three.js và xưởng tạo ảnh AI Liki cùng thầy cô, bạn bè.
-            </p>
-
             {/* Feature Cards Grid */}
             <div className="grid grid-cols-2 gap-3 pt-2">
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs text-left space-y-1">
@@ -361,9 +357,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div>
                     <h3 className="text-xl font-black text-white">Chào mừng trở lại!</h3>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Nhập tài khoản để tiếp tục quá trình học tập và thi thử.
-                    </p>
                   </div>
 
                   {regPendingNotice && (

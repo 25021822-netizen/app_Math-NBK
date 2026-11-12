@@ -1360,17 +1360,6 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
               {/* Sub-tab 3: Tạo điểm tự do bằng con trỏ ấn trực tiếp vào hình */}
               {pointCreationMode === 'manual' && (
                 <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
-                  {/* Banner hướng dẫn ấn trực tiếp vào hình */}
-                  <div className="p-2.5 rounded-xl bg-white border border-emerald-300 shadow-2xs space-y-1">
-                    <div className="flex items-center gap-1.5 text-emerald-800 font-extrabold text-[11px]">
-                      <MousePointerClick size={14} className="text-emerald-600 animate-pulse" />
-                      <span>ẤN CON TRỎ TRỰC TIẾP VÀO HÌNH 3D:</span>
-                    </div>
-                    <p className="text-[10px] text-slate-600 leading-relaxed">
-                      Di chuyển con trỏ chuột vào khung vẽ 3D bên phải và <strong>nhấp trực tiếp vào bất kỳ cạnh, mặt phẳng hoặc đáy hình</strong> để tạo điểm ngay tức thì!
-                    </p>
-                  </div>
-
                   {/* Radar tọa độ ngắm thời gian thực */}
                   <div className="p-2.5 rounded-xl bg-slate-900 text-white space-y-1 shadow-inner">
                     <div className="flex items-center justify-between text-[10px] font-bold">
@@ -2106,30 +2095,18 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
           </div>
         )}
 
-        {/* Hướng dẫn tương tác chuột hoặc Thanh chỉ báo tạo điểm tự do */}
         {isFreePointMode ? (
           <div className="w-full max-w-[500px] mb-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] font-bold flex items-center justify-between shadow-2xs animate-in fade-in">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-              <span>ĐANG BẬT: Dùng con trỏ nhấp trực tiếp vào hình để tạo điểm [{manualPointName}]</span>
-            </span>
-            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-semibold">
-              Nhấp vào mặt, cạnh hoặc đáy
+              <span>Chế độ tạo điểm: Nhấp vào hình để đặt [{manualPointName}]</span>
             </span>
           </div>
-        ) : (
-          <div className="w-full max-w-[500px] mb-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-[11px] flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <Move size={13} className="text-blue-600" />
-              <span>Kéo chuột trên nền để xoay 3D · Kéo trực tiếp vào điểm để di chuyển</span>
-            </span>
-            {selectedPointName && (
-              <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md">
-                Đang chọn điểm [{selectedPointName}]
-              </span>
-            )}
+        ) : selectedPointName ? (
+          <div className="w-full max-w-[500px] mb-2 px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold flex items-center justify-end">
+            <span>Đang chọn điểm [{selectedPointName}]</span>
           </div>
-        )}
+        ) : null}
 
         {/* Canvas SVG 3D Container */}
         <div className="w-full max-w-[520px] aspect-5/4 relative flex items-center justify-center select-none overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-50/70 to-white shadow-inner">
