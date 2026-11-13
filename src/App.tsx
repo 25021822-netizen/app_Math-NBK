@@ -7,7 +7,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   UserProfile,
   UserRole,
-  AccountTier,
   CheatLog,
   Exam,
   Classroom,
@@ -634,8 +633,7 @@ export default function App() {
 
   // Admin phê duyệt tự động toàn bộ người dùng đang ở trạng thái pending_approval
   const handleApproveAllUsers = async (
-    targetRole: 'all' | 'student' | 'teacher' = 'all',
-    tier: AccountTier = 'free'
+    targetRole: 'all' | 'student' | 'teacher' = 'all'
   ) => {
     setAllUsers((prev) =>
       prev.map((u) => {
@@ -644,7 +642,6 @@ export default function App() {
             return {
               ...u,
               status: 'active',
-              tier: tier || u.tier || 'free',
               rejectionReason: undefined,
               approvedAt: new Date().toISOString(),
             };
@@ -654,7 +651,7 @@ export default function App() {
       })
     );
 
-    const res = await dbApproveAllUsers(targetRole, tier);
+    const res = await dbApproveAllUsers(targetRole, 'free');
     triggerPushNotification('Phê duyệt tự động hoàn tất', {
       message: `Đã tự động phê duyệt và kích hoạt thành công ${res.approvedCount} tài khoản!`,
       type: 'system',
@@ -1019,17 +1016,6 @@ export default function App() {
     dbToggleMessageReaction(classId, messageId, emoji, userProfile.id).catch(console.error);
   };
 
-  const handleToggleTier = () => {
-    const nextTier: AccountTier = userProfile.tier === 'free' ? 'premium' : 'free';
-    const nextMax = nextTier === 'premium' ? 9999 : 10;
-    const updated: UserProfile = {
-      ...userProfile,
-      tier: nextTier,
-      maxDailyScans: nextMax,
-    };
-    handleUpdateProfile(updated);
-  };
-
   const handleIncrementScan = () => {
     setUserProfile((prev) => ({
       ...prev,
@@ -1154,7 +1140,6 @@ export default function App() {
           classrooms={classrooms}
           submissions={submissions}
           onNavigateToClassroom={() => setCurrentTab('classroom')}
-          onToggleTier={handleToggleTier}
           onLogout={handleLogout}
         />
       );
@@ -1255,10 +1240,7 @@ export default function App() {
         return (
           <AIMathStudioView
             dailyScanCount={userProfile.dailyScanCount}
-            maxDailyScans={userProfile.maxDailyScans}
-            tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
-            onUpgradeTier={handleToggleTier}
             onStartExam={(newExam) => {
               if (newExam) {
                 handlePublishExam(newExam);
@@ -1369,10 +1351,7 @@ export default function App() {
           <AIMathStudioView
             initialTab="three_3d"
             dailyScanCount={userProfile.dailyScanCount}
-            maxDailyScans={userProfile.maxDailyScans}
-            tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
-            onUpgradeTier={handleToggleTier}
             onStartExam={(newExam) => {
               if (newExam) {
                 handlePublishExam(newExam);
@@ -1386,10 +1365,7 @@ export default function App() {
           <AIMathStudioView
             initialTab="image_studio"
             dailyScanCount={userProfile.dailyScanCount}
-            maxDailyScans={userProfile.maxDailyScans}
-            tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
-            onUpgradeTier={handleToggleTier}
             onStartExam={(newExam) => {
               if (newExam) {
                 handlePublishExam(newExam);
@@ -1406,10 +1382,7 @@ export default function App() {
           <AIMathStudioView
             initialTab="tutor"
             dailyScanCount={userProfile.dailyScanCount}
-            maxDailyScans={userProfile.maxDailyScans}
-            tier={userProfile.tier}
             onIncrementScan={handleIncrementScan}
-            onUpgradeTier={handleToggleTier}
             onStartExam={(newExam) => {
               if (newExam) {
                 handlePublishExam(newExam);
@@ -1443,8 +1416,6 @@ export default function App() {
           currentTab={currentTab}
           onSelectTab={setCurrentTab}
           userRole={userRole}
-          tier={userProfile.tier}
-          onToggleTier={handleToggleTier}
           streakDays={userProfile.streakDays}
           xp={userProfile.xp}
           userName={userProfile.name}

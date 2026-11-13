@@ -288,7 +288,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [newLessonDesc, setNewLessonDesc] = useState('');
   const [newLessonTheory, setNewLessonTheory] = useState('');
   const [newLessonPractice, setNewLessonPractice] = useState('');
-  const [newLessonExercisesCount, setNewLessonExercisesCount] = useState<number>(10);
+  const [newLessonExercisesCount, setNewLessonExercisesCount] = useState<string>('10');
   const [newLessonExternalLink, setNewLessonExternalLink] = useState('');
   const [newLessonPdfFile, setNewLessonPdfFile] = useState<{ fileName: string; fileSize: string; fileData?: string; fileUrl?: string } | null>(null);
   const [newLessonPracticePdfFile, setNewLessonPracticePdfFile] = useState<{ fileName: string; fileSize: string; fileData?: string; fileUrl?: string } | null>(null);
@@ -304,7 +304,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [editLessonDesc, setEditLessonDesc] = useState('');
   const [editLessonTheory, setEditLessonTheory] = useState('');
   const [editLessonPractice, setEditLessonPractice] = useState('');
-  const [editLessonExercisesCount, setEditLessonExercisesCount] = useState<number>(10);
+  const [editLessonExercisesCount, setEditLessonExercisesCount] = useState<string>('10');
   const [editLessonExternalLink, setEditLessonExternalLink] = useState('');
   const [editLessonPdfFile, setEditLessonPdfFile] = useState<{ fileName: string; fileSize: string; fileData?: string; fileUrl?: string } | null>(null);
   const [editLessonPracticePdfFile, setEditLessonPracticePdfFile] = useState<{ fileName: string; fileSize: string; fileData?: string; fileUrl?: string } | null>(null);
@@ -1065,7 +1065,10 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         content: newLessonTheory.trim() || newLessonDesc.trim(),
         teacherName: currentUserName || 'ThS. Trần Văn Minh',
         createdAt: new Date().toISOString().split('T')[0],
-        exercisesCount: Number(newLessonExercisesCount) || 10,
+        exercisesCount:
+          newLessonExercisesCount.trim() === ''
+            ? 10
+            : Math.max(0, parseInt(newLessonExercisesCount, 10) || 0),
         completedStudentIds: [],
         externalLink: newLessonExternalLink.trim() || undefined,
         pdfAttachment: cleanLessonPdf,
@@ -1085,6 +1088,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       setNewLessonDesc('');
       setNewLessonTheory('');
       setNewLessonPractice('');
+      setNewLessonExercisesCount('10');
       setNewLessonPdfFile(null);
       setNewLessonPracticePdfFile(null);
       setNewLessonExternalLink('');
@@ -1124,7 +1128,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setEditLessonDesc(lesson.description || '');
     setEditLessonTheory(lesson.theoryContent || lesson.content || '');
     setEditLessonPractice(lesson.practiceContent || lesson.exercisesContent || '');
-    setEditLessonExercisesCount(lesson.exercisesCount || 10);
+    setEditLessonExercisesCount(String(lesson.exercisesCount ?? 10));
     setEditLessonExternalLink(lesson.externalLink || '');
     setEditLessonPdfFile(
       lesson.pdfAttachment
@@ -1249,7 +1253,10 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         exercisesContent: editLessonPractice.trim(),
         content: editLessonTheory.trim(),
         updatedAt: new Date().toISOString().split('T')[0],
-        exercisesCount: Number(editLessonExercisesCount) || 10,
+        exercisesCount:
+          editLessonExercisesCount.trim() === ''
+            ? 10
+            : Math.max(0, parseInt(editLessonExercisesCount, 10) || 0),
         externalLink: editLessonExternalLink.trim() || undefined,
         pdfAttachment: cleanLessonPdf,
         practicePdfAttachment: cleanPracticePdf,
@@ -2392,7 +2399,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       setNewLessonDesc('');
                       setNewLessonTheory('');
                       setNewLessonPractice('');
-                      setNewLessonExercisesCount(10);
+                      setNewLessonExercisesCount('10');
                       setNewLessonExternalLink('');
                       setNewLessonPdfFile(null);
                       setNewLessonPracticePdfFile(null);
@@ -2493,7 +2500,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                           setNewLessonDesc('');
                           setNewLessonTheory('');
                           setNewLessonPractice('');
-                          setNewLessonExercisesCount(10);
+                          setNewLessonExercisesCount('10');
                           setNewLessonExternalLink('');
                           setNewLessonPdfFile(null);
                           setNewLessonPracticePdfFile(null);
@@ -2646,7 +2653,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
                                       <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-semibold border border-amber-200 flex items-center gap-1">
                                         <ListChecks size={11} />
-                                        <span>Ô Luyện tập ({lesson.exercisesCount || 10} câu)</span>
+                                        <span>Ô Luyện tập ({lesson.exercisesCount ?? 10} câu)</span>
                                       </span>
 
                                       {hasPracticePdf && (
@@ -3319,11 +3326,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                 {isMe && (
                                   <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.2 rounded">
                                     Bạn
-                                  </span>
-                                )}
-                                {st.tier === 'premium' && (
-                                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded">
-                                    Pro
                                   </span>
                                 )}
                               </div>
@@ -4187,15 +4189,52 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   {/* Số câu bài tập luyện tập */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-700">Số câu bài tập luyện tập</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={newLessonExercisesCount}
-                      onChange={(e) => setNewLessonExercisesCount(parseInt(e.target.value) || 0)}
-                      className="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white font-bold focus:border-amber-600 focus:outline-none"
-                    />
+                    <label className="font-bold text-slate-700">Số câu hỏi ôn tập</label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = parseInt(newLessonExercisesCount, 10);
+                          setNewLessonExercisesCount(String(Math.max(0, (Number.isNaN(cur) ? 10 : cur) - 1)));
+                        }}
+                        className="w-10 h-10 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                        title="Giảm 1 câu"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={newLessonExercisesCount}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
+                          if (digitsOnly === '') {
+                            setNewLessonExercisesCount('');
+                            return;
+                          }
+                          const num = Math.min(500, parseInt(digitsOnly, 10));
+                          setNewLessonExercisesCount(String(num));
+                        }}
+                        onBlur={() => {
+                          if (newLessonExercisesCount.trim() === '') {
+                            setNewLessonExercisesCount('0');
+                          }
+                        }}
+                        placeholder="Nhập số câu..."
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white font-bold text-center focus:border-amber-600 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = parseInt(newLessonExercisesCount, 10);
+                          setNewLessonExercisesCount(String(Math.min(500, (Number.isNaN(cur) ? 0 : cur) + 1)));
+                        }}
+                        className="w-10 h-10 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                        title="Tăng 1 câu"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
 
                   {/* Gắn file PDF cho Ô Luyện Tập */}
@@ -4465,15 +4504,52 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   {/* Sửa Số câu luyện tập */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-700">Số câu bài tập luyện tập</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={editLessonExercisesCount}
-                      onChange={(e) => setEditLessonExercisesCount(parseInt(e.target.value) || 0)}
-                      className="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white font-bold focus:border-amber-600 focus:outline-none"
-                    />
+                    <label className="font-bold text-slate-700">Số câu hỏi ôn tập</label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = parseInt(editLessonExercisesCount, 10);
+                          setEditLessonExercisesCount(String(Math.max(0, (Number.isNaN(cur) ? 10 : cur) - 1)));
+                        }}
+                        className="w-10 h-10 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                        title="Giảm 1 câu"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={editLessonExercisesCount}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
+                          if (digitsOnly === '') {
+                            setEditLessonExercisesCount('');
+                            return;
+                          }
+                          const num = Math.min(500, parseInt(digitsOnly, 10));
+                          setEditLessonExercisesCount(String(num));
+                        }}
+                        onBlur={() => {
+                          if (editLessonExercisesCount.trim() === '') {
+                            setEditLessonExercisesCount('0');
+                          }
+                        }}
+                        placeholder="Nhập số câu..."
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white font-bold text-center focus:border-amber-600 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = parseInt(editLessonExercisesCount, 10);
+                          setEditLessonExercisesCount(String(Math.min(500, (Number.isNaN(cur) ? 0 : cur) + 1)));
+                        }}
+                        className="w-10 h-10 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 font-black text-slate-700 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                        title="Tăng 1 câu"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
 
                   {/* Quản lý file PDF cho Ô Luyện Tập */}
@@ -4663,7 +4739,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 }`}
               >
                 <ListChecks size={15} />
-                <span>Ô Luyện Tập ({selectedLessonDetail.exercisesCount || 10} câu)</span>
+                <span>Ô Luyện Tập ({selectedLessonDetail.exercisesCount ?? 10} câu)</span>
                 {selectedLessonDetail.practicePdfAttachment && (
                   <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" title="Có file PDF luyện tập" />
                 )}
@@ -4766,7 +4842,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       <span>Hệ Thống Bài Tập Luyện Tập:</span>
                     </h4>
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                      {selectedLessonDetail.exercisesCount || 10} câu rèn luyện
+                      {selectedLessonDetail.exercisesCount ?? 10} câu rèn luyện
                     </span>
                   </div>
 

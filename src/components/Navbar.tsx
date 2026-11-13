@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserRole, AccountTier } from '../types/math';
+import { UserRole } from '../types/math';
 import {
   PushNotificationItem,
   isNotificationsEnabled,
@@ -44,8 +44,6 @@ interface NavbarProps {
   onSelectTab: (tab: string) => void;
   userRole: UserRole;
   onSelectRole?: (role: UserRole) => void;
-  tier: AccountTier;
-  onToggleTier: () => void;
   streakDays: number;
   xp: number;
   deviceMode?: 'desktop' | 'tablet' | 'mobile';
@@ -67,8 +65,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   userRole,
   onSelectRole,
-  tier,
-  onToggleTier,
   streakDays,
   xp,
   onOpenFriendsModal,
@@ -608,19 +604,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
 
-            {/* Tier Badge / Upgrade Button */}
-            <button
-              onClick={onToggleTier}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
-                tier === 'premium'
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
-              }`}
-            >
-              <Sparkles size={14} />
-              <span className="hidden sm:inline">{tier === 'premium' ? 'Gói Pro' : 'Nâng cấp Pro'}</span>
-            </button>
-
             {/* Logout Button (Desktop) */}
             {onLogout && (
               <button
@@ -679,9 +662,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
 
                 <div className="flex flex-col items-end gap-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
-                    {tier === 'premium' ? 'Gói Pro' : 'Miễn Phí'}
-                  </span>
                   <span className="text-[10px] text-slate-500 font-mono font-bold">
                     {xp} XP
                   </span>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { UserProfile, CheatLog, UserRole, AccountTier, AutoApprovalSettings } from '../../types/math';
+import { UserProfile, CheatLog, UserRole, AutoApprovalSettings } from '../../types/math';
 import {
   Users,
   ShieldAlert,
@@ -37,21 +37,19 @@ interface AdminDashboardViewProps {
   cheatLogs: CheatLog[];
   users?: UserProfile[];
   onCreateUser?: (newUser: UserProfile) => void;
-  onToggleUserTier?: (userId: string) => void;
   onUpdateUser?: (updatedUser: UserProfile) => void;
   onDeleteUser?: (userId: string) => void;
   onApproveUser?: (userId: string) => void;
   onRejectUser?: (userId: string, reason?: string) => void;
   autoApprovalSettings?: AutoApprovalSettings;
   onUpdateAutoApprovalSettings?: (settings: AutoApprovalSettings) => void;
-  onApproveAllUsers?: (targetRole?: 'all' | 'student' | 'teacher', tier?: AccountTier) => void;
+  onApproveAllUsers?: (targetRole?: 'all' | 'student' | 'teacher') => void;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   cheatLogs,
   users: propUsers,
   onCreateUser,
-  onToggleUserTier,
   onUpdateUser,
   onDeleteUser,
   onApproveUser,
@@ -136,12 +134,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setIsBulkApproving(true);
     try {
       if (onApproveAllUsers) {
-        await onApproveAllUsers('all', autoApproval.defaultTier || 'free');
+        await onApproveAllUsers('all');
       } else {
         setInternalUsers((prev) =>
           prev.map((u) =>
             u.status === 'pending_approval'
-              ? { ...u, status: 'active', tier: autoApproval.defaultTier || 'free' }
+              ? { ...u, status: 'active' }
               : u
           )
         );
@@ -168,7 +166,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<'teacher' | 'student'>('student');
   const [newUserGrade, setNewUserGrade] = useState<10 | 11 | 12>(12);
-  const [newUserTier, setNewUserTier] = useState<AccountTier>('free');
   const [newUserPassword, setNewUserPassword] = useState('MatKhau@123');
   const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [createUserError, setCreateUserError] = useState<string | null>(null);
@@ -269,26 +266,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     return Array.from(map.values());
   }, [cheatLogs]);
 
-  const toggleTier = (userId: string) => {
-    if (onToggleUserTier) {
-      onToggleUserTier(userId);
-    } else {
-      setInternalUsers((prev) =>
-        prev.map((u) => {
-          if (u.id === userId) {
-            const nextTier = u.tier === 'free' ? 'premium' : 'free';
-            return {
-              ...u,
-              tier: nextTier,
-              maxDailyScans: nextTier === 'premium' ? 9999 : 10,
-            };
-          }
-          return u;
-        })
-      );
-    }
-  };
-
   // Tự động sinh ID nội bộ duy nhất theo vai trò
   const generateRecommendedId = (role: 'teacher' | 'student') => {
     const prefix = role === 'teacher' ? 'usr_teacher' : 'usr_student';
@@ -300,7 +277,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setNewUserEmail('');
     setNewUserRole('student');
     setNewUserGrade(12);
-    setNewUserTier('free');
     setNewUserPassword(generateRandomPassword());
     setShowCreatePassword(false);
     setCreateUserError(null);
@@ -337,12 +313,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       name: newUserName.trim(),
       email: finalEmail,
       role: newUserRole,
-      tier: newUserTier,
+      tier: 'free',
       xp: newUserRole === 'teacher' ? 5000 : 500,
       streakDays: 1,
       lastActiveDate: new Date().toISOString().split('T')[0],
       dailyScanCount: 0,
-      maxDailyScans: newUserTier === 'premium' ? 9999 : 10,
+      maxDailyScans: 9999,
       grade: newUserGrade,
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(newUserName.trim())}`,
       password: newUserPassword.trim(),
@@ -565,7 +541,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     <th className="px-6 py-3">Họ Tên & Email</th>
                     <th className="px-6 py-3">Mã ID Hệ Thống</th>
                     <th className="px-6 py-3">Vai Trò / Khối</th>
-                    <th className="px-6 py-3">Gói Cước</th>
                     <th className="px-6 py-3">Mật Khẩu (Admin Quản Lý)</th>
                     <th className="px-6 py-3">Trạng Thái</th>
                     <th className="px-6 py-3 text-right">Thao Tác</th>
@@ -598,15 +573,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                             <span className="text-[11px] font-semibold text-slate-500">Khối {u.grade}</span>
                           )}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] ${
-                            u.tier === 'premium' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {u.tier === 'premium' ? 'Premium (Pro)' : 'Free Tier'}
-                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5 font-mono text-xs">
@@ -687,13 +653,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => toggleTier(u.id)}
-                            className="px-2.5 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 font-semibold text-slate-700 transition-colors text-[11px]"
-                            title={u.tier === 'free' ? 'Nâng cấp lên gói Premium Pro' : 'Chuyển về gói Miễn Phí'}
-                          >
-                            {u.tier === 'free' ? 'Nâng Pro' : 'Hạ Free'}
-                          </button>
                           {u.role !== 'admin' ? (
                             <button
                               type="button"
@@ -777,7 +736,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
 
             {/* Granular Options & Toggles */}
-            <div className="relative z-10 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="relative z-10 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               {/* Auto-approve Students */}
               <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
                 <input
@@ -805,21 +764,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   <span className="text-[10px] text-blue-200/60 block">Kích hoạt ngay khi GV đăng ký</span>
                 </div>
               </label>
-
-              {/* Default Account Tier */}
-              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col justify-between">
-                <span className="text-[10px] text-blue-200/70 font-semibold uppercase tracking-wider block">
-                  Gói mặc định khi duyệt:
-                </span>
-                <select
-                  value={autoApproval.defaultTier || 'free'}
-                  onChange={(e) => handleToggleAutoApproval('defaultTier', e.target.value as AccountTier)}
-                  className="mt-1 bg-black/40 border border-white/15 rounded-xl px-2.5 py-1 text-white font-bold text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
-                >
-                  <option value="free" className="bg-slate-900 text-white">Miễn Phí (Free Tier)</option>
-                  <option value="premium" className="bg-slate-900 text-white">Nâng Cao (Premium Tier)</option>
-                </select>
-              </div>
 
               {/* Notify Admin */}
               <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
@@ -1250,19 +1194,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </select>
                 </div>
               )}
-
-              {/* Gói cước */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">Gói Tài Khoản</label>
-                <select
-                  value={newUserTier}
-                  onChange={(e) => setNewUserTier(e.target.value as AccountTier)}
-                  className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs bg-white focus:border-blue-600 focus:outline-none"
-                >
-                  <option value="free">Miễn Phí (Free Tier - 10 lượt quét/ngày)</option>
-                  <option value="premium">Nâng Cao (Premium Pro - Không giới hạn AI & Đề thi)</option>
-                </select>
-              </div>
 
               <div className="flex gap-2 pt-2">
                 <button

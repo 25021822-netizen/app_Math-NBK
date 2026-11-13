@@ -10,7 +10,6 @@ import {
   Flame,
   Zap,
   CheckCircle2,
-  Sparkles,
   Shield,
   Clock,
   BookOpen,
@@ -37,7 +36,6 @@ interface UserProfileViewProps {
   submissions: StudentExamSubmission[];
   onOpenFriendsModal?: () => void;
   onNavigateToClassroom?: () => void;
-  onToggleTier?: () => void;
   onLogout?: () => void;
 }
 
@@ -48,7 +46,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   submissions,
   onOpenFriendsModal,
   onNavigateToClassroom,
-  onToggleTier,
   onLogout,
 }) => {
   const isTeacher = userProfile.role === 'teacher';
@@ -210,16 +207,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           <div className="flex-1 text-center sm:text-left space-y-2">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{name}</h1>
-              {userProfile.tier === 'premium' ? (
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-amber-950 text-xs font-black uppercase flex items-center gap-1 shadow-xs">
-                  <Sparkles size={12} />
-                  <span>Pro</span>
-                </span>
-              ) : (
-                <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-xs font-bold">
-                  Free
-                </span>
-              )}
             </div>
 
             <p className="text-blue-100 text-xs sm:text-sm font-medium">{schoolName}</p>
@@ -235,15 +222,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               >
                 <Users size={16} className="text-blue-600" />
                 <span>Mạng Lưới Bạn Bè</span>
-              </button>
-            )}
-            {onToggleTier && userProfile.tier === 'free' && (
-              <button
-                onClick={onToggleTier}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-xs hover:opacity-95 transition-all flex items-center justify-center gap-1.5"
-              >
-                <Sparkles size={16} />
-                <span>Nâng Cấp Gói Pro</span>
               </button>
             )}
             {onLogout && (
@@ -322,9 +300,9 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
               <span className="text-[11px] font-bold text-slate-400 block uppercase">Quét Bài Tập AI</span>
               <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block">
-                {userProfile.dailyScanCount}/{userProfile.maxDailyScans}
+                {userProfile.dailyScanCount}
               </span>
-              <span className="text-[10px] text-emerald-700 font-semibold">Lượt hôm nay</span>
+              <span className="text-[10px] text-emerald-700 font-semibold">Lượt đã dùng · Không giới hạn</span>
             </div>
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
               <span className="text-[11px] font-bold text-slate-400 block uppercase">Hồ Sơ Học Tập</span>

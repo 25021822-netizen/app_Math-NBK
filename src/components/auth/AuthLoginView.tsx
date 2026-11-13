@@ -155,19 +155,18 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
     );
 
     const initialStatus = isAutoApproved ? 'active' : 'pending_approval';
-    const initialTier = isAutoApproved ? (autoApprovalSettings?.defaultTier || 'free') : 'free';
 
     const newApplicant: UserProfile = {
       id: finalId,
       name: regName.trim(),
       email: regEmail.trim().toLowerCase(),
       role: regRole, // 'student' or 'teacher' (TUYỆT ĐỐI KHÔNG CHO PHÉP TẠO ADMIN)
-      tier: initialTier,
+      tier: 'free',
       xp: 100,
       streakDays: 1,
       lastActiveDate: new Date().toISOString().split('T')[0],
       dailyScanCount: 0,
-      maxDailyScans: 10,
+      maxDailyScans: 9999,
       grade: regGrade,
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(regName.trim())}`,
       schoolName: regSchool.trim() || 'Toán Học LIKI',
@@ -717,10 +716,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">Email đăng nhập:</span>
                     <span className="font-mono font-bold text-cyan-300">{pendingModalUser.email}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">Gói tài khoản:</span>
-                    <span className="font-bold text-amber-300 uppercase">{pendingModalUser.tier}</span>
                   </div>
                 </div>
 

@@ -1,23 +1,16 @@
 import React, { useState } from 'react';
-import { ScanResult, AccountTier } from '../../types/math';
+import { ScanResult } from '../../types/math';
 import { SAMPLE_OCR_PROBLEMS } from '../../data/mockData';
 import { MathView } from '../MathView';
 import { Camera, Image as ImageIcon, Sparkles, Zap, Clock, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Layers } from 'lucide-react';
 
 interface CameraScannerViewProps {
-  dailyScanCount: number;
-  maxDailyScans: number;
-  tier: AccountTier;
+  dailyScanCount?: number;
   onIncrementScan: () => void;
-  onUpgradeTier: () => void;
 }
 
 export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
-  dailyScanCount,
-  maxDailyScans,
-  tier,
   onIncrementScan,
-  onUpgradeTier,
 }) => {
   const [selectedSample, setSelectedSample] = useState(SAMPLE_OCR_PROBLEMS[0]);
   const [customInputText, setCustomInputText] = useState('');
@@ -25,14 +18,7 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
   const [activeSolution, setActiveSolution] = useState<ScanResult | null>(SAMPLE_OCR_PROBLEMS[0].solution);
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
 
-  const remainingScans = tier === 'premium' ? 9999 : Math.max(0, maxDailyScans - dailyScanCount);
-
   const handleScanProblem = async (problemData?: typeof SAMPLE_OCR_PROBLEMS[0], customPrompt?: string) => {
-    if (tier !== 'premium' && remainingScans <= 0) {
-      alert('Bạn đã sử dụng hết lượt quét miễn phí hôm nay. Vui lòng nâng cấp gói Pro để quét không giới hạn!');
-      return;
-    }
-
     setIsProcessing(true);
     onIncrementScan();
 
@@ -46,7 +32,6 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
         body: JSON.stringify({
           problemText: customPrompt || targetProblem.solution.problemText,
           latex: targetProblem.latex,
-          tier,
         }),
       });
 
@@ -101,19 +86,11 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
         {/* Quota Management Widget */}
         <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
           <div className="text-right">
-            <span className="text-[11px] text-slate-500 font-semibold block">Hạn ngạch hôm nay</span>
-            <span className="text-sm font-extrabold text-slate-900 tabular-nums">
-              {tier === 'premium' ? 'Không giới hạn' : `${remainingScans} / ${maxDailyScans} lượt`}
+            <span className="text-[11px] text-slate-500 font-semibold block">Lượt sử dụng AI</span>
+            <span className="text-sm font-extrabold text-emerald-700 tabular-nums">
+              Không giới hạn
             </span>
           </div>
-          {tier !== 'premium' && (
-            <button
-              onClick={onUpgradeTier}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs transition-all"
-            >
-              Lên Pro
-            </button>
-          )}
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { AccountTier, MathTopic, ScanResult, SocraticMessage, Exam, Question } from '../../types/math';
+import { MathTopic, ScanResult, SocraticMessage, Exam, Question } from '../../types/math';
 import { SAMPLE_SCAN_RESULTS } from '../../data/mockData';
 import { MathView } from '../MathView';
 import { FunctionGrapher } from '../FunctionGrapher';
@@ -55,22 +55,15 @@ export type StudioSubTab = 'tutor' | 'three_3d' | 'image_studio' | 'scanner';
 
 interface AIMathStudioViewProps {
   initialTab?: StudioSubTab;
-  dailyScanCount: number;
-  maxDailyScans: number;
-  tier: AccountTier;
+  dailyScanCount?: number;
   onIncrementScan: () => void;
-  onUpgradeTier: () => void;
   onStartExam?: (exam?: Exam) => void;
   onOpenCropStudio?: (fileData: { fileName: string; fileSize: string; fileBase64?: string; isPdf?: boolean; extractedText?: string }) => void;
 }
 
 export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
   initialTab = 'tutor',
-  dailyScanCount,
-  maxDailyScans,
-  tier,
   onIncrementScan,
-  onUpgradeTier,
   onStartExam,
   onOpenCropStudio,
 }) => {
@@ -115,8 +108,6 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
   const [hintsRemaining, setHintsRemaining] = useState(2);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [useSearchGrounding, setUseSearchGrounding] = useState<boolean>(false);
-
-  const isLimitReached = tier === 'free' && dailyScanCount >= maxDailyScans;
 
   // Xử lý nạp tệp ảnh chụp, tệp PDF hoặc tài liệu toán học có xác thực định dạng trước khi quét
   const handleIncomingFile = async (file: File) => {
@@ -225,11 +216,6 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
 
     if (customPdfFile && !customPdfFile.info.isValid) {
       setPdfValidationError('Tệp PDF đang nạp không hợp lệ. Vui lòng kiểm tra lại tệp nguồn.');
-      return;
-    }
-
-    if (isLimitReached) {
-      onUpgradeTier();
       return;
     }
 
