@@ -84,6 +84,7 @@ interface ClassroomManagerViewProps {
   onUpdateClassrooms: (updated: Classroom[]) => void;
   examsList: Exam[];
   onUpdateExamsList?: (exams: Exam[]) => void;
+  onSaveExam?: (exam: Exam) => void;
   onSelectExamToTake?: (examId: string) => void;
   onViewClassGradebook?: (classId: string) => void;
   allUsers?: UserProfile[];
@@ -111,6 +112,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onUpdateClassrooms,
   examsList,
   onUpdateExamsList,
+  onSaveExam,
   onSelectExamToTake,
   onViewClassGradebook,
   allUsers = SAMPLE_STUDENTS,
@@ -669,12 +671,12 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
     const examIdToRemove = examToRemoveFromClass.id;
 
-    // Cập nhật danh sách đề thi giao trong Classroom
+    // 1. Cập nhật danh sách đề thi giao trong Classroom (onUpdateClassrooms đã tự đồng bộ dbSaveClassrooms)
     const updatedClassrooms = classrooms.map((cls) => {
       if (cls.id === currentClass.id) {
         return {
           ...cls,
-          assignedExamIds: cls.assignedExamIds.filter((id) => id !== examIdToRemove),
+          assignedExamIds: (cls.assignedExamIds || []).filter((id) => id !== examIdToRemove),
         };
       }
       return cls;
@@ -682,18 +684,26 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
     onUpdateClassrooms(updatedClassrooms);
 
-    // Nếu đề thi có gắn targetClassIds thì gỡ ID lớp này ra
-    if (onUpdateExamsList) {
-      const updatedExams = examsList.map((ex) => {
-        if (ex.id === examIdToRemove && ex.targetClassIds) {
-          return {
-            ...ex,
-            targetClassIds: ex.targetClassIds.filter((cid) => cid !== currentClass.id),
-          };
+    // 2. Gỡ ID lớp này khỏi targetClassIds của đề thi và chỉ lưu đúng đề thi vừa sửa
+    const targetExam = examsList.find((e) => e.id === examIdToRemove);
+    if (targetExam) {
+      const nextTargetIds = (targetExam.targetClassIds || []).filter((cid) => cid !== currentClass.id);
+      const updatedExam: Exam = {
+        ...targetExam,
+        targetClassIds: nextTargetIds,
+        distributionType:
+          nextTargetIds.length === 0 && targetExam.distributionType !== 'repository'
+            ? ('repository' as const)
+            : targetExam.distributionType,
+      };
+      if (onSaveExam) {
+        onSaveExam(updatedExam);
+      } else {
+        if (onUpdateExamsList) {
+          onUpdateExamsList(examsList.map((ex) => (ex.id === examIdToRemove ? updatedExam : ex)));
         }
-        return ex;
-      });
-      onUpdateExamsList(updatedExams);
+        dbSaveExam(updatedExam).catch(console.error);
+      }
     }
 
     setExamActionSuccess(`Đã xóa đề "${examToRemoveFromClass.title}" khỏi danh sách giao cho lớp ${currentClass.name}!`);
@@ -1362,8 +1372,19 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       const id = examToDeletePermanently.id;
       const title = examToDeletePermanently.title;
       if (onDeleteExam) {
+        // onDeleteExam đã tự cập nhật examsList, classrooms, submissions, cheatLogs, localStorage và xóa trên Firestore/Server
         await onDeleteExam(id);
+      } else {
+        const updatedClassrooms = classrooms.map((cls) => ({
+          ...cls,
+          assignedExamIds: (cls.assignedExamIds || []).filter((eid) => eid !== id),
+        }));
+        onUpdateClassrooms(updatedClassrooms);
+        if (onUpdateExamsList) {
+          onUpdateExamsList(examsList.filter((e) => e.id !== id));
+        }
       }
+
       setExamActionSuccess(`Đã xóa vĩnh viễn đề thi "${title}" cùng toàn bộ kết quả nộp bài của học sinh!`);
       setTimeout(() => setExamActionSuccess(null), 4000);
       setExamToDeletePermanently(null);
@@ -1638,7 +1659,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const handleAssignExamToClass = async (examId: string) => {
     if (!currentClass) return;
 
-    // 1. Cập nhật assignedExamIds của nhóm lớp
+    // 1. Cập nhật assignedExamIds của nhóm lớp (onUpdateClassrooms tự lưu dbSaveClassrooms)
     const updated = classrooms.map((cls) => {
       if (cls.id === currentClass.id) {
         const currentAssigned = cls.assignedExamIds || [];
@@ -1650,29 +1671,26 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     });
 
     onUpdateClassrooms(updated);
-    dbSaveClassrooms(updated).catch(console.error);
 
     // 2. Cập nhật targetClassIds của đề thi và đồng bộ lên Firestore & Server DB
-    if (onUpdateExamsList) {
-      const updatedExams = examsList.map((ex) => {
-        if (ex.id === examId) {
-          const currentTargets = ex.targetClassIds || [];
-          const nextTargets = currentTargets.includes(currentClass.id)
-            ? currentTargets
-            : [...currentTargets, currentClass.id];
-          return {
-            ...ex,
-            targetClassIds: nextTargets,
-            distributionType: ex.distributionType === 'repository' ? 'both' : (ex.distributionType || 'classroom'),
-          };
+    const targetExam = examsList.find((e) => e.id === examId);
+    if (targetExam) {
+      const currentTargets = targetExam.targetClassIds || [];
+      const nextTargets = currentTargets.includes(currentClass.id)
+        ? currentTargets
+        : [...currentTargets, currentClass.id];
+      const updatedExam: Exam = {
+        ...targetExam,
+        targetClassIds: nextTargets,
+        distributionType: targetExam.distributionType === 'repository' ? 'both' : (targetExam.distributionType || 'classroom'),
+      };
+      if (onSaveExam) {
+        onSaveExam(updatedExam);
+      } else {
+        if (onUpdateExamsList) {
+          onUpdateExamsList(examsList.map((ex) => (ex.id === examId ? updatedExam : ex)));
         }
-        return ex;
-      });
-      onUpdateExamsList(updatedExams);
-
-      const targetExam = updatedExams.find((e) => e.id === examId);
-      if (targetExam) {
-        dbSaveExam(targetExam).catch(console.error);
+        dbSaveExam(updatedExam).catch(console.error);
       }
     }
   };
@@ -2006,7 +2024,18 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               </div>
               <h4 className="font-bold text-sm mt-1">{cls.name}</h4>
               <span className={`text-[11px] mt-0.5 block ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
-                {cls.studentIds.length} học sinh · {cls.assignedExamIds.length} đề thi
+                {cls.studentIds.length} học sinh ·{' '}
+                {
+                  Array.from(
+                    new Set([
+                      ...(cls.assignedExamIds || []),
+                      ...examsList
+                        .filter((e) => e.targetClassIds && e.targetClassIds.includes(cls.id))
+                        .map((e) => e.id),
+                    ])
+                  ).filter((examId) => examsList.some((e) => e.id === examId)).length
+                }{' '}
+                đề thi
               </span>
             </button>
           );
@@ -2123,16 +2152,18 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               {(() => {
                 const combinedExamIds = Array.from(
                   new Set([
-                    ...currentClass.assignedExamIds,
+                    ...(currentClass.assignedExamIds || []),
                     ...examsList
-                      .filter(
-                        (e) =>
-                          (e.targetClassIds && e.targetClassIds.includes(currentClass.id)) ||
-                          e.distributionType === 'both'
-                      )
+                      .filter((e) => e.targetClassIds && e.targetClassIds.includes(currentClass.id))
                       .map((e) => e.id),
                   ])
-                );
+                ).filter((examId) => {
+                  const ex = examsList.find((e) => e.id === examId);
+                  if (!ex) return false;
+                  const isAssigned = (currentClass.assignedExamIds || []).includes(examId);
+                  const isTargeted = Boolean(ex.targetClassIds && ex.targetClassIds.includes(currentClass.id));
+                  return isAssigned || isTargeted;
+                });
 
                 return (
                   <>
@@ -2238,40 +2269,40 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                         })
                       )}
                     </div>
+
+                    {userRole === 'teacher' && examsList.some((e) => !combinedExamIds.includes(e.id)) && (
+                      <div className="pt-2">
+                        <label className="text-xs font-bold text-slate-600 block mb-1.5">Giao thêm đề thi khác:</label>
+                        <div className="flex gap-2">
+                          <select
+                            id="assignExamSelect"
+                            className="flex-1 h-10 px-3 rounded-xl border border-slate-300 text-xs bg-white focus:outline-none"
+                          >
+                            {examsList
+                              .filter((e) => !combinedExamIds.includes(e.id))
+                              .map((ex) => (
+                                <option key={ex.id} value={ex.id}>
+                                  {ex.title}
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            onClick={() => {
+                              const selectEl = document.getElementById('assignExamSelect') as HTMLSelectElement;
+                              if (selectEl && selectEl.value) {
+                                handleAssignExamToClass(selectEl.value);
+                              }
+                            }}
+                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl"
+                          >
+                            Giao Đề
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 );
               })()}
-
-              {userRole === 'teacher' && examsList.length > currentClass.assignedExamIds.length && (
-                <div className="pt-2">
-                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Giao thêm đề thi khác:</label>
-                  <div className="flex gap-2">
-                    <select
-                      id="assignExamSelect"
-                      className="flex-1 h-10 px-3 rounded-xl border border-slate-300 text-xs bg-white focus:outline-none"
-                    >
-                      {examsList
-                        .filter((e) => !currentClass.assignedExamIds.includes(e.id))
-                        .map((ex) => (
-                          <option key={ex.id} value={ex.id}>
-                            {ex.title}
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      onClick={() => {
-                        const selectEl = document.getElementById('assignExamSelect') as HTMLSelectElement;
-                        if (selectEl && selectEl.value) {
-                          handleAssignExamToClass(selectEl.value);
-                        }
-                      }}
-                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl"
-                    >
-                      Giao Đề
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 

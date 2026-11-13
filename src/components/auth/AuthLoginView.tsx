@@ -20,7 +20,6 @@ import {
   Compass,
   FileCheck,
   MessageSquare,
-  Key,
   Zap,
 } from 'lucide-react';
 
@@ -49,7 +48,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 
   // Register form state
   const [regRole, setRegRole] = useState<'student' | 'teacher'>('student');
-  const [regCustomId, setRegCustomId] = useState<string>(''); // Mục ID tự chọn khi đăng ký
   const [regName, setRegName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
   const [regGrade, setRegGrade] = useState<10 | 11 | 12>(12);
@@ -145,26 +143,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       return;
     }
 
-    // Xử lý mục Mã ID: BẮT BUỘC DUY NHẤT, KHÔNG ĐƯỢC PHÉP TRÙNG LẶP
-    const trimmedId = regCustomId.trim().toLowerCase();
-    if (!trimmedId) {
-      setRegError('Vui lòng nhập Mã ID định danh cho tài khoản (Bắt buộc, không được để trống)!');
-      return;
-    }
-    if (!/^[a-zA-Z0-9_\-]+$/.test(trimmedId)) {
-      setRegError('Mã ID chỉ được chứa chữ cái, chữ số, dấu gạch dưới (_) hoặc gạch nối (-)!');
-      return;
-    }
-    if (trimmedId.length < 3 || trimmedId.length > 32) {
-      setRegError('Mã ID phải có độ dài từ 3 đến 32 ký tự!');
-      return;
-    }
-    if (allUsers.some((u) => u.id.toLowerCase() === trimmedId)) {
-      setRegError(`Mã ID "${trimmedId}" đã tồn tại trên hệ thống! Mỗi tài khoản chỉ có 1 ID duy nhất và không ai được tạo trùng nhau.`);
-      return;
-    }
-
-    const finalId = trimmedId;
+    // Tự động tạo mã định danh nội bộ duy nhất cho tài khoản (người dùng không cần nhập ID)
+    const prefix = regRole === 'teacher' ? 'usr_teacher' : 'usr_student';
+    const finalId = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     // Kiểm tra cấu hình Duyệt Tự Động của Admin
     const isAutoApproved = Boolean(
@@ -215,8 +196,8 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
           id: `notif_${Date.now()}`,
           title: isAutoApproved ? 'Tài Khoản Mới Đã Tự Động Kích Hoạt' : 'Yêu Cầu Cấp Tài Khoản Mới',
           message: isAutoApproved
-            ? `Tài khoản ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${newApplicant.id}) đã được hệ thống tự động phê duyệt và kích hoạt thành công.`
-            : `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${newApplicant.id}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
+            ? `Tài khoản ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ${newApplicant.email}) đã được hệ thống tự động phê duyệt và kích hoạt thành công.`
+            : `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ${newApplicant.email}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
           type: 'system',
           timestamp: new Date().toISOString(),
           isRead: false,
@@ -229,7 +210,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
     }
 
     setPendingModalUser(newApplicant);
-    setRegCustomId('');
     setRegName('');
     setRegEmail('');
     setRegPassword('');
@@ -373,10 +353,10 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     </div>
                   )}
 
-                  {/* Input Email / ID */}
+                  {/* Input Email */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-300 block">
-                      Email hoặc Mã ID Học sinh/Giáo viên
+                      Email tài khoản
                     </label>
                     <div className="relative">
                       <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -384,7 +364,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                         type="text"
                         value={loginIdentifier}
                         onChange={(e) => setLoginIdentifier(e.target.value)}
-                        placeholder="VD: an.nguyen@thpt-nbk.edu.vn hoặc usr_student_01"
+                        placeholder="VD: an.nguyen@thpt-nbk.edu.vn"
                         className="w-full h-11 pl-10 pr-3 rounded-2xl bg-black/40 border border-white/20 text-white placeholder-slate-500 text-xs focus:border-cyan-400 focus:outline-none transition-colors"
                       />
                     </div>
@@ -531,32 +511,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                         className="w-full h-10 pl-10 pr-3 rounded-xl bg-black/40 border border-white/20 text-white placeholder-slate-500 text-xs focus:border-cyan-400 focus:outline-none"
                       />
                     </div>
-                  </div>
-
-                  {/* Mã ID người dùng (BẮT BUỘC DUY NHẤT - KHÔNG AI ĐƯỢC TRÙNG NHAU) */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <Key size={13} className="text-cyan-400" />
-                        <span>Mã ID định danh duy nhất (Bắt buộc) *</span>
-                      </label>
-                      <span className="text-[10px] text-amber-300 font-bold">Duy nhất 1 ID</span>
-                    </div>
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">
-                        #
-                      </div>
-                      <input
-                        type="text"
-                        value={regCustomId}
-                        onChange={(e) => setRegCustomId(e.target.value)}
-                        placeholder={regRole === 'teacher' ? 'VD: gv_minhtran hoặc gv_toan12' : 'VD: hs_nguyenan hoặc hs_25021822'}
-                        className="w-full h-10 pl-8 pr-3 rounded-xl bg-black/40 border border-white/20 text-cyan-300 placeholder-slate-500 text-xs focus:border-cyan-400 focus:outline-none font-mono"
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-400 leading-tight">
-                      * Mỗi tài khoản chỉ có 1 ID duy nhất trên toàn hệ thống và không được phép trùng nhau.
-                    </p>
                   </div>
 
                   {/* Email & Khối lớp / Bộ môn */}
@@ -761,8 +715,8 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 
                 <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-xs space-y-1">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">Mã ID đăng nhập:</span>
-                    <code className="font-mono font-bold text-cyan-300">{pendingModalUser.id}</code>
+                    <span className="text-slate-400">Email đăng nhập:</span>
+                    <span className="font-mono font-bold text-cyan-300">{pendingModalUser.email}</span>
                   </div>
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">Gói tài khoản:</span>

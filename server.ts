@@ -1407,16 +1407,15 @@ app.post('/api/db/register', (req, res) => {
   }
 
   const emailLower = user.email.trim().toLowerCase();
-  const idLower = (user.id || '').trim().toLowerCase();
-
-  // Bắt buộc phải có ID và không ai được tạo trùng nhau
+  let idLower = (user.id || '').trim().toLowerCase();
   if (!idLower) {
-    return res.status(400).json({ success: false, error: 'Mã ID định danh là bắt buộc, không được để trống!' });
+    const prefix = user.role === 'teacher' ? 'usr_teacher' : 'usr_student';
+    idLower = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   }
 
-  // Kiểm tra trùng ID (Mỗi tài khoản chỉ có 1 ID duy nhất, không ai được tạo giống nhau)
+  // Kiểm tra trùng ID nội bộ
   if (serverDb.users.some((u) => u.id.trim().toLowerCase() === idLower)) {
-    return res.status(400).json({ success: false, error: `Mã ID "${user.id}" đã được sử dụng! Mỗi tài khoản chỉ có 1 ID duy nhất trên hệ thống.` });
+    idLower = `${idLower}_${Math.random().toString(36).slice(2, 5)}`;
   }
 
   // Kiểm tra trùng Email

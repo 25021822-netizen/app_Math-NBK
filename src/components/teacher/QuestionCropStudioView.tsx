@@ -16,6 +16,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Minimize2,
   FileText,
   Image as ImageIcon,
   Check,
@@ -106,15 +107,46 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   // Canvas & tương tác cắt khung
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [rotationAngle, setRotationAngle] = useState<number>(0);
+  const [isExpandedView, setIsExpandedView] = useState<boolean>(false);
   const [isDrawingCrop, setIsDrawingCrop] = useState<boolean>(false);
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropBox, setCropBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
+  const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageCanvasRef = useRef<HTMLCanvasElement>(null);
   const imageElementRef = useRef<HTMLImageElement>(null);
   const pdfDocRef = useRef<any>(null);
+
+  const updateZoom = (updater: number | ((prev: number) => number)) => {
+    setZoomLevel((prev) => {
+      const rawNext = typeof updater === 'function' ? updater(prev) : updater;
+      const next = Math.max(0.5, Math.min(3.5, Number(rawNext.toFixed(2))));
+      if (next !== prev) {
+        const ratio = next / prev;
+        setCropBox((box) =>
+          box ? { x: box.x * ratio, y: box.y * ratio, w: box.w * ratio, h: box.h * ratio } : null
+        );
+      }
+      return next;
+    });
+  };
+
+  // Hỗ trợ Ctrl/Cmd + Cuộn chuột để phóng to/thu nhỏ trực tiếp trên bàn cắt
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.15 : -0.15;
+        updateZoom((z) => z + delta);
+      }
+    };
+    vp.addEventListener('wheel', handleWheel, { passive: false });
+    return () => vp.removeEventListener('wheel', handleWheel);
+  }, [viewMode, isExpandedView]);
 
   // Khởi tạo tài liệu PDF qua PDF.js khi có documentData
   useEffect(() => {
@@ -194,8 +226,8 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         const canvas = pageCanvasRef.current;
         if (!canvas) return;
 
-        // Render ở độ nét cao (scale 1.8) để công thức KaTeX không bị vỡ hạt
-        const viewport = page.getViewport({ scale: 1.8 });
+        // Render ở độ nét cao (scale 2.5) để công thức toán siêu nét khi phóng to đến 350%
+        const viewport = page.getViewport({ scale: 2.5 });
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
@@ -216,7 +248,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [currentPage, totalPages]);
+  }, [currentPage, totalPages, viewMode]);
 
   // Tự động chọn câu đầu tiên khi danh sách câu hỏi thay đổi nếu chưa có câu nào active
   useEffect(() => {
@@ -877,9 +909,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       {/* ========================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ========================================================= */}
-        {/* CỘT TRÁI (6 COLS): BÀN CẮT TÀI LIỆU VỚI CON TRỎ BẮN TỌA ĐỘ */}
+        {/* CỘT TRÁI: BÀN CẮT TÀI LIỆU VỚI CON TRỎ BẮN TỌA ĐỘ */}
         {/* ========================================================= */}
-        <div className="lg:col-span-6 space-y-4">
+        <div className={`${isExpandedView ? 'lg:col-span-12' : 'lg:col-span-6'} space-y-4 transition-all`}>
           <div className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4 shadow-xs">
             {/* Thanh công cụ Bàn Cắt */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
@@ -950,33 +982,61 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 </div>
               )}
 
-              {/* Các công cụ zoom và xoay */}
+              {/* Các công cụ zoom, phóng to bàn cắt và xoay */}
               {viewMode === 'canvas' && (
-                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => setZoomLevel((z) => Math.max(0.5, z - 0.15))}
+                    onClick={() => updateZoom((z) => z - 0.25)}
                     className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                    title="Thu nhỏ"
+                    title="Thu nhỏ (-25%)"
                   >
                     <ZoomOut size={14} />
                   </button>
-                  <span className="px-1 text-[11px] font-mono">{Math.round(zoomLevel * 100)}%</span>
+                  <select
+                    value={String(Math.round(zoomLevel * 100))}
+                    onChange={(e) => updateZoom(Number(e.target.value) / 100)}
+                    className="px-1.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-mono font-bold text-slate-800 cursor-pointer focus:outline-none"
+                    title="Chọn mức thu phóng đề"
+                  >
+                    {[50, 75, 100, 125, 150, 175, 200, 250, 300, 350].map((pct) => (
+                      <option key={pct} value={String(pct)}>
+                        {pct}%
+                      </option>
+                    ))}
+                    {![50, 75, 100, 125, 150, 175, 200, 250, 300, 350].includes(Math.round(zoomLevel * 100)) && (
+                      <option value={String(Math.round(zoomLevel * 100))}>
+                        {Math.round(zoomLevel * 100)}%
+                      </option>
+                    )}
+                  </select>
                   <button
                     type="button"
-                    onClick={() => setZoomLevel((z) => Math.min(2.5, z + 0.15))}
+                    onClick={() => updateZoom((z) => z + 0.25)}
                     className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                    title="Phóng to"
+                    title="Phóng to (+25%)"
                   >
                     <ZoomIn size={14} />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setZoomLevel(1)}
-                    className="p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                    title="Vừa màn hình"
+                    onClick={() => updateZoom(1)}
+                    className={`px-2 py-1 rounded-lg text-[11px] transition-colors cursor-pointer ${
+                      Math.round(zoomLevel * 100) === 100 ? 'bg-white text-indigo-700 shadow-2xs' : 'hover:bg-white'
+                    }`}
+                    title="Khớp vừa khung (100%)"
                   >
-                    <Maximize2 size={14} />
+                    100%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateZoom(2)}
+                    className={`px-2 py-1 rounded-lg text-[11px] transition-colors cursor-pointer ${
+                      Math.round(zoomLevel * 100) === 200 ? 'bg-white text-indigo-700 shadow-2xs' : 'hover:bg-white'
+                    }`}
+                    title="Phóng to 200% để cắt chi tiết"
+                  >
+                    200%
                   </button>
                   <button
                     type="button"
@@ -986,13 +1046,24 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                   >
                     <RotateCw size={14} />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsExpandedView((v) => !v)}
+                    className={`px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] ${
+                      isExpandedView ? 'bg-indigo-600 text-white shadow-xs' : 'hover:bg-white text-indigo-700'
+                    }`}
+                    title={isExpandedView ? 'Thu gọn bàn cắt về 2 cột' : 'Mở rộng bàn cắt toàn chiều ngang'}
+                  >
+                    {isExpandedView ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                    <span>{isExpandedView ? 'Thu gọn' : 'Mở rộng'}</span>
+                  </button>
                 </div>
               )}
             </div>
 
             {/* VÙNG HIỂN THỊ TÀI LIỆU & CON TRỎ BẮN TỌA ĐỘ TRỰC TIẾP */}
             {viewMode === 'pdf_document' && documentData?.fileBase64 ? (
-              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[520px] h-[660px] flex items-center justify-center">
+              <div className={`relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[520px] ${isExpandedView ? 'h-[78vh]' : 'h-[680px]'} flex items-center justify-center`}>
                 <object
                   data={documentData.fileBase64}
                   type="application/pdf"
@@ -1003,7 +1074,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 </object>
               </div>
             ) : (
-              <div className="relative rounded-2xl bg-slate-900 overflow-hidden border border-slate-800 min-h-[480px] max-h-[660px] flex flex-col items-center justify-start select-none overflow-auto p-4">
+              <div
+                ref={viewportRef}
+                className={`relative rounded-2xl bg-slate-900 border border-slate-800 min-h-[480px] ${isExpandedView ? 'max-h-[78vh]' : 'max-h-[680px]'} select-none overflow-auto p-4`}
+              >
                 {isRenderingPdf && (
                   <div className="absolute inset-0 bg-slate-950/70 z-30 flex flex-col items-center justify-center gap-2 text-white">
                     <Loader2 size={28} className="animate-spin text-indigo-400" />
@@ -1012,7 +1086,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 )}
 
                 {pdfRenderError && (
-                  <div className="p-3 mb-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-2 z-20 w-full max-w-md">
+                  <div className="p-3 mb-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-2 z-20 w-full max-w-md mx-auto">
                     <span>{pdfRenderError}</span>
                     <button
                       type="button"
@@ -1031,27 +1105,28 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseLeave}
                   style={{
-                    transform: `scale(${zoomLevel}) rotate(${rotationAngle}deg)`,
-                    transformOrigin: 'top center',
-                    transition: isDrawingCrop ? 'none' : 'transform 0.15s ease',
+                    width: `${Math.round(zoomLevel * 100)}%`,
+                    transform: rotationAngle !== 0 ? `rotate(${rotationAngle}deg)` : undefined,
+                    transformOrigin: 'center center',
+                    transition: isDrawingCrop ? 'none' : 'width 0.12s ease, transform 0.15s ease',
                   }}
-                  className="relative cursor-crosshair inline-block max-w-full shadow-2xl rounded-lg overflow-hidden bg-white"
+                  className="relative cursor-crosshair block mx-auto shadow-2xl rounded-lg overflow-hidden bg-white"
                 >
                   {documentData?.isPdf && documentData?.fileBase64 ? (
                     <canvas
                       ref={pageCanvasRef}
-                      className="max-w-full h-auto object-contain block mx-auto pointer-events-none"
+                      className="w-full h-auto block pointer-events-none"
                     />
                   ) : documentData?.fileBase64 && !documentData.isPdf ? (
                     <img
                       ref={imageElementRef}
                       src={documentData.fileBase64}
                       alt="Tài liệu đề thi"
-                      className="max-w-full h-auto object-contain block mx-auto pointer-events-none"
+                      className="w-full h-auto block pointer-events-none"
                     />
                   ) : (
                     // Khi chưa có file PDF / Hình ảnh tải lên: Hiển thị hướng dẫn kéo thả sạch sẽ, không có câu hỏi mẫu giả
-                    <div className="w-[520px] min-h-[580px] bg-slate-50 text-slate-800 p-8 flex flex-col items-center justify-center text-center space-y-4 border-2 border-dashed border-slate-300 rounded-lg">
+                    <div className="w-full min-h-[520px] bg-slate-50 text-slate-800 p-8 flex flex-col items-center justify-center text-center space-y-4 border-2 border-dashed border-slate-300 rounded-lg">
                       <div className="w-16 h-16 rounded-3xl bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-inner">
                         <UploadCloud size={32} />
                       </div>
@@ -1389,9 +1464,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         </div>
 
         {/* ========================================================= */}
-        {/* CỘT PHẢI (6 COLS): DANH SÁCH CÂU HỎI ĐÃ CẮT VÀO ĐỀ */}
+        {/* CỘT PHẢI: DANH SÁCH CÂU HỎI ĐÃ CẮT VÀO ĐỀ */}
         {/* ========================================================= */}
-        <div className="lg:col-span-6 space-y-4">
+        <div className={`${isExpandedView ? 'lg:col-span-12' : 'lg:col-span-6'} space-y-4 transition-all`}>
           <div className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4 shadow-xs">
             {/* Header danh sách & Điểm */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">

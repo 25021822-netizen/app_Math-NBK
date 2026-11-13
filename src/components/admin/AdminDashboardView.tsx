@@ -167,7 +167,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<'teacher' | 'student'>('student');
-  const [newUserId, setNewUserId] = useState('');
   const [newUserGrade, setNewUserGrade] = useState<10 | 11 | 12>(12);
   const [newUserTier, setNewUserTier] = useState<AccountTier>('free');
   const [newUserPassword, setNewUserPassword] = useState('MatKhau@123');
@@ -290,17 +289,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     }
   };
 
-  // Tự động sinh ID theo vai trò
+  // Tự động sinh ID nội bộ duy nhất theo vai trò
   const generateRecommendedId = (role: 'teacher' | 'student') => {
-    const randomNum = Math.floor(100 + Math.random() * 900);
-    return role === 'teacher' ? `usr_teacher_${randomNum}` : `usr_student_${randomNum}`;
+    const prefix = role === 'teacher' ? 'usr_teacher' : 'usr_student';
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   };
 
   const handleOpenCreateModal = () => {
     setNewUserName('');
     setNewUserEmail('');
     setNewUserRole('student');
-    setNewUserId(generateRecommendedId('student'));
     setNewUserGrade(12);
     setNewUserTier('free');
     setNewUserPassword(generateRandomPassword());
@@ -325,17 +323,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       return;
     }
 
-    const trimmedId = (newUserId.trim() || generateRecommendedId(newUserRole)).toLowerCase();
-
-    // Kiểm tra trùng ID
-    if (usersList.some((u) => u.id.toLowerCase() === trimmedId)) {
-      setCreateUserError(`Mã ID "${trimmedId}" đã tồn tại trên hệ thống. Vui lòng chọn mã ID khác!`);
-      return;
+    let trimmedId = generateRecommendedId(newUserRole).toLowerCase();
+    while (usersList.some((u) => u.id.toLowerCase() === trimmedId)) {
+      trimmedId = generateRecommendedId(newUserRole).toLowerCase();
     }
 
     const finalEmail =
       newUserEmail.trim() ||
-      `${newUserName.trim().toLowerCase().replace(/\s+/g, '')}.${trimmedId}@thpt-nbk.edu.vn`;
+      `${newUserName.trim().toLowerCase().replace(/\s+/g, '')}.${Math.floor(100 + Math.random() * 900)}@thpt-nbk.edu.vn`;
 
     const newUser: UserProfile = {
       id: trimmedId,
@@ -351,6 +346,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       grade: newUserGrade,
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(newUserName.trim())}`,
       password: newUserPassword.trim(),
+      status: 'active',
     };
 
     if (onCreateUser) {
@@ -360,7 +356,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     }
 
     setCreateUserSuccess(
-      `Đã tạo thành công tài khoản cho ${newUserRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} "${newUser.name}" với ID: ${newUser.id} (Mật khẩu: ${newUser.password})`
+      `Đã tạo thành công tài khoản cho ${newUserRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} "${newUser.name}" (${newUser.email}, Mật khẩu: ${newUser.password})`
     );
 
     setTimeout(() => {
@@ -1138,7 +1134,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     type="button"
                     onClick={() => {
                       setNewUserRole('teacher');
-                      setNewUserId(generateRecommendedId('teacher'));
                     }}
                     className={`py-2.5 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all ${
                       newUserRole === 'teacher'
@@ -1154,7 +1149,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     type="button"
                     onClick={() => {
                       setNewUserRole('student');
-                      setNewUserId(generateRecommendedId('student'));
                     }}
                     className={`py-2.5 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all ${
                       newUserRole === 'student'
@@ -1177,28 +1171,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   onChange={(e) => setNewUserName(e.target.value)}
                   placeholder={newUserRole === 'teacher' ? 'VD: ThS. Hoàng Văn Bách' : 'VD: Đặng Quốc Huy'}
                   className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs focus:border-blue-600 focus:outline-none"
-                  required
-                />
-              </div>
-
-              {/* Mã ID hệ thống (Unique Key dùng cho Kết Bạn qua ID) */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">Mã ID Hệ Thống (Dùng để kết bạn qua ID) *</label>
-                  <button
-                    type="button"
-                    onClick={() => setNewUserId(generateRecommendedId(newUserRole))}
-                    className="text-[11px] text-blue-600 hover:underline font-semibold"
-                  >
-                    Tạo mã ngẫu nhiên
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  value={newUserId}
-                  onChange={(e) => setNewUserId(e.target.value.toLowerCase().trim())}
-                  placeholder="VD: usr_teacher_04 hoặc usr_student_08"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-mono text-xs font-bold text-blue-700 focus:border-blue-600 focus:outline-none"
                   required
                 />
               </div>

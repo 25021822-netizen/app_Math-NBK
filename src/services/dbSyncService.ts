@@ -22,6 +22,41 @@ import {
   AutoApprovalSettings,
 } from '../types/math';
 
+// Theo dõi các đề thi đã bị xóa và đề thi vừa lưu cục bộ để chống sync ngược / tái sinh sau khi xóa
+const DELETED_EXAMS_STORAGE_KEY = 'math_liki_deleted_exam_ids';
+const deletedExamIdsSet: Set<string> = (() => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(DELETED_EXAMS_STORAGE_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed.filter((id) => typeof id === 'string'));
+    }
+  } catch {}
+  return new Set<string>();
+})();
+const recentlySavedExamIds = new Map<string, number>();
+let lastClassroomSaveAt = 0;
+let activeAccumulatorRef: DatabaseState | null = null;
+let activeDispatchRef: (() => void) | null = null;
+
+function persistDeletedExamIds() {
+  try {
+    if (typeof window !== 'undefined') {
+      const arr = Array.from(deletedExamIdsSet).slice(-100);
+      localStorage.setItem(DELETED_EXAMS_STORAGE_KEY, JSON.stringify(arr));
+    }
+  } catch {}
+}
+
+export function isExamDeletedLocally(examId: string): boolean {
+  return deletedExamIdsSet.has(examId);
+}
+
+export function isExamRecentlySaved(examId: string): boolean {
+  const savedAt = recentlySavedExamIds.get(examId);
+  return Boolean(savedAt && Date.now() - savedAt < 15000);
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -207,13 +242,14 @@ export async function dbSaveAdminSettings(settings: AutoApprovalSettings): Promi
  */
 export async function dbRegisterUser(newUser: UserProfile): Promise<{ success: boolean; error?: string; user?: UserProfile; isAutoApproved?: boolean }> {
   try {
-    const userRef = doc(db, 'users', newUser.id);
+    const resolvedId = (newUser.id || `${newUser.role === 'teacher' ? 'usr_teacher' : 'usr_student'}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`).trim().toLowerCase();
+    const userRef = doc(db, 'users', resolvedId);
     const snap = await getDoc(userRef);
 
     if (snap.exists()) {
       return {
         success: false,
-        error: `Mã ID "${newUser.id}" đã được sử dụng! Mỗi tài khoản chỉ có 1 ID duy nhất trên hệ thống.`,
+        error: 'Tài khoản vừa tạo bị trùng khóa nội bộ, vui lòng thử lại!',
       };
     }
 
@@ -245,7 +281,7 @@ export async function dbRegisterUser(newUser: UserProfile): Promise<{ success: b
 
     const payload = {
       ...newUser,
-      id: newUser.id.trim().toLowerCase(),
+      id: resolvedId,
       email: newUser.email.trim().toLowerCase(),
       status: initialStatus as 'active' | 'pending_approval',
       tier: initialTier,
@@ -436,6 +472,11 @@ export async function dbUpdateUser(user: UserProfile): Promise<boolean> {
 export async function dbSaveClassrooms(classrooms: Classroom[]): Promise<boolean> {
   const cleanClasses = cleanForFirestore(classrooms);
   if (!Array.isArray(cleanClasses)) return false;
+
+  lastClassroomSaveAt = Date.now();
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.classrooms = cleanClasses;
+  }
 
   // 1. Lưu ngay vào localStorage để không bị mất khi F5 / làm mới trang
   try {
@@ -979,10 +1020,31 @@ async function persistExamSnippets(exam: Exam): Promise<Exam> {
  * Giúp học sinh thấy đề thi ngay lập tức khi giáo viên đăng bài
  */
 export async function dbSaveExam(exam: Exam): Promise<boolean> {
+  if (!exam || !exam.id) return false;
+
+  // Đánh dấu lưu ngay lập tức trước khi upload ảnh để tránh snapshot trung gian làm rơi đề thi
+  deletedExamIdsSet.delete(exam.id);
+  persistDeletedExamIds();
+  recentlySavedExamIds.set(exam.id, Date.now());
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.exams = [
+      exam,
+      ...activeAccumulatorRef.exams.filter((e) => e.id !== exam.id),
+    ];
+  }
+
   // 1. Chuyển đổi và lưu trữ vĩnh viễn các ảnh cắt đề thi
   const persistedExam = await persistExamSnippets(exam);
   const cleanExam = sanitizeExamForFirestore(persistedExam);
   if (!cleanExam || !cleanExam.id) return false;
+
+  recentlySavedExamIds.set(cleanExam.id, Date.now());
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.exams = [
+      cleanExam,
+      ...activeAccumulatorRef.exams.filter((e) => e.id !== cleanExam.id),
+    ];
+  }
 
   // 2. Lưu ngay vào localStorage để không bị mất khi F5 / làm mới trang
   try {
@@ -1023,13 +1085,39 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
  * - Gỡ mã đề thi khỏi danh sách giao của tất cả các nhóm lớp
  */
 export async function dbDeleteExam(examId: string): Promise<boolean> {
-  // 0. Xóa ngay khỏi localStorage
+  if (!examId) return false;
+
+  // Đánh dấu đã xóa để không bao giờ bị đồng bộ ngược lại từ cache cũ
+  deletedExamIdsSet.add(examId);
+  recentlySavedExamIds.delete(examId);
+  persistDeletedExamIds();
+
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.exams = activeAccumulatorRef.exams.filter((e) => e.id !== examId);
+    activeAccumulatorRef.submissions = activeAccumulatorRef.submissions.filter((s) => s.examId !== examId);
+    activeAccumulatorRef.cheatLogs = activeAccumulatorRef.cheatLogs.filter((c) => c.examId !== examId);
+    activeAccumulatorRef.classrooms = activeAccumulatorRef.classrooms.map((cls) => ({
+      ...cls,
+      assignedExamIds: (cls.assignedExamIds || []).filter((id) => id !== examId),
+    }));
+  }
+
+  // 0. Xóa ngay khỏi localStorage (cả danh sách đề và assignedExamIds trong classrooms)
   try {
     const raw = localStorage.getItem('math_liki_exams');
     if (raw) {
       const existingList: Exam[] = JSON.parse(raw);
       const nextList = existingList.filter((e) => e.id !== examId);
       localStorage.setItem('math_liki_exams', JSON.stringify(nextList));
+    }
+    const rawClasses = localStorage.getItem('math_liki_classrooms');
+    if (rawClasses) {
+      const existingClasses: Classroom[] = JSON.parse(rawClasses);
+      const nextClasses = existingClasses.map((cls) => ({
+        ...cls,
+        assignedExamIds: (cls.assignedExamIds || []).filter((id) => id !== examId),
+      }));
+      localStorage.setItem('math_liki_classrooms', JSON.stringify(nextClasses));
     }
   } catch {}
 
@@ -1101,8 +1189,19 @@ export async function dbDeleteExam(examId: string): Promise<boolean> {
 export async function dbSaveExams(exams: Exam[]): Promise<boolean> {
   if (!Array.isArray(exams)) return false;
 
-  const persisted = await Promise.all(exams.map(persistExamSnippets));
+  const filteredInput = exams.filter((e) => e && e.id && !deletedExamIdsSet.has(e.id));
+  const persisted = await Promise.all(filteredInput.map(persistExamSnippets));
   const cleanExams = persisted.map(sanitizeExamForFirestore);
+  const now = Date.now();
+  cleanExams.forEach((ex) => {
+    if (ex && ex.id) {
+      recentlySavedExamIds.set(ex.id, now);
+    }
+  });
+
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.exams = cleanExams;
+  }
 
   try {
     localStorage.setItem('math_liki_exams', JSON.stringify(cleanExams));
@@ -1376,12 +1475,15 @@ export function startDbPolling(
     version: 1,
     lastUpdated: new Date().toISOString(),
     users: [DEFAULT_ADMIN_PROFILE],
-    classrooms: initialCachedClassrooms,
+    classrooms: initialCachedClassrooms.map((c) => ({
+      ...c,
+      assignedExamIds: (c.assignedExamIds || []).filter((eid) => !deletedExamIdsSet.has(eid)),
+    })),
     submissions: [],
     cheatLogs: [],
     classroomLessons: [],
     classroomMessages: {},
-    exams: initialCachedExams,
+    exams: initialCachedExams.filter((e) => e && e.id && !deletedExamIdsSet.has(e.id)),
   };
 
   const dispatchUpdate = () => {
@@ -1389,6 +1491,9 @@ export function startDbPolling(
     stateAccumulator.lastUpdated = new Date().toISOString();
     onRemoteUpdate({ ...stateAccumulator });
   };
+
+  activeAccumulatorRef = stateAccumulator;
+  activeDispatchRef = dispatchUpdate;
 
   // 1. Lắng nghe thay đổi User trên Firestore Real-time
   const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -1411,19 +1516,41 @@ export function startDbPolling(
     console.warn('Lỗi Firestore users onSnapshot:', err);
   });
 
-  // 2. Lắng nghe thay đổi Lớp học trên Firestore Real-time (Hợp nhất thông minh, không xóa đè mảng rỗng)
+  // 2. Lắng nghe thay đổi Lớp học trên Firestore Real-time
   const unsubClassrooms = onSnapshot(collection(db, 'classrooms'), (snapshot) => {
     const list: Classroom[] = [];
     snapshot.forEach((d) => {
       const c = d.data() as Classroom;
       if (c && c.id) {
-        list.push(c);
+        list.push({
+          ...c,
+          assignedExamIds: (c.assignedExamIds || []).filter((eid) => !deletedExamIdsSet.has(eid)),
+        });
       }
     });
 
+    // Bỏ qua snapshot cũ từ server khi máy vừa thực hiện lưu lớp học (< 2.5s) và chưa phải local write
+    if (snapshot.metadata.hasPendingWrites === false && Date.now() - lastClassroomSaveAt < 2500) {
+      return;
+    }
+
     if (list.length > 0) {
+      const removedClassIds = new Set<string>();
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'removed') {
+          removedClassIds.add(change.doc.id);
+        }
+      });
+
       const classMap = new Map<string, Classroom>();
-      stateAccumulator.classrooms.forEach((c) => classMap.set(c.id, c));
+      stateAccumulator.classrooms.forEach((c) => {
+        if (!removedClassIds.has(c.id)) {
+          classMap.set(c.id, {
+            ...c,
+            assignedExamIds: (c.assignedExamIds || []).filter((eid) => !deletedExamIdsSet.has(eid)),
+          });
+        }
+      });
       list.forEach((c) => classMap.set(c.id, c));
       stateAccumulator.classrooms = Array.from(classMap.values());
       try {
@@ -1474,62 +1601,95 @@ export function startDbPolling(
     console.warn('Lỗi Firestore lessons onSnapshot:', err);
   });
 
-  // 5b. Lắng nghe Đề thi đăng bởi giáo viên trên Firestore Real-time (Hợp nhất thông minh, không xóa đè mảng rỗng)
+  // 5b. Lắng nghe Đề thi trên Firestore Real-time (Xử lý triệt để cả khi xóa đề thi)
   const unsubExams = onSnapshot(collection(db, 'exams'), (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        deletedExamIdsSet.add(change.doc.id);
+        recentlySavedExamIds.delete(change.doc.id);
+      }
+    });
+    persistDeletedExamIds();
+
     const list: Exam[] = [];
     snapshot.forEach((d) => {
       const data = d.data() as Exam;
-      if (data && data.id && data.id !== 'exam_bgd_2025_01') {
+      if (data && data.id && data.id !== 'exam_bgd_2025_01' && !deletedExamIdsSet.has(data.id)) {
         list.push(data);
       }
     });
 
-    if (list.length > 0) {
-      const examMap = new Map<string, Exam>();
-      stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
-      list.forEach((remoteExam) => {
-        const localExam = examMap.get(remoteExam.id);
-        if (localExam && Array.isArray(localExam.questions) && Array.isArray(remoteExam.questions)) {
-          const mergedQuestions = remoteExam.questions.map((rq) => {
-            const lq = localExam.questions.find((q) => q.id === rq.id || q.questionNumber === rq.questionNumber);
-            if (!lq) return rq;
-            return {
-              ...lq,
-              ...rq,
-              pdfAttachmentUrl: rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
-              imageAttachment: rq.imageAttachment || lq.imageAttachment || rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
-              optionsAttachmentUrl: rq.optionsAttachmentUrl || lq.optionsAttachmentUrl,
-              options: rq.part === 'part_1_mcq' && Array.isArray((rq as any).options) ? (rq as any).options.map((ropt: any) => {
-                const lopt = lq.part === 'part_1_mcq' && Array.isArray((lq as any).options) ? (lq as any).options.find((o: any) => o.key === ropt.key) : null;
-                return {
-                  ...ropt,
-                  imageUrl: ropt.imageUrl || lopt?.imageUrl,
-                };
-              }) : (rq as any).options,
-              items: rq.part === 'part_2_true_false' && Array.isArray((rq as any).items) ? (rq as any).items.map((ritem: any) => {
-                const litem = lq.part === 'part_2_true_false' && Array.isArray((lq as any).items) ? (lq as any).items.find((i: any) => i.subKey === ritem.subKey) : null;
-                return {
-                  ...ritem,
-                  imageUrl: ritem.imageUrl || litem?.imageUrl,
-                };
-              }) : (rq as any).items,
-            };
-          });
-          examMap.set(remoteExam.id, {
-            ...localExam,
-            ...remoteExam,
-            questions: mergedQuestions,
-          });
-        } else {
-          examMap.set(remoteExam.id, remoteExam);
+    const examMap = new Map<string, Exam>();
+    const prevLocalMap = new Map<string, Exam>();
+    stateAccumulator.exams.forEach((e) => prevLocalMap.set(e.id, e));
+
+    list.forEach((remoteExam) => {
+      const localExam = prevLocalMap.get(remoteExam.id);
+      if (localExam && Array.isArray(localExam.questions) && Array.isArray(remoteExam.questions)) {
+        const mergedQuestions = remoteExam.questions.map((rq) => {
+          const lq = localExam.questions.find((q) => q.id === rq.id || q.questionNumber === rq.questionNumber);
+          if (!lq) return rq;
+          return {
+            ...lq,
+            ...rq,
+            pdfAttachmentUrl: rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+            imageAttachment: rq.imageAttachment || lq.imageAttachment || rq.pdfAttachmentUrl || lq.pdfAttachmentUrl,
+            optionsAttachmentUrl: rq.optionsAttachmentUrl || lq.optionsAttachmentUrl,
+            options: rq.part === 'part_1_mcq' && Array.isArray((rq as any).options) ? (rq as any).options.map((ropt: any) => {
+              const lopt = lq.part === 'part_1_mcq' && Array.isArray((lq as any).options) ? (lq as any).options.find((o: any) => o.key === ropt.key) : null;
+              return {
+                ...ropt,
+                imageUrl: ropt.imageUrl || lopt?.imageUrl,
+              };
+            }) : (rq as any).options,
+            items: rq.part === 'part_2_true_false' && Array.isArray((rq as any).items) ? (rq as any).items.map((ritem: any) => {
+              const litem = lq.part === 'part_2_true_false' && Array.isArray((lq as any).items) ? (lq as any).items.find((i: any) => i.subKey === ritem.subKey) : null;
+              return {
+                ...ritem,
+                imageUrl: ritem.imageUrl || litem?.imageUrl,
+              };
+            }) : (rq as any).items,
+          };
+        });
+        examMap.set(remoteExam.id, {
+          ...localExam,
+          ...remoteExam,
+          questions: mergedQuestions,
+        });
+      } else {
+        examMap.set(remoteExam.id, remoteExam);
+      }
+    });
+
+    // Chỉ giữ lại các đề thi cục bộ vừa lưu trong 15s gần nhất mà Firestore chưa kịp đồng bộ
+    const now = Date.now();
+    stateAccumulator.exams.forEach((localExam) => {
+      if (
+        localExam &&
+        localExam.id &&
+        !deletedExamIdsSet.has(localExam.id) &&
+        !examMap.has(localExam.id)
+      ) {
+        const savedAt = recentlySavedExamIds.get(localExam.id);
+        if (savedAt && now - savedAt < 15000) {
+          examMap.set(localExam.id, localExam);
         }
-      });
-      stateAccumulator.exams = Array.from(examMap.values());
-      try {
-        localStorage.setItem('math_liki_exams', JSON.stringify(stateAccumulator.exams));
-      } catch {}
-      dispatchUpdate();
+      }
+    });
+
+    stateAccumulator.exams = Array.from(examMap.values());
+    // Đồng thời dọn sạch mã đề đã xóa khỏi assignedExamIds trong classrooms
+    if (deletedExamIdsSet.size > 0) {
+      stateAccumulator.classrooms = stateAccumulator.classrooms.map((cls) => ({
+        ...cls,
+        assignedExamIds: (cls.assignedExamIds || []).filter((eid) => !deletedExamIdsSet.has(eid)),
+      }));
     }
+
+    try {
+      localStorage.setItem('math_liki_exams', JSON.stringify(stateAccumulator.exams));
+    } catch {}
+    dispatchUpdate();
   }, (err) => {
     console.warn('Lỗi Firestore exams onSnapshot:', err);
   });
@@ -1595,16 +1755,16 @@ export function startDbPolling(
               hasChanges = true;
             }
           }
-          // Đồng bộ Lớp học
-          if (json.data.classrooms && Array.isArray(json.data.classrooms)) {
-            const classMap = new Map<string, Classroom>();
-            stateAccumulator.classrooms.forEach((c) => classMap.set(c.id, c));
-            json.data.classrooms.forEach((c: Classroom) => classMap.set(c.id, c));
-            const mergedClasses = Array.from(classMap.values());
-            if (mergedClasses.length !== stateAccumulator.classrooms.length || JSON.stringify(mergedClasses) !== JSON.stringify(stateAccumulator.classrooms)) {
-              stateAccumulator.classrooms = mergedClasses;
+          // Đồng bộ Lớp học (bỏ qua nếu vừa lưu cục bộ trong 2.5s để tránh ghi đè dữ liệu mới xóa/gỡ đề)
+          if (json.data.classrooms && Array.isArray(json.data.classrooms) && Date.now() - lastClassroomSaveAt > 2500) {
+            const serverClasses = (json.data.classrooms as Classroom[]).map((c) => ({
+              ...c,
+              assignedExamIds: (c.assignedExamIds || []).filter((eid) => !deletedExamIdsSet.has(eid)),
+            }));
+            if (JSON.stringify(serverClasses) !== JSON.stringify(stateAccumulator.classrooms)) {
+              stateAccumulator.classrooms = serverClasses;
               try {
-                localStorage.setItem('math_liki_classrooms', JSON.stringify(mergedClasses));
+                localStorage.setItem('math_liki_classrooms', JSON.stringify(serverClasses));
               } catch {}
               hasChanges = true;
             }
@@ -1620,12 +1780,22 @@ export function startDbPolling(
               hasChanges = true;
             }
           }
-          // Đồng bộ Đề thi (hợp nhất thông minh, bảo tồn tối đa ảnh cắt)
+          // Đồng bộ Đề thi (không tái sinh các đề đã xóa, bảo tồn ảnh cắt)
           if (json.data.exams && Array.isArray(json.data.exams)) {
+            const now = Date.now();
             const examMap = new Map<string, Exam>();
-            stateAccumulator.exams.forEach((e) => examMap.set(e.id, e));
-            json.data.exams.forEach((remoteExam: Exam) => {
-              const localExam = examMap.get(remoteExam.id);
+            const prevMap = new Map<string, Exam>();
+            stateAccumulator.exams.forEach((e) => prevMap.set(e.id, e));
+
+            (json.data.exams as Exam[]).forEach((remoteExam: Exam) => {
+              if (!remoteExam || !remoteExam.id || deletedExamIdsSet.has(remoteExam.id)) return;
+              const localExam = prevMap.get(remoteExam.id);
+              const savedAt = recentlySavedExamIds.get(remoteExam.id);
+              // Nếu đề thi vừa được chỉnh sửa cục bộ trong 5s (ví dụ vừa gỡ khỏi lớp), ưu tiên giữ trạng thái mới nhất
+              if (localExam && savedAt && now - savedAt < 5000) {
+                examMap.set(remoteExam.id, localExam);
+                return;
+              }
               if (localExam && Array.isArray(localExam.questions) && Array.isArray(remoteExam.questions)) {
                 const mergedQuestions = remoteExam.questions.map((rq) => {
                   const lq = localExam.questions.find((q) => q.id === rq.id || q.questionNumber === rq.questionNumber);
@@ -1661,6 +1831,17 @@ export function startDbPolling(
                 examMap.set(remoteExam.id, remoteExam);
               }
             });
+
+            // Chỉ giữ đề vừa lưu cục bộ trong 15s nếu server chưa kịp có
+            stateAccumulator.exams.forEach((localExam) => {
+              if (localExam && localExam.id && !deletedExamIdsSet.has(localExam.id) && !examMap.has(localExam.id)) {
+                const savedAt = recentlySavedExamIds.get(localExam.id);
+                if (savedAt && now - savedAt < 15000) {
+                  examMap.set(localExam.id, localExam);
+                }
+              }
+            });
+
             const mergedExams = Array.from(examMap.values());
             if (mergedExams.length !== stateAccumulator.exams.length || JSON.stringify(mergedExams) !== JSON.stringify(stateAccumulator.exams)) {
               stateAccumulator.exams = mergedExams;

@@ -9,8 +9,6 @@ import {
   Award,
   Flame,
   Zap,
-  Copy,
-  Check,
   CheckCircle2,
   Sparkles,
   Shield,
@@ -73,7 +71,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     userProfile.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userProfile.name)}`
   );
 
-  const [hasCopiedId, setHasCopiedId] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   // ==========================================
@@ -101,12 +98,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const myClassrooms = classrooms.filter((c) =>
     isTeacher ? c.teacherId === userProfile.id : c.studentIds.includes(userProfile.id)
   );
-
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(userProfile.id);
-    setHasCopiedId(true);
-    setTimeout(() => setHasCopiedId(false), 2000);
-  };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,19 +223,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             </div>
 
             <p className="text-blue-100 text-xs sm:text-sm font-medium">{schoolName}</p>
-
-            {/* Electronic ID Pill with Copy button */}
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-xs font-mono font-bold mt-1">
-              <span className="text-blue-200">ID:</span>
-              <span className="text-white">{userProfile.id}</span>
-              <button
-                onClick={handleCopyId}
-                title="Sao chép ID để kết bạn"
-                className="hover:text-blue-300 transition-colors pl-1"
-              >
-                {hasCopiedId ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-              </button>
-            </div>
+            <p className="text-blue-200/90 text-xs font-mono">{userProfile.email}</p>
           </div>
 
           {/* Action buttons */}
@@ -486,7 +465,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
 
           {/* Khối Lớp Đang Học: Cố định theo niên khóa học sinh, KHÔNG CHO PHÉP SỬA */}
-          <div className="space-y-1">
+          <div className="space-y-1 sm:col-span-2">
             <div className="flex items-center justify-between">
               <label className="font-bold text-slate-700">
                 {isTeacher ? 'Tổ Bộ Môn / Khối Phụ Trách' : 'Khối Lớp Đang Học *'}
@@ -519,16 +498,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="font-bold text-slate-700">Mã Định Danh ID Hệ Thống (Bảo mật)</label>
-            <input
-              type="text"
-              value={userProfile.id}
-              disabled
-              className="w-full h-11 px-3.5 rounded-xl border border-slate-200 bg-slate-100 font-mono font-bold text-slate-500 cursor-not-allowed"
-            />
           </div>
         </div>
 
@@ -617,11 +586,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                 <span>Mật khẩu đổi tại đây được cập nhật đồng bộ trực tiếp lên tài khoản Quản Trị Viên (Admin)</span>
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-              ID: {userProfile.id}
-            </span>
           </div>
         </div>
 

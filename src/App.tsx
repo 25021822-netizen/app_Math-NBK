@@ -47,6 +47,8 @@ import {
   dbDeleteMessage,
   dbToggleMessageReaction,
   dbDisbandClassroom,
+  isExamDeletedLocally,
+  isExamRecentlySaved,
 } from './services/dbSyncService';
 import { Navbar } from './components/Navbar';
 import { AIMathStudioView } from './components/student/AIMathStudioView';
@@ -123,7 +125,10 @@ export default function App() {
   const [examsList, setExamsList] = useState<Exam[]>(() => {
     try {
       const s = localStorage.getItem('math_liki_exams');
-      return s ? JSON.parse(s) : [];
+      const parsed: Exam[] = s ? JSON.parse(s) : [];
+      return Array.isArray(parsed)
+        ? parsed.filter((e) => e && e.id && e.id !== 'exam_bgd_2025_01' && !isExamDeletedLocally(e.id))
+        : [];
     } catch {
       return [];
     }
@@ -134,7 +139,13 @@ export default function App() {
   const [classrooms, setClassrooms] = useState<Classroom[]>(() => {
     try {
       const s = localStorage.getItem('math_liki_classrooms');
-      return s ? JSON.parse(s) : SAMPLE_CLASSROOMS;
+      const parsed: Classroom[] = s ? JSON.parse(s) : SAMPLE_CLASSROOMS;
+      return Array.isArray(parsed)
+        ? parsed.map((c) => ({
+            ...c,
+            assignedExamIds: (c.assignedExamIds || []).filter((eid) => !isExamDeletedLocally(eid)),
+          }))
+        : SAMPLE_CLASSROOMS;
     } catch {
       return SAMPLE_CLASSROOMS;
     }
@@ -174,6 +185,7 @@ export default function App() {
     },
   ]);
   const [activeToast, setActiveToast] = useState<PushNotificationItem | null>(null);
+  const deletedExamIdsRef = useRef<Set<string>>(new Set());
 
   // Theo dõi thời điểm đọc tin nhắn của từng nhóm lớp để tính số tin chưa đọc (Unread badge)
   const [lastReadChatMap, setLastReadChatMap] = useState<Record<string, number>>(() => {
@@ -346,7 +358,14 @@ export default function App() {
       }
 
       if (remoteData.classrooms && Array.isArray(remoteData.classrooms)) {
-        setClassrooms(remoteData.classrooms);
+        setClassrooms(
+          remoteData.classrooms.map((c) => ({
+            ...c,
+            assignedExamIds: (c.assignedExamIds || []).filter(
+              (eid) => !deletedExamIdsRef.current.has(eid) && !isExamDeletedLocally(eid)
+            ),
+          }))
+        );
       }
 
       if (remoteData.submissions && Array.isArray(remoteData.submissions)) {
@@ -381,7 +400,14 @@ export default function App() {
 
       // Đồng bộ Đề thi tức thời giữa các máy (Giáo viên đăng đề -> Học sinh nhận thông báo & vào làm ngay)
       if (remoteData.exams && Array.isArray(remoteData.exams)) {
-        const validExams = remoteData.exams.filter((ex) => ex && ex.id && ex.id !== 'exam_bgd_2025_01');
+        const validExams = remoteData.exams.filter(
+          (ex) =>
+            ex &&
+            ex.id &&
+            ex.id !== 'exam_bgd_2025_01' &&
+            !deletedExamIdsRef.current.has(ex.id) &&
+            !isExamDeletedLocally(ex.id)
+        );
 
         // Nếu có đề thi mới được xuất bản từ máy khác
         const freshExamArrivals = validExams.filter((ex) => !knownExamIds.has(ex.id));
@@ -398,7 +424,11 @@ export default function App() {
         knownExamIds = new Set(validExams.map((ex) => ex.id));
         setExamsList((prevExams) => {
           const prevMap = new Map<string, Exam>();
-          prevExams.forEach((e) => prevMap.set(e.id, e));
+          prevExams.forEach((e) => {
+            if (!deletedExamIdsRef.current.has(e.id) && !isExamDeletedLocally(e.id)) {
+              prevMap.set(e.id, e);
+            }
+          });
 
           const merged = validExams.map((remoteEx) => {
             const localEx = prevMap.get(remoteEx.id);
@@ -436,14 +466,19 @@ export default function App() {
             };
           });
 
-          // Giữ lại các đề thi vừa tạo cục bộ mà remote chưa kịp phản hồi
+          // Chỉ giữ lại các đề thi vừa lưu cục bộ mà remote chưa kịp phản hồi (không tái sinh đề đã xóa)
           prevExams.forEach((localEx) => {
-            if (!merged.some((m) => m.id === localEx.id)) {
+            if (
+              !deletedExamIdsRef.current.has(localEx.id) &&
+              !isExamDeletedLocally(localEx.id) &&
+              isExamRecentlySaved(localEx.id) &&
+              !merged.some((m) => m.id === localEx.id)
+            ) {
               merged.push(localEx);
             }
           });
 
-          return merged;
+          return merged.filter((e) => !deletedExamIdsRef.current.has(e.id) && !isExamDeletedLocally(e.id));
         });
       }
 
@@ -784,11 +819,16 @@ export default function App() {
 
   // Xóa 1 đề thi và TOÀN BỘ dữ liệu liên quan (Bài nộp, Bảng điểm, Nhật ký vi phạm, Giao đề lớp)
   const handleDeleteExam = async (examId: string) => {
+    deletedExamIdsRef.current.add(examId);
     const target = examsList.find((e) => e.id === examId);
     const title = target?.title || 'Đề thi';
 
-    // 1. Cập nhật state danh sách đề thi
-    setExamsList((prev) => prev.filter((e) => e.id !== examId));
+    // 1. Cập nhật state danh sách đề thi & localStorage
+    const nextExams = examsList.filter((e) => e.id !== examId);
+    setExamsList(nextExams);
+    try {
+      localStorage.setItem('math_liki_exams', JSON.stringify(nextExams));
+    } catch {}
 
     // 2. Xóa toàn bộ bài làm / bài nộp của đề thi này trong state
     setSubmissions((prev) => prev.filter((s) => s.examId !== examId));
@@ -796,18 +836,20 @@ export default function App() {
     // 3. Xóa toàn bộ nhật ký vi phạm cheatLogs của đề thi này trong state
     setCheatLogs((prev) => prev.filter((c) => c.examId !== examId));
 
-    // 4. Gỡ đề thi khỏi toàn bộ các nhóm lớp trong state
-    setClassrooms((prev) =>
-      prev.map((cls) => ({
-        ...cls,
-        assignedExamIds: (cls.assignedExamIds || []).filter((id) => id !== examId),
-      }))
-    );
+    // 4. Gỡ đề thi khỏi toàn bộ các nhóm lớp trong state & đồng bộ ngay lên Firestore/Server
+    const nextClassrooms = classrooms.map((cls) => ({
+      ...cls,
+      assignedExamIds: (cls.assignedExamIds || []).filter((id) => id !== examId),
+    }));
+    setClassrooms(nextClassrooms);
+    try {
+      localStorage.setItem('math_liki_classrooms', JSON.stringify(nextClassrooms));
+    } catch {}
+    dbSaveClassrooms(nextClassrooms).catch(console.error);
 
     // 5. Nếu đang kích hoạt đề thi này, chuyển sang đề khác
     if (activeExamId === examId) {
-      const remaining = examsList.filter((e) => e.id !== examId);
-      setActiveExamId(remaining[0]?.id || '');
+      setActiveExamId(nextExams[0]?.id || '');
     }
 
     // 6. Xóa triệt để trên Firestore Database & Server API
@@ -1002,6 +1044,7 @@ export default function App() {
 
   // Giáo viên đăng tải đề thi mới: Đồng bộ tức thời lên Firestore & Server DB cho toàn bộ học sinh thấy ngay
   const handlePublishExam = (newExam: Exam) => {
+    deletedExamIdsRef.current.delete(newExam.id);
     setExamsList((prev) => {
       const filtered = prev.filter((e) => e.id !== newExam.id);
       return [newExam, ...filtered];
@@ -1058,6 +1101,18 @@ export default function App() {
   const handleUpdateExamsList = (updated: Exam[]) => {
     setExamsList(updated);
     dbSaveExams(updated).catch(console.error);
+  };
+
+  // Cập nhật 1 đề thi cụ thể (ví dụ khi gỡ/giao lớp) mà không ghi đè toàn bộ danh sách đề
+  const handleSaveSingleExam = (updatedExam: Exam) => {
+    setExamsList((prev) => {
+      const next = prev.map((e) => (e.id === updatedExam.id ? updatedExam : e));
+      try {
+        localStorage.setItem('math_liki_exams', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    dbSaveExam(updatedExam).catch(console.error);
   };
 
   // Xử lý nộp bài thi của học sinh: tự động ghi nhận vào submissions & cộng XP & phát thông báo kết quả & sync DB
@@ -1142,6 +1197,7 @@ export default function App() {
             onUpdateClassrooms={handleUpdateClassrooms}
             examsList={examsList}
             onUpdateExamsList={handleUpdateExamsList}
+            onSaveExam={handleSaveSingleExam}
             onSelectExamToTake={(examId) => {
               setActiveExamId(examId);
               setCurrentTab('exam');
