@@ -249,7 +249,7 @@ export async function dbRegisterUser(newUser: UserProfile): Promise<{ success: b
     if (snap.exists()) {
       return {
         success: false,
-        error: 'Tài khoản vừa tạo bị trùng khóa nội bộ, vui lòng thử lại!',
+        error: 'Mã ID tài khoản này đã tồn tại trên hệ thống! Vui lòng chọn ID khác.',
       };
     }
 

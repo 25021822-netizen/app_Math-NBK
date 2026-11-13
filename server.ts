@@ -1413,8 +1413,11 @@ app.post('/api/db/register', (req, res) => {
     idLower = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   }
 
-  // Kiểm tra trùng ID nội bộ
+  // Kiểm tra trùng ID tài khoản
   if (serverDb.users.some((u) => u.id.trim().toLowerCase() === idLower)) {
+    if (user.id && user.id.trim()) {
+      return res.status(400).json({ success: false, error: 'Mã ID tài khoản này đã tồn tại trên hệ thống!' });
+    }
     idLower = `${idLower}_${Math.random().toString(36).slice(2, 5)}`;
   }
 

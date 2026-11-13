@@ -162,6 +162,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // STATE CẤP TÀI KHOẢN MỚI & MẬT KHẨU (CHỈ ADMIN MỚI CÓ QUYỀN)
   // ==========================================
   const [showCreateUserModal, setShowCreateUserModal] = useState<boolean>(false);
+  const [newUserId, setNewUserId] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<'teacher' | 'student'>('student');
@@ -269,10 +270,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // Tự động sinh ID nội bộ duy nhất theo vai trò
   const generateRecommendedId = (role: 'teacher' | 'student') => {
     const prefix = role === 'teacher' ? 'usr_teacher' : 'usr_student';
-    return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    return `${prefix}_${Date.now().toString().slice(-4)}_${Math.random().toString(36).slice(2, 6)}`;
   };
 
   const handleOpenCreateModal = () => {
+    setNewUserId(generateRecommendedId('student'));
     setNewUserName('');
     setNewUserEmail('');
     setNewUserRole('student');
@@ -289,6 +291,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     e.preventDefault();
     setCreateUserError(null);
 
+    const trimmedId = newUserId.trim().toLowerCase();
+    if (!trimmedId) {
+      setCreateUserError('Vui lòng nhập Mã ID cho tài khoản mới!');
+      return;
+    }
+    if (/\s/.test(trimmedId)) {
+      setCreateUserError('Mã ID không được chứa khoảng trắng!');
+      return;
+    }
+    if (usersList.some((u) => u.id.toLowerCase() === trimmedId)) {
+      setCreateUserError('Mã ID này đã tồn tại trên hệ thống! Vui lòng nhập ID khác.');
+      return;
+    }
+
     if (!newUserName.trim()) {
       setCreateUserError('Vui lòng nhập họ và tên!');
       return;
@@ -297,11 +313,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     if (!newUserPassword || newUserPassword.trim().length < 8) {
       setCreateUserError('Mật khẩu bắt buộc có tối thiểu 8 ký tự bất kỳ!');
       return;
-    }
-
-    let trimmedId = generateRecommendedId(newUserRole).toLowerCase();
-    while (usersList.some((u) => u.id.toLowerCase() === trimmedId)) {
-      trimmedId = generateRecommendedId(newUserRole).toLowerCase();
     }
 
     const finalEmail =
@@ -1078,6 +1089,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     type="button"
                     onClick={() => {
                       setNewUserRole('teacher');
+                      setNewUserId(generateRecommendedId('teacher'));
                     }}
                     className={`py-2.5 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all ${
                       newUserRole === 'teacher'
@@ -1093,6 +1105,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     type="button"
                     onClick={() => {
                       setNewUserRole('student');
+                      setNewUserId(generateRecommendedId('student'));
                     }}
                     className={`py-2.5 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all ${
                       newUserRole === 'student'
@@ -1104,6 +1117,29 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     <span>Học Sinh THPT</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Mã ID tài khoản */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700">Mã ID Tài Khoản *</label>
+                  <button
+                    type="button"
+                    onClick={() => setNewUserId(generateRecommendedId(newUserRole))}
+                    className="text-[11px] text-blue-600 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw size={11} />
+                    <span>Tạo ngẫu nhiên</span>
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={newUserId}
+                  onChange={(e) => setNewUserId(e.target.value)}
+                  placeholder={newUserRole === 'teacher' ? 'VD: gv_bach01' : 'VD: hs_huy12a1'}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-mono text-xs font-bold text-blue-700 focus:border-blue-600 focus:outline-none"
+                  required
+                />
               </div>
 
               {/* Họ và tên */}

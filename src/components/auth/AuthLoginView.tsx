@@ -21,6 +21,7 @@ import {
   FileCheck,
   MessageSquare,
   Zap,
+  Hash,
 } from 'lucide-react';
 
 interface AuthLoginViewProps {
@@ -48,6 +49,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 
   // Register form state
   const [regRole, setRegRole] = useState<'student' | 'teacher'>('student');
+  const [regCustomId, setRegCustomId] = useState<string>('');
   const [regName, setRegName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
   const [regGrade, setRegGrade] = useState<10 | 11 | 12>(12);
@@ -122,6 +124,18 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
     e.preventDefault();
     setRegError(null);
 
+    if (!regCustomId.trim()) {
+      setRegError('Vui lòng nhập Mã ID tài khoản!');
+      return;
+    }
+    if (/\s/.test(regCustomId.trim())) {
+      setRegError('Mã ID tài khoản không được chứa khoảng trắng!');
+      return;
+    }
+    if (allUsers.some((u) => u.id.toLowerCase() === regCustomId.trim().toLowerCase())) {
+      setRegError('Mã ID này đã tồn tại trên hệ thống! Vui lòng chọn ID khác.');
+      return;
+    }
     if (!regName.trim()) {
       setRegError('Vui lòng nhập họ và tên của bạn!');
       return;
@@ -143,9 +157,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       return;
     }
 
-    // Tự động tạo mã định danh nội bộ duy nhất cho tài khoản (người dùng không cần nhập ID)
-    const prefix = regRole === 'teacher' ? 'usr_teacher' : 'usr_student';
-    const finalId = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const finalId = regCustomId.trim().toLowerCase();
 
     // Kiểm tra cấu hình Duyệt Tự Động của Admin
     const isAutoApproved = Boolean(
@@ -209,6 +221,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
     }
 
     setPendingModalUser(newApplicant);
+    setRegCustomId('');
     setRegName('');
     setRegEmail('');
     setRegPassword('');
@@ -495,6 +508,35 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     </div>
                   )}
 
+                  {/* Mã ID tài khoản */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-300">
+                        Mã ID tài khoản *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const prefix = regRole === 'teacher' ? 'gv' : 'hs';
+                          setRegCustomId(`${prefix}_${Math.random().toString(36).slice(2, 8)}`);
+                        }}
+                        className="text-[10px] text-cyan-400 hover:underline font-semibold cursor-pointer"
+                      >
+                        Tạo mã nhanh
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <Hash size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={regCustomId}
+                        onChange={(e) => setRegCustomId(e.target.value)}
+                        placeholder={regRole === 'teacher' ? 'VD: gv_nam01' : 'VD: hs_my2026'}
+                        className="w-full h-10 pl-10 pr-3 rounded-xl bg-black/40 border border-white/20 text-white placeholder-slate-500 text-xs font-mono focus:border-cyan-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
                   {/* Họ tên */}
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-slate-300">
@@ -713,6 +755,10 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-xs space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Mã ID tài khoản:</span>
+                    <span className="font-mono font-bold text-white">{pendingModalUser.id}</span>
+                  </div>
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">Email đăng nhập:</span>
                     <span className="font-mono font-bold text-cyan-300">{pendingModalUser.email}</span>
