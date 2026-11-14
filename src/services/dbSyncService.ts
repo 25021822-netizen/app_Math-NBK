@@ -1128,19 +1128,8 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
   }
   saveExamToLocalStorageImmediate(initialClean);
 
-  // 0b. Nếu đề có ảnh base64 cần upload tách file, ghi nhanh bản nháp lên Server DB ngay lập tức để F5 không bao giờ mất
+  // 1. Chuyển đổi và lưu trữ vĩnh viễn toàn bộ ảnh cắt đề thi lên Cloud Firestore (exam_images) & /api/files/...
   const hasInline = examHasInlineImages(exam);
-  if (hasInline) {
-    try {
-      await fetch('/api/db/exam/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exam: initialClean }),
-      });
-    } catch {}
-  }
-
-  // 1. Chuyển đổi và lưu trữ vĩnh viễn các ảnh cắt đề thi lên Cloud Firestore & /api/files/...
   const needsImgSync = hasInline || examNeedsImageCloudSync(exam);
   const persistedExam = needsImgSync ? await persistExamSnippets(exam) : exam;
   const cleanExam = sanitizeExamForFirestore(persistedExam);
@@ -1154,8 +1143,11 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
     ];
   }
 
-  // 2. Cập nhật lại localStorage bằng bản nhẹ đã tối ưu URL ảnh
+  // 2. Cập nhật lại localStorage và UI state ngay bằng bản nhẹ đã gắn liên kết ảnh đám mây (?fsImg= / fsimg://)
   saveExamToLocalStorageImmediate(cleanExam);
+  if (activeDispatchRef) {
+    activeDispatchRef();
+  }
 
   // 3. Lưu bản chính thức lên Server API (/api/db/exam/save)
   const serverPromise = fetch('/api/db/exam/save', {
@@ -1177,6 +1169,7 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
   // 4. Đồng bộ lên Firestore Real-time Database (cả 'exams', 'published_exams', và gỡ khỏi 'meta/deleted_exams')
   const firestoreExam = ensureFirestoreDocSizeSafe(cleanExam);
   const publishedExamPayload = ensureFirestoreDocSizeSafe(sanitizePublishedExamForFirestore(firestoreExam));
+  let firestoreSaved = false;
   const firestorePromise = (async () => {
     try {
       await Promise.all([
@@ -1184,13 +1177,14 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
         setDoc(doc(db, 'published_exams', cleanExam.id), publishedExamPayload, { merge: true }),
         setDoc(doc(db, 'meta', 'deleted_exams'), { ids: arrayRemove(cleanExam.id) }, { merge: true }).catch(() => {}),
       ]);
+      firestoreSaved = true;
     } catch (err) {
-      console.warn('Lỗi dbSaveExam Firestore:', err);
+      console.error('Lỗi dbSaveExam Firestore:', err);
     }
   })();
 
   await Promise.allSettled([serverPromise, firestorePromise]);
-  return true;
+  return firestoreSaved;
 }
 
 /**
@@ -1242,8 +1236,10 @@ export async function dbSyncExistingExamsToPublished(): Promise<void> {
       getDocs(collection(db, 'exams')),
       getDocs(collection(db, 'published_exams')),
     ]);
-    const existingPublishedIds = new Set<string>();
-    publishedDocs.forEach((d) => existingPublishedIds.add(d.id));
+    const existingPublishedMap = new Map<string, Exam>();
+    publishedDocs.forEach((d) => {
+      existingPublishedMap.set(d.id, d.data() as Exam);
+    });
 
     const pendingWrites: Promise<void>[] = [];
     examDocs.forEach((d) => {
@@ -1252,14 +1248,20 @@ export async function dbSyncExistingExamsToPublished(): Promise<void> {
         examData &&
         examData.id &&
         examData.id !== 'exam_bgd_2025_01' &&
-        !deletedExamIdsSet.has(examData.id) &&
-        !existingPublishedIds.has(examData.id)
+        !deletedExamIdsSet.has(examData.id)
       ) {
-        const cleanExam = sanitizeExamForFirestore(examData);
-        const publishedPayload = sanitizePublishedExamForFirestore(cleanExam);
-        pendingWrites.push(
-          setDoc(doc(db, 'published_exams', examData.id), publishedPayload, { merge: true })
-        );
+        const existingPub = existingPublishedMap.get(examData.id);
+        const shouldSync =
+          !existingPub ||
+          (!examNeedsImageCloudSync(examData) && examNeedsImageCloudSync(existingPub));
+        if (shouldSync) {
+          const merged = existingPub ? smartMergeExamPair(existingPub, examData) : examData;
+          const cleanExam = ensureFirestoreDocSizeSafe(sanitizeExamForFirestore(merged));
+          const publishedPayload = ensureFirestoreDocSizeSafe(sanitizePublishedExamForFirestore(cleanExam));
+          pendingWrites.push(
+            setDoc(doc(db, 'published_exams', examData.id), publishedPayload, { merge: true })
+          );
+        }
       }
     });
 
@@ -1994,6 +1996,27 @@ export function startDbPolling(
     console.warn('Lỗi Firestore meta/deleted_exams onSnapshot:', err);
   });
 
+  const scheduleExamImageCloudMigration = (examsToCheck: Exam[]) => {
+    examsToCheck.forEach((ex) => {
+      if (!ex || !ex.id || deletedExamIdsSet.has(ex.id)) return;
+      if (examNeedsImageCloudSync(ex) && !migratedImageExamIds.has(ex.id)) {
+        migratedImageExamIds.add(ex.id);
+        persistExamImagesEverywhere(ex)
+          .then((res) => {
+            if (res.changed) {
+              return dbSaveExam(res.exam);
+            }
+          })
+          .catch(() => {});
+      }
+    });
+  };
+
+  // Kiểm tra đồng bộ ảnh ngay khi nạp cache localStorage lúc khởi động
+  if (stateAccumulator.exams.length > 0) {
+    scheduleExamImageCloudMigration(stateAccumulator.exams);
+  }
+
   // 5b. Lắng nghe Đề thi trên Firestore Real-time (Hợp nhất an toàn, không xóa nhầm đề mới tạo khi F5)
   const unsubExams = onSnapshot(collection(db, 'exams'), (snapshot) => {
     snapshot.docChanges().forEach((change) => {
@@ -2027,6 +2050,7 @@ export function startDbPolling(
       localStorage.setItem('math_liki_exams', JSON.stringify(stateAccumulator.exams));
     } catch {}
     dispatchUpdate();
+    scheduleExamImageCloudMigration(stateAccumulator.exams);
   }, (err) => {
     console.warn('Lỗi Firestore exams onSnapshot:', err);
   });
@@ -2056,6 +2080,7 @@ export function startDbPolling(
         localStorage.setItem('math_liki_exams', JSON.stringify(stateAccumulator.exams));
       } catch {}
       dispatchUpdate();
+      scheduleExamImageCloudMigration(stateAccumulator.exams);
     }
   }, (err) => {
     console.warn('Lỗi Firestore published_exams onSnapshot:', err);

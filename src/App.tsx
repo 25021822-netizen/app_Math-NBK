@@ -1133,7 +1133,7 @@ export default function App() {
   };
 
   // Giáo viên đăng tải đề thi mới: Đồng bộ tức thời lên Firestore & Server DB cho toàn bộ học sinh thấy ngay
-  const handlePublishExam = (newExam: Exam) => {
+  const handlePublishExam = async (newExam: Exam): Promise<boolean> => {
     deletedExamIdsRef.current.delete(newExam.id);
     clearExamDeletedLocally(newExam.id);
     markExamRecentlySaved(newExam.id);
@@ -1162,11 +1162,6 @@ export default function App() {
     });
     setActiveExamId(examWithTargets.id);
 
-    // Đồng bộ tức thời lên Firestore và Server để học sinh các máy khác thấy ngay lập tức
-    dbSaveExam(examWithTargets).catch((err) => {
-      console.error('Lỗi khi lưu đề thi lên DB:', err);
-    });
-
     // Cập nhật assignedExamIds của lớp và đồng bộ lên DB (Bảo đảm an toàn tuyệt đối với fallback array rỗng)
     if (targetClassIds.length > 0) {
       setClassrooms((prev) => {
@@ -1185,6 +1180,14 @@ export default function App() {
       });
     }
 
+    // Chờ đồng bộ toàn bộ ảnh cắt & đề thi lên Firestore để mọi thiết bị (điện thoại, máy tính bảng) đều xem được ngay
+    let savedOk = false;
+    try {
+      savedOk = await dbSaveExam(examWithTargets);
+    } catch (err) {
+      console.error('Lỗi khi lưu đề thi lên DB:', err);
+    }
+
     // Kích hoạt thông báo đẩy theo đúng phạm vi phân phối
     const notifMsg = isRepoOnly
       ? `Đã lưu thành công đề thi "${newExam.title}" vào Kho Đề Thi (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Bạn có thể giao cho lớp bất kỳ lúc nào!`
@@ -1196,6 +1199,8 @@ export default function App() {
       targetTab: isRepoOnly ? 'exam_repository' : 'classroom',
       examId: newExam.id,
     });
+
+    return savedOk;
   };
 
   // Cập nhật danh sách đề thi (Đồng bộ lên Firestore & Server DB)

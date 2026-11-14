@@ -133,6 +133,18 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "examId", "title", "status", "publishedAt"]
+    },
+    "ExamImage": {
+      "title": "ExamImage",
+      "description": "Cloud-synced cropped exam question or option image",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "dataUrl": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "dataUrl"]
     }
   },
   "firestore": {
@@ -163,6 +175,10 @@
     "/published_exams/{examId}": {
       "schema": { "$ref": "#/entities/PublishedExam" },
       "description": "Dedicated collection storing all published exams"
+    },
+    "/exam_images/{imageId}": {
+      "schema": { "$ref": "#/entities/ExamImage" },
+      "description": "Cropped exam question and answer images synced across devices"
     },
     "/messages/{msgId}": {
       "schema": { "$ref": "#/entities/ClassroomMessage" },

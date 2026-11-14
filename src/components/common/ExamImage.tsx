@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Image as ImageIcon } from 'lucide-react';
 import {
   extractFsImgId,
@@ -27,101 +27,159 @@ export const ExamImage: React.FC<ExamImageProps> = ({ src, alt, className = '', 
   });
   const [isLoadingCloud, setIsLoadingCloud] = useState<boolean>(() => {
     if (!src) return false;
-    if (src.startsWith('fsimg://') && fsImgId && !getCachedExamImage(fsImgId)) {
+    if (fsImgId && !getCachedExamImage(fsImgId) && src.startsWith('fsimg://')) {
       return true;
     }
     return false;
   });
   const [hasError, setHasError] = useState<boolean>(false);
-  const [triedFirestore, setTriedFirestore] = useState<boolean>(false);
+
+  const cloudFetchDoneRef = useRef<boolean>(false);
+  const cloudFetchInFlightRef = useRef<boolean>(false);
+  const imgErroredRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!src) {
       setDisplaySrc('');
       setIsLoadingCloud(false);
       setHasError(false);
-      setTriedFirestore(false);
+      cloudFetchDoneRef.current = false;
+      cloudFetchInFlightRef.current = false;
+      imgErroredRef.current = false;
       return;
     }
 
+    let cancelled = false;
     const id = extractFsImgId(src);
+    imgErroredRef.current = false;
+    setHasError(false);
+
     if (id) {
       const cached = getCachedExamImage(id);
       if (cached) {
         setDisplaySrc(cached);
         setIsLoadingCloud(false);
-        setHasError(false);
-        setTriedFirestore(true);
+        cloudFetchDoneRef.current = true;
+        cloudFetchInFlightRef.current = false;
         return;
       }
+
+      // Luôn tải song song từ Cloud Firestore ngay lập tức khi có fsImgId
+      // (tránh chờ /api/files/... lỗi 404 hoặc treo mạng trên điện thoại/domain chia sẻ)
+      cloudFetchDoneRef.current = false;
+      cloudFetchInFlightRef.current = true;
+
       if (src.startsWith('fsimg://')) {
-        let active = true;
         setDisplaySrc('');
         setIsLoadingCloud(true);
-        setHasError(false);
-        setTriedFirestore(true);
-        fetchExamImageFromFirestore(id)
-          .then((dataUrl) => {
-            if (!active) return;
-            if (dataUrl) {
-              setDisplaySrc(dataUrl);
-              setHasError(false);
-            } else {
-              setHasError(true);
-            }
-          })
-          .finally(() => {
-            if (active) setIsLoadingCloud(false);
-          });
-        return () => {
-          active = false;
-        };
+      } else {
+        setDisplaySrc(src);
+        setIsLoadingCloud(false);
       }
+
+      fetchExamImageFromFirestore(id)
+        .then((dataUrl) => {
+          if (cancelled) return;
+          cloudFetchDoneRef.current = true;
+          cloudFetchInFlightRef.current = false;
+          if (dataUrl) {
+            setDisplaySrc(dataUrl);
+            setIsLoadingCloud(false);
+            setHasError(false);
+          } else if (src.startsWith('fsimg://') || imgErroredRef.current) {
+            setIsLoadingCloud(false);
+            setHasError(true);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          cloudFetchDoneRef.current = true;
+          cloudFetchInFlightRef.current = false;
+          if (src.startsWith('fsimg://') || imgErroredRef.current) {
+            setIsLoadingCloud(false);
+            setHasError(true);
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
 
+    cloudFetchDoneRef.current = true;
+    cloudFetchInFlightRef.current = false;
     setDisplaySrc(src);
     setIsLoadingCloud(false);
-    setHasError(false);
-    setTriedFirestore(false);
   }, [src]);
 
   const handleImageError = async () => {
-    if (fsImgId && !triedFirestore) {
-      setTriedFirestore(true);
-      setIsLoadingCloud(true);
-      const dataUrl = await fetchExamImageFromFirestore(fsImgId);
-      setIsLoadingCloud(false);
-      if (dataUrl) {
-        setDisplaySrc(dataUrl);
+    imgErroredRef.current = true;
+
+    if (fsImgId) {
+      const cached = getCachedExamImage(fsImgId);
+      if (cached) {
+        setDisplaySrc(cached);
+        setIsLoadingCloud(false);
         setHasError(false);
         return;
       }
+
+      // Nếu Cloud Firestore vẫn đang tải song song, chờ hiển thị kết quả từ cloud thay vì báo lỗi sớm
+      if (cloudFetchInFlightRef.current) {
+        setIsLoadingCloud(true);
+        setHasError(false);
+        return;
+      }
+
+      if (!cloudFetchDoneRef.current) {
+        setIsLoadingCloud(true);
+        cloudFetchInFlightRef.current = true;
+        const dataUrl = await fetchExamImageFromFirestore(fsImgId);
+        cloudFetchInFlightRef.current = false;
+        cloudFetchDoneRef.current = true;
+        setIsLoadingCloud(false);
+        if (dataUrl) {
+          setDisplaySrc(dataUrl);
+          setHasError(false);
+          return;
+        }
+      }
     }
+
+    setIsLoadingCloud(false);
     setHasError(true);
   };
 
   const handleManualRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!src) return;
+    imgErroredRef.current = false;
     setHasError(false);
+
     if (fsImgId) {
       setIsLoadingCloud(true);
       const dataUrl = await fetchExamImageFromFirestore(fsImgId);
       setIsLoadingCloud(false);
       if (dataUrl) {
         setDisplaySrc(dataUrl);
+        setHasError(false);
         return;
       }
     }
-    const cacheBust = src.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
-    setDisplaySrc(src.startsWith('data:') || src.startsWith('fsimg://') ? src : `${src}${cacheBust}`);
+
+    if (!src.startsWith('fsimg://')) {
+      const cacheBust = src.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
+      setDisplaySrc(src.startsWith('data:') ? src : `${src}${cacheBust}`);
+    } else {
+      setHasError(true);
+    }
   };
 
   if (!src) return null;
 
   if (isLoadingCloud) {
     return (
-      <div className="w-48 h-24 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center gap-2 text-xs text-slate-400 animate-pulse">
+      <div className="w-52 h-24 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center gap-2 text-xs text-slate-500 animate-pulse">
         <ImageIcon size={16} />
         <span>Đang tải ảnh đề...</span>
       </div>
@@ -129,14 +187,19 @@ export const ExamImage: React.FC<ExamImageProps> = ({ src, alt, className = '', 
   }
 
   if (hasError || !displaySrc) {
+    const isUnmigratedLocalUrl = src.startsWith('/api/files/') && !fsImgId;
     return (
-      <div className="px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+      <div className="px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex flex-wrap items-center gap-2 max-w-full">
         <ImageIcon size={15} className="shrink-0 text-amber-600" />
-        <span>Không tải được ảnh câu hỏi.</span>
+        <span className="leading-snug">
+          {isUnmigratedLocalUrl
+            ? 'Ảnh đề cũ chưa kịp đồng bộ lên đám mây. Hãy mở lại trang trên máy tính đã cắt đề rồi nhấn Thử lại.'
+            : 'Không tải được ảnh câu hỏi.'}
+        </span>
         <button
           type="button"
           onClick={handleManualRetry}
-          className="px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 font-bold text-[11px] hover:bg-amber-100 flex items-center gap-1 cursor-pointer"
+          className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 font-bold text-[11px] hover:bg-amber-100 flex items-center gap-1 cursor-pointer shrink-0"
         >
           <RefreshCw size={11} />
           <span>Thử lại</span>

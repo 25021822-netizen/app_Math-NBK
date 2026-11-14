@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, setDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Exam } from '../types/math';
 
@@ -35,13 +35,19 @@ export function extractFsImgId(url?: string): string | null {
   return null;
 }
 
+function getImageUrlQualityRank(url?: string): number {
+  if (!url || typeof url !== 'string' || !url.trim()) return 0;
+  if (extractFsImgId(url)) return 3; // Đã đồng bộ Cloud Firestore -> luôn ưu tiên cao nhất
+  if (url.startsWith('data:image/')) return 2; // Dữ liệu ảnh gốc nội tuyến -> ưu tiên hơn URL cục bộ chưa đồng bộ
+  return 1; // URL máy chủ cục bộ /api/files/... chưa có fsImg hoặc URL ngoài
+}
+
 export function pickPreferredImageUrl(primary?: string, secondary?: string): string | undefined {
-  if (!primary) return secondary;
-  if (!secondary) return primary;
-  if (!extractFsImgId(primary) && extractFsImgId(secondary)) {
-    return secondary;
-  }
-  return primary;
+  const rankPrimary = getImageUrlQualityRank(primary);
+  const rankSecondary = getImageUrlQualityRank(secondary);
+  if (rankPrimary === 0 && rankSecondary === 0) return undefined;
+  if (rankSecondary > rankPrimary) return secondary;
+  return primary || secondary;
 }
 
 export function getCachedExamImage(assetId: string): string | null {
@@ -57,30 +63,45 @@ export async function fetchExamImageFromFirestore(assetId: string): Promise<stri
   if (existingPromise) return existingPromise;
 
   const promise = (async (): Promise<string | null> => {
-    try {
-      const snap = await getDoc(doc(db, 'exam_images', assetId));
-      if (snap.exists()) {
-        const dataUrl = snap.data()?.dataUrl;
-        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
-          resolvedImageCache.set(assetId, dataUrl);
-          return dataUrl;
+    const readDocDataUrl = async (colName: string, docId: string): Promise<string | null> => {
+      const ref = doc(db, colName, docId);
+      try {
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const dataUrl = snap.data()?.dataUrl;
+          if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+            return dataUrl;
+          }
         }
+      } catch (err) {
+        console.warn(`[examImageService] Lỗi getDoc(${colName}/${docId}):`, err);
       }
-    } catch (err) {
-      console.warn('[examImageService] Lỗi đọc exam_images:', err);
+
+      // Thử đọc trực tiếp từ server nếu cache IndexedDB cục bộ trả về rỗng
+      try {
+        const serverSnap = await getDocFromServer(ref);
+        if (serverSnap.exists()) {
+          const dataUrl = serverSnap.data()?.dataUrl;
+          if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+            return dataUrl;
+          }
+        }
+      } catch {}
+
+      return null;
+    };
+
+    const fromExamImages = await readDocDataUrl('exam_images', assetId);
+    if (fromExamImages) {
+      resolvedImageCache.set(assetId, fromExamImages);
+      return fromExamImages;
     }
 
-    // Dự phòng đọc từ collection meta nếu trước đó ghi vào meta
-    try {
-      const metaSnap = await getDoc(doc(db, 'meta', `img_${assetId}`));
-      if (metaSnap.exists()) {
-        const dataUrl = metaSnap.data()?.dataUrl;
-        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
-          resolvedImageCache.set(assetId, dataUrl);
-          return dataUrl;
-        }
-      }
-    } catch {}
+    const fromMeta = await readDocDataUrl('meta', `img_${assetId}`);
+    if (fromMeta) {
+      resolvedImageCache.set(assetId, fromMeta);
+      return fromMeta;
+    }
 
     return null;
   })().finally(() => {
@@ -91,7 +112,7 @@ export async function fetchExamImageFromFirestore(assetId: string): Promise<stri
   return promise;
 }
 
-export async function compressImageDataUrl(dataUrl: string, maxChars = 700_000): Promise<string> {
+export async function compressImageDataUrl(dataUrl: string, maxChars = 480_000): Promise<string> {
   if (!dataUrl || !dataUrl.startsWith('data:image/') || dataUrl.length <= maxChars) {
     return dataUrl;
   }
@@ -101,34 +122,41 @@ export async function compressImageDataUrl(dataUrl: string, maxChars = 700_000):
     const img = new Image();
     img.onload = () => {
       try {
-        const maxWidth = 1200;
-        let outW = img.naturalWidth || img.width || 800;
-        let outH = img.naturalHeight || img.height || 600;
-        if (outW > maxWidth) {
-          outH = Math.round((outH * maxWidth) / outW);
-          outW = maxWidth;
-        }
+        const origW = img.naturalWidth || img.width || 800;
+        const origH = img.naturalHeight || img.height || 600;
+        const widthSteps = [1200, 960, 720, 520];
+        const qualitySteps = [0.84, 0.7, 0.56, 0.42];
+        let bestCandidate = '';
 
-        const canvas = document.createElement('canvas');
-        canvas.width = outW;
-        canvas.height = outH;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(dataUrl);
-          return;
-        }
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, outW, outH);
-        ctx.drawImage(img, 0, 0, outW, outH);
+        for (const maxW of widthSteps) {
+          let outW = origW;
+          let outH = origH;
+          if (outW > maxW) {
+            outH = Math.max(1, Math.round((outH * maxW) / outW));
+            outW = maxW;
+          }
 
-        for (const q of [0.85, 0.72, 0.58, 0.45]) {
-          const candidate = canvas.toDataURL('image/jpeg', q);
-          if (candidate.length <= maxChars || q === 0.45) {
-            resolve(candidate);
-            return;
+          const canvas = document.createElement('canvas');
+          canvas.width = outW;
+          canvas.height = outH;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) continue;
+
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, outW, outH);
+          ctx.drawImage(img, 0, 0, outW, outH);
+
+          for (const q of qualitySteps) {
+            const candidate = canvas.toDataURL('image/jpeg', q);
+            bestCandidate = candidate;
+            if (candidate.length <= maxChars) {
+              resolve(candidate);
+              return;
+            }
           }
         }
-        resolve(dataUrl);
+
+        resolve(bestCandidate || dataUrl);
       } catch {
         resolve(dataUrl);
       }
@@ -145,6 +173,66 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+async function readImageViaImgCanvas(url: string): Promise<string> {
+  if (typeof document === 'undefined') return '';
+  return new Promise<string>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const timer = setTimeout(() => resolve(''), 6000);
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        if (!w || !h) {
+          resolve('');
+          return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve('');
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL('image/jpeg', 0.9);
+        resolve(out.startsWith('data:image/') ? out : '');
+      } catch {
+        resolve('');
+      }
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      resolve('');
+    };
+    img.src = url;
+  });
+}
+
+async function recoverImageDataUrlFromLocalUrl(rawUrl: string): Promise<string> {
+  try {
+    // Dùng force-cache để nếu máy tính đã từng tải ảnh này (dù server container vừa khởi động lại) vẫn lấy được từ cache trình duyệt
+    const res = await fetch(rawUrl, { cache: 'force-cache' });
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.startsWith('image/')) {
+      const blob = await res.blob();
+      if (blob && blob.size > 0) {
+        const converted = await blobToDataUrl(blob);
+        if (converted.startsWith('data:image/')) {
+          return converted;
+        }
+      }
+    }
+  } catch {}
+
+  // Dự phòng đọc qua thẻ <img> + Canvas nếu fetch gặp cache/CORS
+  return readImageViaImgCanvas(rawUrl);
 }
 
 async function uploadToServerEndpoint(fileName: string, fileData: string): Promise<string | null> {
@@ -164,9 +252,25 @@ async function uploadToServerEndpoint(fileName: string, fileData: string): Promi
   return null;
 }
 
+async function writeImageDocWithRetry(colName: string, docId: string, payload: Record<string, any>): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await setDoc(doc(db, colName, docId), payload, { merge: true });
+      return true;
+    } catch (err) {
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 350));
+      } else {
+        console.warn(`[examImageService] Thất bại ghi ${colName}/${docId}:`, err);
+      }
+    }
+  }
+  return false;
+}
+
 /**
- * Lưu ảnh cắt lên cả Cloud Firestore (để mọi thiết bị/điện thoại đều đọc được)
- * lẫn Server /api/files/... (để tải nhanh cùng máy chủ nếu có).
+ * Lưu ảnh cắt lên Cloud Firestore (để mọi thiết bị/điện thoại đều đọc được đồng nhất)
+ * và lưu song song lên Server /api/files/... nếu khả dụng.
  */
 export async function uploadImageToCloudAndServer(
   rawInputUrl: string,
@@ -189,19 +293,7 @@ export async function uploadImageToCloudAndServer(
     dataUrl = rawInputUrl;
   } else if (rawInputUrl.startsWith('/api/files/')) {
     existingServerUrl = rawInputUrl;
-    try {
-      const res = await fetch(rawInputUrl, { cache: 'no-cache' });
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.startsWith('image/')) {
-        const blob = await res.blob();
-        if (blob && blob.size > 0) {
-          const converted = await blobToDataUrl(blob);
-          if (converted.startsWith('data:image/')) {
-            dataUrl = converted;
-          }
-        }
-      }
-    } catch {}
+    dataUrl = await recoverImageDataUrlFromLocalUrl(rawInputUrl);
   } else {
     return { url: rawInputUrl, changed: false };
   }
@@ -215,7 +307,6 @@ export async function uploadImageToCloudAndServer(
   const assetId = `img_${safeExamId}_${hashStringDeterministic(compressedDataUrl)}`;
   resolvedImageCache.set(assetId, compressedDataUrl);
 
-  let cloudSaved = false;
   const firestorePayload = {
     id: assetId,
     examId: examId || '',
@@ -223,15 +314,9 @@ export async function uploadImageToCloudAndServer(
     updatedAt: new Date().toISOString(),
   };
 
-  try {
-    await setDoc(doc(db, 'exam_images', assetId), firestorePayload, { merge: true });
-    cloudSaved = true;
-  } catch (err) {
-    console.warn('[examImageService] Lỗi ghi exam_images, chuyển sang dự phòng meta:', err);
-    try {
-      await setDoc(doc(db, 'meta', `img_${assetId}`), firestorePayload, { merge: true });
-      cloudSaved = true;
-    } catch {}
+  let cloudSaved = await writeImageDocWithRetry('exam_images', assetId, firestorePayload);
+  if (!cloudSaved) {
+    cloudSaved = await writeImageDocWithRetry('meta', `img_${assetId}`, firestorePayload);
   }
 
   let serverUrl = existingServerUrl;
@@ -239,12 +324,11 @@ export async function uploadImageToCloudAndServer(
     serverUrl = await uploadToServerEndpoint(fileNameHint, compressedDataUrl);
   }
 
-  if (serverUrl && cloudSaved) {
-    const sep = serverUrl.includes('?') ? '&' : '?';
-    return { url: `${serverUrl}${sep}fsImg=${encodeURIComponent(assetId)}`, changed: true };
-  }
-
   if (cloudSaved) {
+    if (serverUrl) {
+      const sep = serverUrl.includes('?') ? '&' : '?';
+      return { url: `${serverUrl}${sep}fsImg=${encodeURIComponent(assetId)}`, changed: true };
+    }
     return { url: `fsimg://${assetId}`, changed: true };
   }
 
@@ -273,12 +357,28 @@ export function examNeedsImageCloudSync(exam: Exam): boolean {
   });
 }
 
+async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit = 4): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIdx = 0;
+
+  const worker = async () => {
+    while (nextIdx < tasks.length) {
+      const idx = nextIdx++;
+      results[idx] = await tasks[idx]();
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 export async function persistExamImagesEverywhere(exam: Exam): Promise<{ exam: Exam; changed: boolean }> {
   if (!exam || !Array.isArray(exam.questions)) return { exam, changed: false };
   let anyChanged = false;
 
-  const updatedQuestions = await Promise.all(
-    exam.questions.map(async (q: any, qIdx: number) => {
+  const updatedQuestions = await runWithConcurrency(
+    exam.questions.map((q: any, qIdx: number) => async () => {
       const qCopy: any = { ...q };
 
       const promptImg = q.pdfAttachmentUrl || q.imageAttachment;
@@ -310,8 +410,8 @@ export async function persistExamImagesEverywhere(exam: Exam): Promise<{ exam: E
       }
 
       if (q.part === 'part_1_mcq' && Array.isArray(q.options)) {
-        qCopy.options = await Promise.all(
-          q.options.map(async (opt: any) => {
+        qCopy.options = await runWithConcurrency(
+          q.options.map((opt: any) => async () => {
             if (opt?.imageUrl && isImageNeedingCloudSync(opt.imageUrl)) {
               const ext = opt.imageUrl.startsWith('data:image/png') ? '.png' : '.jpg';
               const res = await uploadImageToCloudAndServer(
@@ -325,13 +425,14 @@ export async function persistExamImagesEverywhere(exam: Exam): Promise<{ exam: E
               }
             }
             return opt;
-          })
+          }),
+          3
         );
       }
 
       if (q.part === 'part_2_true_false' && Array.isArray(q.items)) {
-        qCopy.items = await Promise.all(
-          q.items.map(async (item: any) => {
+        qCopy.items = await runWithConcurrency(
+          q.items.map((item: any) => async () => {
             if (item?.imageUrl && isImageNeedingCloudSync(item.imageUrl)) {
               const ext = item.imageUrl.startsWith('data:image/png') ? '.png' : '.jpg';
               const res = await uploadImageToCloudAndServer(
@@ -345,12 +446,14 @@ export async function persistExamImagesEverywhere(exam: Exam): Promise<{ exam: E
               }
             }
             return item;
-          })
+          }),
+          3
         );
       }
 
       return qCopy;
-    })
+    }),
+    4
   );
 
   if (!anyChanged) return { exam, changed: false };

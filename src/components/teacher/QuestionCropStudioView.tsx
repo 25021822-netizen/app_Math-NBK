@@ -49,7 +49,7 @@ interface QuestionCropStudioViewProps {
   initialGrade?: 10 | 11 | 12;
   initialDuration?: number;
   classrooms?: Classroom[];
-  onPublishExam: (exam: Exam) => void;
+  onPublishExam: (exam: Exam) => Promise<boolean> | void;
   onTransferToManualEditor: (questions: Question[], examMeta: { title: string; grade: 10 | 11 | 12; duration: number }) => void;
   onBackToUpload: () => void;
   currentUserName?: string;
@@ -88,6 +88,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [isAiCroppingAll, setIsAiCroppingAll] = useState<boolean>(false);
+  const [isPublishingExam, setIsPublishingExam] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [cropError, setCropError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'canvas' | 'pdf_document'>('canvas');
@@ -700,8 +701,8 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
   const activeQuestion = questions.find((q) => q.id === activeQuestionId);
 
-  // Xuất bản đề thi trực tiếp
-  const handlePublishDirectly = () => {
+  // Xuất bản đề thi trực tiếp (chờ đồng bộ toàn bộ ảnh cắt lên đám mây)
+  const handlePublishDirectly = async () => {
     setCropError(null);
     if (questions.length === 0) {
       setCropError('Vui lòng cắt ít nhất 1 câu hỏi vào đề thi trước khi xuất bản!');
@@ -735,7 +736,13 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       maxInfractions,
     };
 
-    onPublishExam(newExam);
+    setIsPublishingExam(true);
+    setStatusMessage('Đang lưu đề thi và đồng bộ toàn bộ ảnh cắt lên đám mây để điện thoại xem được...');
+    try {
+      await onPublishExam(newExam);
+    } finally {
+      setIsPublishingExam(false);
+    }
   };
 
   // Chuyển sang trình soạn thảo chi tiết
@@ -803,11 +810,11 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
             <button
               type="button"
               onClick={handlePublishDirectly}
-              disabled={questions.length === 0}
+              disabled={questions.length === 0 || isPublishingExam}
               className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all cursor-pointer"
             >
-              <CheckCircle2 size={15} />
-              <span>Xuất Bản Đề Thi ({questions.length} câu)</span>
+              {isPublishingExam ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              <span>{isPublishingExam ? 'Đang Đồng Bộ Ảnh...' : `Xuất Bản Đề Thi (${questions.length} câu)`}</span>
             </button>
           </div>
         </div>

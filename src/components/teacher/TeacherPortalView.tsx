@@ -42,9 +42,10 @@ import {
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
 import { QuestionCropStudioView } from './QuestionCropStudioView';
+import { examNeedsImageCloudSync, persistExamImagesEverywhere } from '../../services/examImageService';
 
 interface TeacherPortalViewProps {
-  onPublishExam?: (newExam: Exam) => void;
+  onPublishExam?: (newExam: Exam) => Promise<boolean> | void;
   onPreviewExam?: (exam: Exam) => void;
   classrooms?: Classroom[];
   currentUserName?: string;
@@ -97,6 +98,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [assignScreenMonitoring, setAssignScreenMonitoring] = useState<boolean>(true);
   const [assignMaxInfractions, setAssignMaxInfractions] = useState<number>(3);
   const [isSavingAssignment, setIsSavingAssignment] = useState<boolean>(false);
+  const [syncingExamId, setSyncingExamId] = useState<string | null>(null);
 
   // ================= STATE DÀNH CHO TẠO ĐỀ THỦ CÔNG =================
   const [manualTitle, setManualTitle] = useState('');
@@ -486,7 +488,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
   };
 
   // Xuất bản trực tiếp đề thi vừa quét
-  const handleDirectPublishAiExam = () => {
+  const handleDirectPublishAiExam = async () => {
     if (!aiParsedExam) return;
 
     const effectiveTargetIds =
@@ -506,7 +508,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     };
 
     if (onPublishExam) {
-      onPublishExam(publishedExam);
+      await onPublishExam(publishedExam);
     }
 
     const targetDesc =
@@ -543,6 +545,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     setModalLatex('');
     setModalExplanation('');
     setModalImageAttachment(null);
+    setModalOptionsAttachmentUrl(null);
     setModalPdfName(null);
 
     if (partType === 'part_1_mcq') {
@@ -900,7 +903,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
   };
 
   // Xác nhận xuất bản chính thức trong modal
-  const handleConfirmPublishExam = () => {
+  const handleConfirmPublishExam = async () => {
     const calculatedTotalPoints = Number(dynamicTotalPoints.toFixed(2));
     const effectiveTargetIds =
       manualDistributionType !== 'repository'
@@ -931,7 +934,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     };
 
     if (onPublishExam) {
-      onPublishExam(newExam);
+      await onPublishExam(newExam);
     }
 
     setShowPublishConfirmModal(false);
@@ -2967,11 +2970,12 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           initialDuration={aiDuration}
           classrooms={classrooms}
           currentUserName={currentUserName}
-          onPublishExam={(newExam) => {
-            onPublishExam?.(newExam);
-            setPublishSuccessMessage(`Đã xuất bản đề thi "${newExam.title}" thành công từ Phòng Cắt Câu!`);
+          onPublishExam={async (newExam) => {
+            const res = await onPublishExam?.(newExam);
+            setPublishSuccessMessage(`Đã xuất bản đề thi "${newExam.title}" và đồng bộ ảnh lên đám mây thành công!`);
             setCreationMode('manage_exams');
             setTimeout(() => setPublishSuccessMessage(null), 5000);
+            return typeof res === 'boolean' ? res : true;
           }}
           onTransferToManualEditor={(questions, meta) => {
             setManualQuestions(questions);
@@ -3016,7 +3020,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
-                {examsList.map((exam) => (
+                {examsList.map((exam) => {
+                  const needsImageSync = examNeedsImageCloudSync(exam);
+                  return (
                   <div
                     key={exam.id}
                     className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xs"
@@ -3035,6 +3041,11 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                         {exam.maxAttempts && exam.maxAttempts > 0 && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">
                             Tối đa {exam.maxAttempts} lượt thi
+                          </span>
+                        )}
+                        {needsImageSync && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            Ảnh chưa đồng bộ đa thiết bị
                           </span>
                         )}
                       </div>
@@ -3073,6 +3084,34 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0 self-end md:self-auto flex-wrap">
+                      {needsImageSync && onPublishExam && (
+                        <button
+                          type="button"
+                          disabled={syncingExamId === exam.id}
+                          onClick={async () => {
+                            setSyncingExamId(exam.id);
+                            try {
+                              const migrated = await persistExamImagesEverywhere(exam);
+                              await onPublishExam(migrated.exam);
+                              if (!examNeedsImageCloudSync(migrated.exam)) {
+                                setPublishSuccessMessage(`Đã đồng bộ toàn bộ ảnh đề "${exam.title}" lên đám mây!`);
+                              } else {
+                                setPublishSuccessMessage(
+                                  `Đề "${exam.title}" vẫn còn ảnh cũ chưa có trên đám mây (tệp ảnh tạm cũ đã bị xóa khi máy chủ khởi động lại). Vui lòng cắt hoặc tải lại các ảnh bị thiếu rồi xuất bản lại.`
+                                );
+                              }
+                              setTimeout(() => setPublishSuccessMessage(null), 7000);
+                            } finally {
+                              setSyncingExamId(null);
+                            }
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                          title="Đồng bộ ảnh cắt đề thi lên đám mây để điện thoại xem được"
+                        >
+                          {syncingExamId === exam.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                          <span>{syncingExamId === exam.id ? 'Đang đồng bộ...' : 'Đồng Bộ Ảnh'}</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleOpenAssignModal(exam)}
@@ -3103,7 +3142,8 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

@@ -219,7 +219,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   const isCloseTimePassed = exam.closeTime ? new Date(exam.closeTime) < currentTime : false;
   const isExamTimeActive = isOpenStarted && !isCloseTimePassed;
 
-  // Cập nhật khi chọn đề thi khác
+  // Cập nhật khi chọn đề thi khác HOẶC khi đề thi hiện tại được đồng bộ bản mới (ví dụ cập nhật link ảnh đám mây)
   useEffect(() => {
     if (currentExam.id !== exam.id) {
       setExam(currentExam);
@@ -238,8 +238,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       infractionCountRef.current = 0;
       lastInfractionAtRef.current = 0;
       setScoreReport(null);
+    } else if (currentExam !== exam) {
+      setExam(currentExam);
     }
-  }, [currentExam, exam.id]);
+  }, [currentExam, exam]);
 
   // 1. Khởi tạo & nạp bản nháp từ LocalStorage (Auto-Save Restore theo từng học sinh)
   useEffect(() => {
@@ -1039,14 +1041,14 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                             >
                               {opt.key}
                             </span>
-                            <div className="text-xs sm:text-sm text-slate-800 flex-1 leading-relaxed">
+                            <div className="text-xs sm:text-sm text-slate-800 flex-1 min-w-0 leading-relaxed">
                               {opt.text && <MathView math={opt.text} />}
                               {opt.latex && <MathView math={opt.latex} block />}
                               {opt.imageUrl && (
                                 <ExamImage
                                   src={opt.imageUrl}
                                   alt={`Phương án ${opt.key}`}
-                                  className="max-h-28 max-w-full w-auto object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
+                                  className="block max-h-28 max-w-full w-auto h-auto object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setZoomedImage(opt.imageUrl!);
@@ -1188,7 +1190,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                             key={item.id}
                             className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                           >
-                            <div className="text-xs sm:text-sm text-slate-800 flex-1 leading-relaxed">
+                            <div className="text-xs sm:text-sm text-slate-800 flex-1 min-w-0 leading-relaxed">
                               <span className="font-bold text-purple-700 mr-2">{item.subKey})</span>
                               {item.text && <MathView math={item.text} />}
                               {item.latex && <MathView math={item.latex} block />}
@@ -1196,7 +1198,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                                 <ExamImage
                                   src={item.imageUrl}
                                   alt={`Ý ${item.subKey}`}
-                                  className="max-h-28 max-w-full w-auto object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
+                                  className="block max-h-28 max-w-full w-auto h-auto object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setZoomedImage(item.imageUrl!);
