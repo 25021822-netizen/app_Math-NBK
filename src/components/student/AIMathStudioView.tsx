@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { MathTopic, ScanResult, SocraticMessage, Exam, Question } from '../../types/math';
 import { SAMPLE_SCAN_RESULTS } from '../../data/mockData';
 import { MathView } from '../MathView';
-import { FunctionGrapher } from '../FunctionGrapher';
 import { Three3DSceneView } from '../geometry/Three3DSceneView';
 import { LikiImageStudioView } from '../image/LikiImageStudioView';
 import { cleanOcrTextAndConvertToLatex, cleanPdfNoiseAndOcr, OcrCleanResult } from '../../lib/ocrNoiseCleaner';
@@ -22,7 +21,6 @@ import {
   Upload,
   Image as ImageIcon,
   ChevronRight,
-  TrendingUp,
   BrainCircuit,
   ArrowRight,
   Bot,
@@ -848,26 +846,8 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
             </form>
           </div>
 
-          {/* Cột phải: Đồ thị hàm số & Công cụ học tập nhanh (4 cols) */}
+          {/* Cột phải: Công cụ học tập nhanh (4 cols) */}
           <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xs">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={18} className="text-blue-600" />
-                  <h4 className="font-extrabold text-sm text-slate-900">Đồ Thị Trực Quan Oxy</h4>
-                </div>
-                <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono">2D Oxy</span>
-              </div>
-
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Minh họa trực quan hình dáng đồ thị $f(x)$ và tiếp tuyến để học sinh dễ hình dung cực trị và tính đơn điệu.
-              </p>
-
-              <div className="rounded-2xl overflow-hidden border border-slate-200">
-                <FunctionGrapher defaultEquation="x^3 - 3*x^2 + 2" />
-              </div>
-            </div>
-
             {/* Phím tắt mở nhanh tính năng 3D và Tạo ảnh của Liki */}
             <div className="bg-gradient-to-br from-slate-900 to-blue-950 rounded-3xl p-6 text-white space-y-3 shadow-md">
               <div className="flex items-center gap-2 text-cyan-400 text-xs font-black uppercase tracking-wider">
