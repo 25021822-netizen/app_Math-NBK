@@ -87,39 +87,40 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
-export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('math_nbk_auth_user');
-      if (!saved) return false;
-      const parsed = JSON.parse(saved);
-      // BẢO MẬT TUYỆT ĐỐI: Không tự động đăng nhập tài khoản Admin khi vào website!
-      // Tài khoản Admin nắm quyền tối cao hệ thống, bắt buộc phải nhập mật khẩu để đăng nhập.
-      if (!parsed || !parsed.id || parsed.role === 'admin') {
-        localStorage.removeItem('math_nbk_auth_user');
-        return false;
-      }
-      return true;
-    } catch {
+function getRestoredAuthSession(): { isAuth: boolean; user: UserProfile; remembered: boolean } {
+  try {
+    const localSaved = localStorage.getItem('math_nbk_auth_user');
+    const sessionSaved = sessionStorage.getItem('math_nbk_auth_session');
+    const raw = localSaved || sessionSaved;
+    if (!raw) return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true };
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.id || parsed.role === 'admin') {
       localStorage.removeItem('math_nbk_auth_user');
-      return false;
+      sessionStorage.removeItem('math_nbk_auth_session');
+      return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true };
     }
-  });
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
-  const [currentTab, setCurrentTab] = useState<string>('ask_ai');
-  const [userRole, setUserRole] = useState<UserRole>('student');
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    return { isAuth: true, user: parsed as UserProfile, remembered: Boolean(localSaved) };
+  } catch {
     try {
-      const saved = localStorage.getItem('math_nbk_auth_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.id && parsed.role !== 'admin') {
-          return parsed;
-        }
-      }
+      localStorage.removeItem('math_nbk_auth_user');
+      sessionStorage.removeItem('math_nbk_auth_session');
     } catch {}
-    return INITIAL_USER_PROFILE;
-  });
+    return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true };
+  }
+}
+
+export default function App() {
+  const [initialSession] = useState(() => getRestoredAuthSession());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(initialSession.isAuth);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
+  const [currentTab, setCurrentTab] = useState<string>(
+    initialSession.isAuth && initialSession.user.role === 'teacher' ? 'classroom' : 'ask_ai'
+  );
+  const [userRole, setUserRole] = useState<UserRole>(
+    initialSession.isAuth ? initialSession.user.role : 'student'
+  );
+  const [userProfile, setUserProfile] = useState<UserProfile>(initialSession.user);
+  const rememberSessionRef = useRef<boolean>(initialSession.remembered);
   const [allUsers, setAllUsers] = useState<UserProfile[]>(ALL_INITIAL_USERS);
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [cheatLogs, setCheatLogs] = useState<CheatLog[]>(SAMPLE_CHEAT_LOGS);
@@ -285,28 +286,6 @@ export default function App() {
     return count;
   }, [currentTab, classrooms, classroomMessages, userProfile, lastReadChatMap, isAuthenticated]);
 
-  // Tự động khôi phục tài khoản học sinh / giáo viên đã lưu (TUYỆT ĐỐI KHÔNG AUTO-LOGIN ADMIN)
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('math_nbk_auth_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.id && parsed.role !== 'admin') {
-          setUserProfile(parsed);
-          setUserRole(parsed.role);
-          setIsAuthenticated(true);
-        } else if (parsed && parsed.role === 'admin') {
-          localStorage.removeItem('math_nbk_auth_user');
-          setIsAuthenticated(false);
-          setUserProfile(INITIAL_USER_PROFILE);
-          setUserRole('student');
-        }
-      }
-    } catch (e) {
-      localStorage.removeItem('math_nbk_auth_user');
-    }
-  }, []);
-
   // Tham chiếu người dùng và nhóm lớp hiện tại cho bộ xử lý Real-Time Polling
   const userProfileRef = useRef(userProfile);
   useEffect(() => {
@@ -318,6 +297,8 @@ export default function App() {
     classroomsRef.current = classrooms;
   }, [classrooms]);
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Lắng nghe sự kiện thông báo đẩy trong hệ thống
   useEffect(() => {
     const handler = (e: Event) => {
@@ -326,16 +307,24 @@ export default function App() {
         setNotifications((prev) => [customEvent.detail, ...prev]);
         // Chỉ hiển thị popup Toast khi người dùng ĐANG BẬT thông báo (!isMuted)
         if (!customEvent.detail.isMuted) {
+          if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current);
+          }
           setActiveToast(customEvent.detail);
-          const timer = setTimeout(() => {
+          toastTimerRef.current = setTimeout(() => {
             setActiveToast((curr) => (curr?.id === customEvent.detail.id ? null : curr));
+            toastTimerRef.current = null;
           }, 6000);
-          return () => clearTimeout(timer);
         }
       }
     };
     window.addEventListener('math_nbk_push_notification', handler);
-    return () => window.removeEventListener('math_nbk_push_notification', handler);
+    return () => {
+      window.removeEventListener('math_nbk_push_notification', handler);
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
   }, []);
 
   // Tự động đồng bộ Real-Time cơ sở dữ liệu trên máy chủ (Sync đa thiết bị / khác máy)
@@ -365,24 +354,32 @@ export default function App() {
         setAllUsers(remoteData.users);
 
         // Đồng bộ trạng thái tài khoản đang đăng nhập (CHỈ KHI ĐANG ĐĂNG NHẬP VÀ CÓ ID HỢP LỆ)
-        setUserProfile((curr) => {
-          if (!curr || !curr.id) return curr;
+        const curr = userProfileRef.current;
+        if (curr && curr.id) {
           const fresh = remoteData.users.find((u) => u.id === curr.id);
           if (fresh) {
             if (fresh.status === 'rejected') {
               setIsAuthenticated(false);
+              setUserProfile(INITIAL_USER_PROFILE);
+              setUserRole('student');
               localStorage.removeItem('math_nbk_auth_user');
-              return INITIAL_USER_PROFILE;
+              sessionStorage.removeItem('math_nbk_auth_session');
             } else {
-              // Tuyệt đối không tự động ghi đè admin vào localStorage để tránh auto-login khi mở lại trang
-              if (fresh.role !== 'admin') {
-                localStorage.setItem('math_nbk_auth_user', JSON.stringify({ ...curr, ...fresh }));
+              const mergedUser = { ...curr, ...fresh };
+              if (JSON.stringify(mergedUser) !== JSON.stringify(curr)) {
+                setUserProfile(mergedUser);
+                // Tuyệt đối không tự động ghi đè admin vào localStorage để tránh auto-login khi mở lại trang
+                if (fresh.role !== 'admin') {
+                  if (rememberSessionRef.current) {
+                    localStorage.setItem('math_nbk_auth_user', JSON.stringify(mergedUser));
+                  } else {
+                    sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(mergedUser));
+                  }
+                }
               }
             }
-            return { ...curr, ...fresh };
           }
-          return curr;
-        });
+        }
       }
 
       if (remoteData.classrooms && Array.isArray(remoteData.classrooms)) {
@@ -652,7 +649,7 @@ export default function App() {
   }, [userRole, currentTab, isAuthenticated]);
 
   // Đăng nhập thành công
-  const handleLoginSuccess = (user: UserProfile) => {
+  const handleLoginSuccess = (user: UserProfile, rememberMe = true) => {
     setUserProfile(user);
     setUserRole(user.role);
     setIsAuthenticated(true);
@@ -660,10 +657,18 @@ export default function App() {
       // BẢO MẬT: KHÔNG LƯU TÀI KHOẢN ADMIN VÀO LOCALSTORAGE
       // Tránh tuyệt đối lỗi khi mở trang web bị tự động đăng nhập vào tài khoản admin
       localStorage.removeItem('math_nbk_auth_user');
+      sessionStorage.removeItem('math_nbk_auth_session');
       sessionStorage.setItem('math_nbk_admin_session', 'true');
       setCurrentTab('admin_dashboard');
     } else {
-      localStorage.setItem('math_nbk_auth_user', JSON.stringify(user));
+      rememberSessionRef.current = rememberMe;
+      if (rememberMe) {
+        localStorage.setItem('math_nbk_auth_user', JSON.stringify(user));
+        sessionStorage.removeItem('math_nbk_auth_session');
+      } else {
+        sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(user));
+        localStorage.removeItem('math_nbk_auth_user');
+      }
       if (user.role === 'teacher') setCurrentTab('classroom');
       else setCurrentTab('ask_ai');
     }
@@ -682,6 +687,7 @@ export default function App() {
     setUserRole('student');
     setCurrentTab('ask_ai');
     localStorage.removeItem('math_nbk_auth_user');
+    sessionStorage.removeItem('math_nbk_auth_session');
     sessionStorage.removeItem('math_nbk_admin_session');
   };
 
@@ -754,7 +760,11 @@ export default function App() {
     setUserProfile(updated);
     setAllUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
     if (updated.role !== 'admin') {
-      localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
+      if (rememberSessionRef.current) {
+        localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
+      } else {
+        sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updated));
+      }
     }
     dbUpdateUser(updated).catch(console.error);
   };
@@ -772,7 +782,11 @@ export default function App() {
     if (userProfile.id === updatedUser.id) {
       setUserProfile(updatedUser);
       if (updatedUser.role !== 'admin') {
-        localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
+        if (rememberSessionRef.current) {
+          localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
+        } else {
+          sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updatedUser));
+        }
       }
     }
   };
@@ -1211,17 +1225,23 @@ export default function App() {
   const handleAddSubmission = (submission: StudentExamSubmission) => {
     setSubmissions((prev) => [submission, ...prev]);
     dbSaveSubmission(submission).catch(console.error);
-    setUserProfile((prev) => {
-      const updated = {
-        ...prev,
-        xp: prev.xp + Math.round(submission.score * 15),
-        streakDays: prev.streakDays + 1,
-      };
-      setAllUsers((all) => all.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
-      localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
-      dbUpdateUser(updated).catch(console.error);
-      return updated;
-    });
+
+    const currUser = userProfileRef.current;
+    const updatedUser: UserProfile = {
+      ...currUser,
+      xp: currUser.xp + Math.round(submission.score * 15),
+      streakDays: currUser.streakDays + 1,
+    };
+    setUserProfile(updatedUser);
+    setAllUsers((all) => all.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)));
+    if (updatedUser.role !== 'admin') {
+      if (rememberSessionRef.current) {
+        localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
+      } else {
+        sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updatedUser));
+      }
+    }
+    dbUpdateUser(updatedUser).catch(console.error);
 
     // Kích hoạt thông báo đẩy điểm thi và kết quả chấm bài
     const formattedScore = submission.score.toFixed(1);
@@ -1342,9 +1362,42 @@ export default function App() {
         );
       }
 
+      if (currentTab === 'three_3d') {
+        return (
+          <AIMathStudioView
+            initialTab="three_3d"
+            dailyScanCount={userProfile.dailyScanCount}
+            onIncrementScan={handleIncrementScan}
+            onStartExam={(newExam) => {
+              if (newExam) {
+                handlePublishExam(newExam);
+              }
+              setCurrentTab('exam');
+            }}
+          />
+        );
+      }
+
+      if (currentTab === 'image_studio') {
+        return (
+          <AIMathStudioView
+            initialTab="image_studio"
+            dailyScanCount={userProfile.dailyScanCount}
+            onIncrementScan={handleIncrementScan}
+            onStartExam={(newExam) => {
+              if (newExam) {
+                handlePublishExam(newExam);
+              }
+              setCurrentTab('exam');
+            }}
+          />
+        );
+      }
+
       if (currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor') {
         return (
           <AIMathStudioView
+            initialTab="tutor"
             dailyScanCount={userProfile.dailyScanCount}
             onIncrementScan={handleIncrementScan}
             onStartExam={(newExam) => {
@@ -1448,7 +1501,11 @@ export default function App() {
             onViewHistory={() => setCurrentTab('student_history')}
             onExitExam={() => setCurrentTab('classroom')}
             studentProfile={{ id: userProfile.id, name: userProfile.name, email: userProfile.email }}
-            defaultClassId="cls_12a1"
+            defaultClassId={
+              visibleClassrooms.find((c) => c.studentIds?.includes(userProfile.id))?.id ||
+              visibleClassrooms[0]?.id ||
+              'general'
+            }
             submissions={submissions}
           />
         );

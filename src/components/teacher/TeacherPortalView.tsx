@@ -143,6 +143,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // Modal thêm/sửa câu hỏi
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [questionModalError, setQuestionModalError] = useState<string | null>(null);
 
   // Form state cho câu hỏi đang tạo/sửa (CHỈ GỒM: part_1_mcq, part_2_true_false, part_3_short_answer)
   const [modalPart, setModalPart] = useState<'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer'>('part_1_mcq');
@@ -202,6 +203,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [aiMaxAttempts, setAiMaxAttempts] = useState<number>(1);
   const [aiScreenMonitoring, setAiScreenMonitoring] = useState<boolean>(true);
   const [aiMaxInfractions, setAiMaxInfractions] = useState<number>(3);
+
+  useEffect(() => {
+    if (aiTargetClassIds.length === 0 && classrooms.length > 0) {
+      setAiTargetClassIds(classrooms.map((c) => c.id));
+    }
+  }, [classrooms]);
 
   // Mẫu mã nguồn LaTeX chuẩn Bộ Giáo dục & Đào tạo 2025 có câu đầu đề, trích dẫn nguồn và lời dẫn chung
   const SAMPLE_LATEX_BGD_EXAM = `% BỘ GIÁO DỤC VÀ ĐÀO TẠO - KỲ THI THAM KHẢO TỐT NGHIỆP THPT 2025
@@ -277,9 +284,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           return;
         }
       }
-      alert('Không tìm thấy nội dung văn bản trong clipboard. Bạn có thể nhấn Ctrl + V vào ô văn bản bên dưới!');
+      setAiScanError('Không tìm thấy nội dung văn bản trong clipboard. Bạn có thể nhấn Ctrl + V vào ô văn bản bên dưới!');
     } catch {
-      alert('Vui lòng click vào ô văn bản bên dưới và bấm tổ hợp phím Ctrl + V để dán mã LaTeX!');
+      setAiScanError('Vui lòng click vào ô văn bản bên dưới và bấm tổ hợp phím Ctrl + V để dán mã LaTeX!');
     }
   };
 
@@ -377,7 +384,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
     setIsAiScanning(true);
     setAiScanError(null);
-    setAiScanStatusText('Đang nạp dữ liệu đề thi và kết nối mô hình Gemini 3.8 Flash...');
+    setAiScanStatusText('Đang nạp dữ liệu đề thi và kết nối mô hình Gemini 4 Hydrogen...');
 
     try {
       setAiScanStatusText('Đang phân tích cấu trúc 3 phần chuẩn BGD và định dạng công thức KaTeX...');
@@ -403,7 +410,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           const data = await response.json();
           if (data.success && data.parsedExam && Array.isArray(data.parsedExam.questions) && data.parsedExam.questions.length > 0) {
             parsed = data.parsedExam;
-            scanSource = data.source === 'gemini' ? 'Gemini 3.8 Flash AI' : 'Bộ Phân Tích Cú Pháp LaTeX';
+            scanSource = data.source === 'gemini' ? 'Gemini 4 Hydrogen AI' : 'Bộ Phân Tích Cú Pháp LaTeX';
           }
         }
       } catch (serverErr) {
@@ -555,11 +562,13 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       setModalShortAnswer('');
     }
 
+    setQuestionModalError(null);
     setShowQuestionModal(true);
   };
 
   // Xóa hết toàn bộ ô nhập trong modal câu hỏi
   const handleClearQuestionModalFields = () => {
+    setQuestionModalError(null);
     setModalPrompt('');
     setModalLatex('');
     setModalExplanation('');
@@ -584,6 +593,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
   // Mở modal để chỉnh sửa câu hỏi
   const handleOpenEditQuestion = (q: Question) => {
+    setQuestionModalError(null);
     const safePart = q.part;
     setEditingQuestionId(q.id);
     setModalPart(safePart);
@@ -641,9 +651,10 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
   // Xử lý tải ảnh từ máy tính (Tối đa 10MB)
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setQuestionModalError(null);
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        alert('Dung lượng ảnh vượt quá 10MB. Vui lòng chọn ảnh nhỏ hơn 10MB!');
+        setQuestionModalError('Dung lượng ảnh vượt quá 10MB. Vui lòng chọn ảnh nhỏ hơn 10MB!');
         return;
       }
       const reader = new FileReader();
@@ -659,9 +670,10 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
   // Xử lý tải file PDF đính kèm (Tối đa 10MB)
   const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setQuestionModalError(null);
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        alert('Dung lượng file PDF vượt quá 10MB. Vui lòng chọn file PDF nhỏ hơn 10MB!');
+        setQuestionModalError('Dung lượng file PDF vượt quá 10MB. Vui lòng chọn file PDF nhỏ hơn 10MB!');
         return;
       }
       setModalPdfName(file.name);
@@ -670,8 +682,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
   // Lưu câu hỏi vào danh sách (đảm bảo không còn Phần 4 tự luận)
   const handleSaveQuestion = () => {
+    setQuestionModalError(null);
     if (!modalPrompt.trim() && !modalImageAttachment) {
-      alert('Vui lòng nhập nội dung đề bài hoặc dán/đính kèm file ảnh!');
+      setQuestionModalError('Vui lòng nhập nội dung đề bài hoặc dán/đính kèm file ảnh!');
       return;
     }
 
@@ -687,7 +700,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
     if (modalPart === 'part_1_mcq') {
       if (!modalOptA.trim() && !modalOptB.trim() && !modalOptC.trim() && !modalOptD.trim() && !modalImageAttachment && !modalOptionsAttachmentUrl && !existingQ?.optionsAttachmentUrl) {
-        alert('Vui lòng nhập nội dung cho các phương án A, B, C, D hoặc đính kèm ảnh cắt!');
+        setQuestionModalError('Vui lòng nhập nội dung cho các phương án A, B, C, D hoặc đính kèm ảnh cắt!');
         return;
       }
 
@@ -715,7 +728,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       };
     } else if (modalPart === 'part_2_true_false') {
       if (!modalTfA.text.trim() && !modalTfB.text.trim() && !modalTfC.text.trim() && !modalTfD.text.trim() && !modalImageAttachment && !modalOptionsAttachmentUrl && !existingQ?.optionsAttachmentUrl) {
-        alert('Vui lòng nhập nội dung cho 4 ý mệnh đề a, b, c, d hoặc đính kèm ảnh cắt!');
+        setQuestionModalError('Vui lòng nhập nội dung cho 4 ý mệnh đề a, b, c, d hoặc đính kèm ảnh cắt!');
         return;
       }
 
@@ -743,11 +756,11 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     } else {
       const sanitized = modalShortAnswer.trim().replace(/\s+/g, '');
       if (!sanitized) {
-        alert('Vui lòng nhập đáp án cho câu hỏi trả lời ngắn!');
+        setQuestionModalError('Vui lòng nhập đáp án cho câu hỏi trả lời ngắn!');
         return;
       }
       if (sanitized.length > 4) {
-        alert('Quy chế BGD Phần 3: Đáp án không được vượt quá 4 ký tự!');
+        setQuestionModalError('Quy chế BGD Phần 3: Đáp án không được vượt quá 4 ký tự!');
         return;
       }
       newQuestion = {
@@ -772,6 +785,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       setManualQuestions((prev) => [...prev, newQuestion]);
     }
 
+    setQuestionModalError(null);
     setShowQuestionModal(false);
   };
 
@@ -1974,7 +1988,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               <div className="p-5 rounded-2xl bg-blue-50/80 border border-blue-200 text-blue-900 text-xs space-y-2 animate-pulse">
                 <div className="font-bold flex items-center gap-2">
                   <Loader2 size={16} className="animate-spin text-blue-600" />
-                  <span>Đang xử lý đề thi bằng mô hình Gemini 3.8 Flash...</span>
+                  <span>Đang xử lý đề thi bằng mô hình Gemini 4 Hydrogen...</span>
                 </div>
                 <p className="text-slate-600 text-[11px]">{aiScanStatusText}</p>
               </div>
@@ -2719,6 +2733,13 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                 className="w-full p-2.5 rounded-xl border border-slate-300 text-xs"
               />
             </div>
+
+            {questionModalError && (
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle size={15} className="shrink-0 text-rose-600" />
+                <span>{questionModalError}</span>
+              </div>
+            )}
 
             <div className="flex gap-2 pt-2">
               <button

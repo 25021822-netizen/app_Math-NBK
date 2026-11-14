@@ -175,7 +175,7 @@ Không viết chữ nào ngoài chuỗi JSON hợp lệ.`;
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-4-hydrogen',
       contents: contentsPayload,
       config: {
         responseMimeType: 'application/json',
@@ -335,7 +335,7 @@ Câu hỏi: "${query}"
 Hãy cung cấp câu trả lời chính xác, cập nhật dựa trên thông tin tìm kiếm được, kèm theo gợi mở tư duy toán học và công thức LaTeX nếu cần.`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: 'gemini-4-hydrogen',
           contents: prompt,
           config: {
             tools: [{ googleSearch: {} }],
@@ -381,7 +381,7 @@ Trả về định dạng JSON:
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -414,11 +414,11 @@ Học sinh hoặc giáo viên đang tra cứu thông tin: "${query}".
 Hãy tra cứu Google Search để cập nhật thông tin chuẩn xác nhất về:
 - Đề thi tốt nghiệp THPT chuẩn Bộ GD&ĐT 2025/2026
 - Phương pháp giải toán mới, bài toán thực tế STEM
-- Cấu trúc 4 phần đề thi Bộ GD&ĐT
+- Cấu trúc 3 phần đề thi Bộ GD&ĐT
 Trình bày rõ ràng, súc tích, chuyên nghiệp.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-4-hydrogen',
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
@@ -1209,7 +1209,7 @@ Trả về DUY NHẤT chuỗi JSON hợp lệ, không có văn bản giải thí
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-4-hydrogen',
       contents: contentsPayload,
       config: {
         responseMimeType: 'application/json',

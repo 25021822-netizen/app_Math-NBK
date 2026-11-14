@@ -88,7 +88,14 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [isAiCroppingAll, setIsAiCroppingAll] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [cropError, setCropError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'canvas' | 'pdf_document'>('canvas');
+
+  useEffect(() => {
+    if (selectedClassIds.length === 0 && classrooms && classrooms.length > 0) {
+      setSelectedClassIds(classrooms.map((c) => c.id));
+    }
+  }, [classrooms]);
 
   // Phân loại câu hỏi đang thao tác / tạo mới
   const [selectedPartType, setSelectedPartType] = useState<'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer'>('part_1_mcq');
@@ -694,8 +701,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
   // Xuất bản đề thi trực tiếp
   const handlePublishDirectly = () => {
+    setCropError(null);
     if (questions.length === 0) {
-      alert('Vui lòng cắt ít nhất 1 câu hỏi vào đề thi trước khi xuất bản!');
+      setCropError('Vui lòng cắt ít nhất 1 câu hỏi vào đề thi trước khi xuất bản!');
       return;
     }
 
@@ -814,6 +822,19 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               type="button"
               onClick={() => setStatusMessage(null)}
               className="text-indigo-600 hover:text-indigo-900"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {cropError && (
+          <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in">
+            <span>{cropError}</span>
+            <button
+              type="button"
+              onClick={() => setCropError(null)}
+              className="text-rose-600 hover:text-rose-900"
             >
               <X size={14} />
             </button>

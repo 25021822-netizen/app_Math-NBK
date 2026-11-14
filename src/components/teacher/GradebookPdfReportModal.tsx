@@ -100,6 +100,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
   // Trạng thái đang xuất file
   const [isExporting, setIsExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const reportPrintRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +112,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
 
   const selectedIndividualSub = submissions.find((s) => s.id === selectedStudentSubId) || submissions[0];
   const individualExam = selectedIndividualSub
-    ? examsList.find((e) => e.id === selectedIndividualSub.examId) || examsList[0]
+    ? examsList.find((e) => e.id === selectedIndividualSub.examId) || null
     : null;
 
   const classNameDisplay = currentClass ? currentClass.name : 'Tất Cả Các Lớp';
@@ -190,7 +191,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
       setTimeout(() => setExportMessage(null), 3500);
     } catch (error) {
       console.error('Lỗi xuất PDF:', error);
-      alert('Có lỗi xảy ra khi tạo file PDF. Vui lòng thử lại!');
+      setExportError('Có lỗi xảy ra khi tạo file PDF. Vui lòng thử lại!');
+      setTimeout(() => setExportError(null), 4000);
     } finally {
       setIsExporting(false);
     }
@@ -247,7 +249,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             sub.studentId,
             sub.studentName,
             sub.studentEmail,
-            classrooms.find((c) => c.id === sub.classId)?.name || '12A1',
+            classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa',
             Number(sub.score.toFixed(2)),
             Number(sub.partScores.part1.toFixed(2)),
             Number(sub.partScores.part2.toFixed(2)),
@@ -295,7 +297,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           [''],
           ['THÔNG TIN HỌC SINH', ''],
           ['Họ và Tên:', sub.studentName, 'Mã Học Sinh:', sub.studentId],
-          ['Lớp:', classrooms.find((c) => c.id === sub.classId)?.name || '12A1', 'Email:', sub.studentEmail],
+          ['Lớp:', classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa', 'Email:', sub.studentEmail],
           ['Bài Kiểm Tra:', sub.examTitle, 'Ngày Nộp:', new Date(sub.submittedAt).toLocaleString('vi-VN')],
           ['Thời Gian Làm Bài:', `${Math.round(sub.timeSpentSeconds / 60)} phút`, 'Cảnh Báo Vi Phạm Tab:', `${sub.infractionCount} lần`],
           [''],
@@ -332,7 +334,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
       setTimeout(() => setExportMessage(null), 3500);
     } catch (error) {
       console.error('Lỗi xuất Excel:', error);
-      alert('Có lỗi xảy ra khi tạo file Excel. Vui lòng thử lại!');
+      setExportError('Có lỗi xảy ra khi tạo file Excel. Vui lòng thử lại!');
+      setTimeout(() => setExportError(null), 4000);
     } finally {
       setIsExporting(false);
     }
@@ -453,7 +456,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
               children: [
                 new TableCell({ children: [new Paragraph(`${idx + 1}`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(sub.studentName)], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph(classrooms.find((c) => c.id === sub.classId)?.name || '12A1')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa')], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${sub.score.toFixed(2)}đ`, bold: true })] })], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part1.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part2.toFixed(2)}đ`)], borders: borderConfig }),
@@ -588,7 +591,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             new TableRow({
               children: [
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Lớp học:', bold: true })] })], borders: borderConfig, shading: { fill: 'F8FAFC' } }),
-                new TableCell({ children: [new Paragraph(classrooms.find((c) => c.id === sub.classId)?.name || '12A1')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa')], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Thời gian làm:', bold: true })] })], borders: borderConfig, shading: { fill: 'F8FAFC' } }),
                 new TableCell({ children: [new Paragraph(`${Math.round(sub.timeSpentSeconds / 60)} phút`)], borders: borderConfig }),
               ],
@@ -720,7 +723,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
       setTimeout(() => setExportMessage(null), 3500);
     } catch (error) {
       console.error('Lỗi xuất Word:', error);
-      alert('Có lỗi xảy ra khi tạo file Word. Vui lòng thử lại!');
+      setExportError('Có lỗi xảy ra khi tạo file Word. Vui lòng thử lại!');
+      setTimeout(() => setExportError(null), 4000);
     } finally {
       setIsExporting(false);
     }
@@ -744,7 +748,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Vui lòng cho phép popup để mở bản in!');
+      setExportError('Trình duyệt đã chặn cửa sổ in popup. Vui lòng nhấn "Tải Về PDF" hoặc cho phép popup!');
+      setTimeout(() => setExportError(null), 4500);
       return;
     }
 
@@ -864,11 +869,17 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           </div>
         </div>
 
-        {/* Thông báo thành công */}
+        {/* Thông báo thành công / lỗi */}
         {exportMessage && (
           <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 size={16} className="text-emerald-600" />
             <span>{exportMessage}</span>
+          </div>
+        )}
+        {exportError && (
+          <div className="px-5 py-2.5 bg-rose-50 border-b border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+            <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+            <span>{exportError}</span>
           </div>
         )}
 
@@ -1269,7 +1280,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                               {sub.studentName}
                             </td>
                             <td className="py-1.5 px-2.5 border-r border-slate-300 text-center text-slate-600 text-[11px]">
-                              {classrooms.find((c) => c.id === sub.classId)?.name || '12A1'}
+                              {classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa'}
                             </td>
                             <td className="py-1.5 px-2.5 border-r border-slate-300 text-center font-black font-mono text-sm text-blue-700">
                               {sub.score.toFixed(2)}
@@ -1342,7 +1353,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                   <div>
                     <span className="text-slate-500 font-bold block text-[10px] uppercase">Lớp Học & Khối:</span>
                     <strong className="text-base text-slate-900 block mt-0.5 font-bold">
-                      {classrooms.find((c) => c.id === selectedIndividualSub.classId)?.name || 'Lớp 12A1'}
+                      {classrooms.find((c) => c.id === selectedIndividualSub.classId)?.name || 'Tự luyện / Lớp đã xóa'}
                     </strong>
                     <span className="text-slate-500">
                       Thời gian làm: {Math.round(selectedIndividualSub.timeSpentSeconds / 60)} phút

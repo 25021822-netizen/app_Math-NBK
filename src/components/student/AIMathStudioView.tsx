@@ -823,7 +823,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                   <span>Tra cứu Google Search thực tế (Đề thi & Tuyển sinh BGD mới nhất)</span>
                 </span>
               </label>
-              <span className="text-[10px] font-mono text-slate-400">gemini-3.8-flash</span>
+              <span className="text-[10px] font-mono text-slate-400">gemini-4-hydrogen</span>
             </div>
 
             {/* Input Form gửi tin nhắn */}

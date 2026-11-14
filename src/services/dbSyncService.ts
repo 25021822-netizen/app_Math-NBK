@@ -56,6 +56,8 @@ const recentlySavedExamIds: Map<string, number> = (() => {
   return map;
 })();
 const backfilledExamIds = new Set<string>();
+const deletedLessonIdsSet = new Set<string>();
+const deletedMessageIdsSet = new Set<string>();
 let lastClassroomSaveAt = 0;
 let activeAccumulatorRef: DatabaseState | null = null;
 let activeDispatchRef: (() => void) | null = null;
@@ -809,6 +811,9 @@ export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
   }
 
   const cleanLesson = cleanForFirestore(lessonToSave);
+  if (cleanLesson?.id) {
+    deletedLessonIdsSet.delete(cleanLesson.id);
+  }
   if (!cleanLesson || !cleanLesson.id) {
     const missingIdError = new Error('Dữ liệu bài học không hợp lệ hoặc thiếu mã định danh (id).');
     console.error('[dbSaveLesson] Thất bại kiểm tra định danh bài học:', cleanLesson);
@@ -872,6 +877,12 @@ export async function dbSaveLesson(lesson: ClassroomLesson): Promise<boolean> {
  * Xóa 1 bài học chuyên đề khỏi Firestore & Server
  */
 export async function dbDeleteLesson(lessonId: string): Promise<boolean> {
+  if (lessonId) {
+    deletedLessonIdsSet.add(lessonId);
+    if (activeAccumulatorRef) {
+      activeAccumulatorRef.classroomLessons = activeAccumulatorRef.classroomLessons.filter((l) => l.id !== lessonId);
+    }
+  }
   const serverPromise = fetch('/api/db/lesson/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1601,6 +1612,9 @@ export async function ensureOldExamsPurged() {
  * Lưu tin nhắn chat trong nhóm lớp (Đồng bộ tức thời Real-time cả Firestore và Server)
  */
 export async function dbSaveMessage(classId: string, message: ClassroomChatMessage): Promise<boolean> {
+  if (message?.id) {
+    deletedMessageIdsSet.delete(message.id);
+  }
   const payload = cleanForFirestore({
     ...message,
     classId,
@@ -1691,6 +1705,15 @@ export async function dbToggleMessageReaction(
  * Xóa tin nhắn chat khỏi Firestore & Server API
  */
 export async function dbDeleteMessage(classId: string, messageId: string): Promise<boolean> {
+  if (messageId) {
+    deletedMessageIdsSet.add(messageId);
+    if (activeAccumulatorRef && activeAccumulatorRef.classroomMessages?.[classId]) {
+      activeAccumulatorRef.classroomMessages = {
+        ...activeAccumulatorRef.classroomMessages,
+        [classId]: activeAccumulatorRef.classroomMessages[classId].filter((m) => m.id !== messageId),
+      };
+    }
+  }
   const firestorePromise = deleteDoc(doc(db, 'messages', messageId)).catch(() => null);
   const serverPromise = fetch('/api/db/message/delete', {
     method: 'POST',
@@ -1925,14 +1948,14 @@ export function startDbPolling(
       return;
     }
 
-    if (list.length > 0) {
-      const removedClassIds = new Set<string>();
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'removed') {
-          removedClassIds.add(change.doc.id);
-        }
-      });
+    const removedClassIds = new Set<string>();
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        removedClassIds.add(change.doc.id);
+      }
+    });
 
+    if (list.length > 0 || removedClassIds.size > 0) {
       const classMap = new Map<string, Classroom>();
       stateAccumulator.classrooms.forEach((c) => {
         if (!removedClassIds.has(c.id)) {
@@ -1979,12 +2002,26 @@ export function startDbPolling(
 
   // 5. Lắng nghe Bài học đăng bởi giáo viên trên Firestore Real-time (Đồng bộ ngay tới học sinh)
   const unsubLessons = onSnapshot(collection(db, 'lessons'), (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        deletedLessonIdsSet.add(change.doc.id);
+      }
+    });
+
     const list: ClassroomLesson[] = [];
     snapshot.forEach((d) => {
-      list.push(d.data() as ClassroomLesson);
+      const l = d.data() as ClassroomLesson;
+      if (l && l.id && !deletedLessonIdsSet.has(l.id)) {
+        list.push(l);
+      }
     });
+
     const lessonMap = new Map<string, ClassroomLesson>();
-    stateAccumulator.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
+    stateAccumulator.classroomLessons.forEach((l) => {
+      if (l && l.id && !deletedLessonIdsSet.has(l.id)) {
+        lessonMap.set(l.id, l);
+      }
+    });
     list.forEach((l) => lessonMap.set(l.id, l));
     stateAccumulator.classroomLessons = Array.from(lessonMap.values());
     dispatchUpdate();
@@ -2090,34 +2127,34 @@ export function startDbPolling(
 
   // 6. Lắng nghe Tin nhắn chat nhóm lớp trên Firestore Real-time (Đồng bộ tức thời mọi máy)
   const unsubMessages = onSnapshot(collection(db, 'messages'), (snapshot) => {
+    // Nếu có tài liệu bị xóa trên Firestore thì đánh dấu để không tái xuất hiện
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        deletedMessageIdsSet.add(change.doc.id);
+      }
+    });
+
     const map: Record<string, Map<string, ClassroomChatMessage>> = {};
 
-    // Giữ lại các tin nhắn hiện có từ stateAccumulator
+    // Giữ lại các tin nhắn hiện có từ stateAccumulator (loại trừ tin đã xóa)
     for (const [cId, msgs] of Object.entries(stateAccumulator.classroomMessages || {})) {
       if (!map[cId]) map[cId] = new Map();
-      msgs.forEach((m) => map[cId].set(m.id, m));
+      msgs.forEach((m) => {
+        if (m && m.id && !deletedMessageIdsSet.has(m.id)) {
+          map[cId].set(m.id, m);
+        }
+      });
     }
 
     // Nạp tin nhắn từ snapshot Firestore
     snapshot.forEach((d) => {
       const data = d.data() as ClassroomChatMessage & { classId?: string };
-      if (!data || !data.id) return;
+      if (!data || !data.id || deletedMessageIdsSet.has(data.id)) return;
       const cId = data.classId || 'cls_12a1';
       if (!map[cId]) {
         map[cId] = new Map();
       }
       map[cId].set(data.id, data);
-    });
-
-    // Nếu có tài liệu bị xóa trên Firestore thì gỡ khỏi danh sách
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'removed') {
-        const removedMsg = change.doc.data() as ClassroomChatMessage & { classId?: string };
-        const cId = removedMsg?.classId || 'cls_12a1';
-        if (cId && map[cId]) {
-          map[cId].delete(change.doc.id);
-        }
-      }
     });
 
     const nextMessages: Record<string, ClassroomChatMessage[]> = {};
@@ -2179,11 +2216,15 @@ export function startDbPolling(
               hasChanges = true;
             }
           }
-          // Đồng bộ Bài học chuyên đề (hợp nhất thông minh)
+          // Đồng bộ Bài học chuyên đề (hợp nhất thông minh & tôn trọng bài đã xóa)
           if (json.data.classroomLessons && Array.isArray(json.data.classroomLessons)) {
             const lessonMap = new Map<string, ClassroomLesson>();
-            stateAccumulator.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
-            json.data.classroomLessons.forEach((l: ClassroomLesson) => lessonMap.set(l.id, l));
+            stateAccumulator.classroomLessons.forEach((l) => {
+              if (l && l.id && !deletedLessonIdsSet.has(l.id)) lessonMap.set(l.id, l);
+            });
+            json.data.classroomLessons.forEach((l: ClassroomLesson) => {
+              if (l && l.id && !deletedLessonIdsSet.has(l.id)) lessonMap.set(l.id, l);
+            });
             const merged = Array.from(lessonMap.values());
             if (JSON.stringify(merged) !== JSON.stringify(stateAccumulator.classroomLessons)) {
               stateAccumulator.classroomLessons = merged;
@@ -2214,29 +2255,36 @@ export function startDbPolling(
               }
             });
           }
-          // Đồng bộ Tin nhắn chat lớp học
+          // Đồng bộ Tin nhắn chat lớp học (hỗ trợ cả trường hợp xóa hết tin nhắn cuối cùng)
           if (json.data.classroomMessages && typeof json.data.classroomMessages === 'object') {
             const serverMsgs = json.data.classroomMessages as Record<string, ClassroomChatMessage[]>;
-            for (const cId in serverMsgs) {
-              const currentList = stateAccumulator.classroomMessages[cId] || [];
-              const sList = serverMsgs[cId] || [];
-              if (sList.length > 0) {
-                const msgMap = new Map<string, ClassroomChatMessage>();
-                currentList.forEach((m) => msgMap.set(m.id, m));
-                let newFound = false;
-                sList.forEach((m) => {
-                  const exist = msgMap.get(m.id);
-                  if (!exist || JSON.stringify(exist.reactions) !== JSON.stringify(m.reactions)) {
-                    msgMap.set(m.id, m);
-                    newFound = true;
-                  }
-                });
-                if (newFound) {
-                  stateAccumulator.classroomMessages[cId] = Array.from(msgMap.values()).sort(
-                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                  );
-                  hasChanges = true;
+            const allClassKeys = new Set([
+              ...Object.keys(serverMsgs),
+              ...Object.keys(stateAccumulator.classroomMessages || {}),
+            ]);
+            for (const cId of allClassKeys) {
+              const currentList = (stateAccumulator.classroomMessages[cId] || []).filter(
+                (m) => m && m.id && !deletedMessageIdsSet.has(m.id)
+              );
+              const sList = (serverMsgs[cId] || []).filter(
+                (m) => m && m.id && !deletedMessageIdsSet.has(m.id)
+              );
+              const sIds = new Set(sList.map((m) => m.id));
+              const msgMap = new Map<string, ClassroomChatMessage>();
+              const now = Date.now();
+              // Chỉ giữ tin nhắn local nếu chưa có trên server nhưng mới gửi trong 5s gần nhất
+              currentList.forEach((m) => {
+                if (sIds.has(m.id) || now - new Date(m.timestamp).getTime() < 5000) {
+                  msgMap.set(m.id, m);
                 }
+              });
+              sList.forEach((m) => msgMap.set(m.id, m));
+              const nextSorted = Array.from(msgMap.values()).sort(
+                (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              );
+              if (JSON.stringify(nextSorted) !== JSON.stringify(stateAccumulator.classroomMessages[cId] || [])) {
+                stateAccumulator.classroomMessages[cId] = nextSorted;
+                hasChanges = true;
               }
             }
           }

@@ -17,8 +17,10 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeSolution, setActiveSolution] = useState<ScanResult | null>(SAMPLE_OCR_PROBLEMS[0].solution);
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const handleScanProblem = async (problemData?: typeof SAMPLE_OCR_PROBLEMS[0], customPrompt?: string) => {
+    setScanError(null);
     setIsProcessing(true);
     onIncrementScan();
 
@@ -52,9 +54,10 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setScanError(null);
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        alert('Dung lượng ảnh bài tập vượt quá 10MB. Vui lòng chọn ảnh có dung lượng nhỏ hơn 10MB!');
+        setScanError('Dung lượng ảnh bài tập vượt quá 10MB. Vui lòng chọn ảnh có dung lượng nhỏ hơn 10MB!');
         return;
       }
       const reader = new FileReader();
@@ -164,6 +167,13 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
                 <span>{isProcessing ? 'Đang nhận diện...' : 'Quét & Giải ngay'}</span>
               </button>
             </div>
+
+            {scanError && (
+              <div className="mt-3 p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0 text-rose-400" />
+                <span>{scanError}</span>
+              </div>
+            )}
           </div>
 
           {/* Preset Sample Problems (1-Click Test) */}

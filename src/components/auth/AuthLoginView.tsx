@@ -26,7 +26,7 @@ import {
 
 interface AuthLoginViewProps {
   allUsers: UserProfile[];
-  onLoginSuccess: (user: UserProfile) => void;
+  onLoginSuccess: (user: UserProfile, rememberMe?: boolean) => void;
   onRegisterUser: (newUser: UserProfile) => void;
   autoApprovalSettings?: AutoApprovalSettings;
 }
@@ -115,7 +115,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       }
 
       setIsLoading(false);
-      onLoginSuccess(user);
+      onLoginSuccess(user, rememberMe);
     }, 450);
   };
 
@@ -769,7 +769,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      onLoginSuccess(pendingModalUser);
+                      onLoginSuccess(pendingModalUser, rememberMe);
                       setPendingModalUser(null);
                     }}
                     className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer"

@@ -146,17 +146,17 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
   // Tìm thông tin đề thi của bài nộp đang xem
   const currentViewingExam = useMemo(() => {
     if (!viewingSubmission) return null;
-    return examsList.find((e) => e.id === viewingSubmission.examId) || examsList[0];
+    return examsList.find((e) => e.id === viewingSubmission.examId) || null;
   }, [viewingSubmission, examsList]);
 
   // Xuất bảng điểm CSV (In-browser download)
   const handleExportCSV = () => {
-    const headers = 'Hạng,Họ và tên,Email,Lớp,Đề thi,Điểm tổng,Phần 1,Phần 2,Phần 3,Phần 4,Thời gian làm (phút),Vi phạm,Ngày nộp\n';
+    const headers = 'Hạng,Họ và tên,Email,Lớp,Đề thi,Điểm tổng,Phần 1,Phần 2,Phần 3,Thời gian làm (phút),Vi phạm,Ngày nộp\n';
     const rows = filteredSubmissions.map((sub, idx) => {
-      const cls = classrooms.find((c) => c.id === sub.classId)?.name || sub.classId;
+      const cls = classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa';
       const minutes = Math.round(sub.timeSpentSeconds / 60);
       const date = new Date(sub.submittedAt).toLocaleDateString('vi-VN');
-      return `${idx + 1},"${sub.studentName}","${sub.studentEmail}","${cls}","${sub.examTitle}",${sub.score},${sub.partScores.part1},${sub.partScores.part2},${sub.partScores.part3},${sub.partScores.part4},${minutes},${sub.infractionCount},"${date}"`;
+      return `${idx + 1},"${sub.studentName}","${sub.studentEmail}","${cls}","${sub.examTitle}",${sub.score},${sub.partScores.part1},${sub.partScores.part2},${sub.partScores.part3},${minutes},${sub.infractionCount},"${date}"`;
     }).join('\n');
 
     const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -537,8 +537,8 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
 
                       {/* Class */}
                       <td className="py-3.5 px-4">
-                        <span className="font-semibold text-slate-700 block">{cls?.name || 'Lớp 12A1'}</span>
-                        <span className="text-[10px] font-mono text-slate-400">#{cls?.code || 'NBK-12A1'}</span>
+                        <span className="font-semibold text-slate-700 block">{cls?.name || 'Tự luyện / Lớp đã xóa'}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{cls?.code ? `#${cls.code}` : 'Tự do'}</span>
                       </td>
 
                       {/* Exam Title */}
@@ -637,7 +637,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
       {/* ========================================================================= */}
       {/* MODAL: XEM CHI TIẾT BÀI THI CỦA HỌC SINH                                  */}
       {/* ========================================================================= */}
-      {viewingSubmission && currentViewingExam && (
+      {viewingSubmission && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
@@ -651,7 +651,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {viewingSubmission.examTitle} · Lớp:{' '}
-                  {classrooms.find((c) => c.id === viewingSubmission.classId)?.name || 'Lớp 12A1'}
+                  {classrooms.find((c) => c.id === viewingSubmission.classId)?.name || 'Tự luyện / Lớp đã xóa'}
                 </p>
               </div>
 
@@ -718,6 +718,12 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             </div>
 
             {/* Questions Detailed Review */}
+            {!currentViewingExam ? (
+              <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-center space-y-1">
+                <p className="font-bold">Đề thi gốc đã bị xóa hoặc gỡ khỏi hệ thống</p>
+                <p className="text-amber-800">Không thể hiển thị danh sách câu hỏi chi tiết của bài nộp này.</p>
+              </div>
+            ) : (
             <div className="space-y-4">
               <h4 className="font-extrabold text-sm text-slate-900">Chi Tiết Từng Câu Hỏi:</h4>
 
@@ -735,7 +741,8 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                   const bAns = viewingSubmission.answers[`${q.id}_b`];
                   const cAns = viewingSubmission.answers[`${q.id}_c`];
                   const dAns = viewingSubmission.answers[`${q.id}_d`];
-                  studentDisplayAns = `a:${aAns ? 'Đ' : 'S'}, b:${bAns ? 'Đ' : 'S'}, c:${cAns ? 'Đ' : 'S'}, d:${dAns ? 'Đ' : 'S'}`;
+                  const fmtTF = (v: unknown) => (v === undefined || v === null ? '—' : v ? 'Đ' : 'S');
+                  studentDisplayAns = `a:${fmtTF(aAns)}, b:${fmtTF(bAns)}, c:${fmtTF(cAns)}, d:${fmtTF(dAns)}`;
                   correctDisplayAns = q.items.map((it) => `${it.subKey}:${it.isCorrect ? 'Đ' : 'S'}`).join(', ');
                 } else if (q.part === 'part_3_short_answer') {
                   studentDisplayAns = viewingSubmission.answers[q.id] || 'Chưa trả lời';
@@ -800,6 +807,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                 );
               })}
             </div>
+            )}
 
             {/* Footer action buttons */}
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">

@@ -90,7 +90,7 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
   // Đề thi của bài nộp đang xem
   const activeExam = useMemo(() => {
     if (!selectedSubmission) return null;
-    return examsList.find((e) => e.id === selectedSubmission.examId) || examsList[0];
+    return examsList.find((e) => e.id === selectedSubmission.examId) || null;
   }, [selectedSubmission, examsList]);
 
   return (
@@ -248,9 +248,6 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                     <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">
                       P.III: <strong>{sub.partScores.part3}đ</strong>
                     </span>
-                    <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">
-                      P.IV: <strong>{sub.partScores.part4}đ</strong>
-                    </span>
 
                     {sub.infractionCount > 0 ? (
                       <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg font-sans font-bold flex items-center gap-1">
@@ -335,7 +332,7 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
       {/* ========================================================================= */}
       {/* MODAL: XEM LẠI BÀI LÀM CHI TIẾT (STUDENT REVIEW ATTEMPT)                  */}
       {/* ========================================================================= */}
-      {selectedSubmission && activeExam && (
+      {selectedSubmission && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             {/* Header */}
@@ -353,24 +350,26 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
               </div>
 
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAnswersInHistory(!showAnswersInHistory)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-2xs ${
-                    showAnswersInHistory
-                      ? 'bg-blue-50 text-blue-700 border-blue-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200'
-                  }`}
-                  title="Bật/Tắt hiển thị đáp án đúng để học sinh có thể tự suy ngẫm giải lại"
-                >
-                  {showAnswersInHistory ? <EyeOff size={14} /> : <Eye size={14} />}
-                  <span>{showAnswersInHistory ? 'Tắt Xem Đáp Án' : 'Bật Xem Đáp Án'}</span>
-                </button>
+                {activeExam && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAnswersInHistory(!showAnswersInHistory)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-2xs ${
+                      showAnswersInHistory
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                    title="Bật/Tắt hiển thị đáp án đúng để học sinh có thể tự suy ngẫm giải lại"
+                  >
+                    {showAnswersInHistory ? <EyeOff size={14} /> : <Eye size={14} />}
+                    <span>{showAnswersInHistory ? 'Tắt Xem Đáp Án' : 'Bật Xem Đáp Án'}</span>
+                  </button>
+                )}
 
                 <div className="text-right">
                   <span className="text-xs text-slate-400 font-semibold block">Điểm số:</span>
                   <span className="text-2xl font-black font-mono text-blue-600">
-                    {selectedSubmission.score.toFixed(2)} / {activeExam.totalPoints} điểm
+                    {selectedSubmission.score.toFixed(2)} / {activeExam?.totalPoints ?? 10} điểm
                   </span>
                 </div>
                 <button
@@ -383,6 +382,15 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
             </div>
 
             {/* Questions Detailed List */}
+            {!activeExam ? (
+              <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2 text-center">
+                <AlertTriangle size={28} className="mx-auto text-amber-600" />
+                <h4 className="font-extrabold text-sm">Đề thi gốc đã bị xóa hoặc gỡ khỏi hệ thống</h4>
+                <p className="text-amber-800">
+                  Kết quả điểm số của bạn vẫn được lưu lại (Phần I: {selectedSubmission.partScores.part1}đ · Phần II: {selectedSubmission.partScores.part2}đ · Phần III: {selectedSubmission.partScores.part3}đ), tuy nhiên nội dung từng câu hỏi không còn khả dụng.
+                </p>
+              </div>
+            ) : (
             <div className="space-y-4">
               {activeExam.questions.map((q) => {
                 let isQuestionCorrect = false;
@@ -398,7 +406,8 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                   const bAns = selectedSubmission.answers[`${q.id}_b`];
                   const cAns = selectedSubmission.answers[`${q.id}_c`];
                   const dAns = selectedSubmission.answers[`${q.id}_d`];
-                  studentDisplayAns = `a:${aAns ? 'Đ' : 'S'}, b:${bAns ? 'Đ' : 'S'}, c:${cAns ? 'Đ' : 'S'}, d:${dAns ? 'Đ' : 'S'}`;
+                  const fmtTF = (v: unknown) => (v === undefined || v === null ? '—' : v ? 'Đ' : 'S');
+                  studentDisplayAns = `a:${fmtTF(aAns)}, b:${fmtTF(bAns)}, c:${fmtTF(cAns)}, d:${fmtTF(dAns)}`;
                   correctDisplayAns = q.items.map((it) => `${it.subKey}:${it.isCorrect ? 'Đ' : 'S'}`).join(', ');
                 } else if (q.part === 'part_3_short_answer') {
                   studentDisplayAns = selectedSubmission.answers[q.id] || 'Chưa trả lời';
@@ -482,6 +491,7 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                 );
               })}
             </div>
+            )}
 
             {/* Footer */}
             <div className="flex gap-2 pt-2">
@@ -491,17 +501,19 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
               >
                 Đóng
               </button>
-              <button
-                onClick={() => {
-                  const examId = selectedSubmission.examId;
-                  setSelectedSubmission(null);
-                  onRetakeExam(examId);
-                }}
-                className="flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5"
-              >
-                <RotateCcw size={15} />
-                <span>Làm Lại Đề Này Ngay</span>
-              </button>
+              {activeExam && (
+                <button
+                  onClick={() => {
+                    const examId = selectedSubmission.examId;
+                    setSelectedSubmission(null);
+                    onRetakeExam(examId);
+                  }}
+                  className="flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  <RotateCcw size={15} />
+                  <span>Làm Lại Đề Này Ngay</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Exam, Question, CheatLog, StudentExamSubmission } from '../../types/math';
 import { gradePart2TrueFalse, validatePart3ShortAnswerFormat, isAnswerEquivalent } from '../../lib/scoringEngine';
 import { MathView } from '../MathView';
@@ -117,6 +117,23 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
 
+  // Refs giữ trạng thái mới nhất cho timer, auto-submit và chống đếm trùng vi phạm
+  const answersRef = useRef<Record<string, any>>(answers);
+  const infractionCountRef = useRef<number>(infractionCount);
+  const timeLeftRef = useRef<number>(timeLeft);
+  const isSubmittedRef = useRef<boolean>(isSubmitted);
+  const isDisqualifiedRef = useRef<boolean>(isDisqualified);
+  const lastInfractionAtRef = useRef<number>(0);
+  const handleSubmitExamRef = useRef<(disqualifyReason?: string) => void>(() => {});
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    timeLeftRef.current = timeLeft;
+  }, [timeLeft]);
+
   // Thống kê tiến độ câu hỏi đã làm
   const totalQuestionCount = exam.questions.length;
   const answeredQuestionCount = useMemo(() => {
@@ -155,27 +172,38 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   useEffect(() => {
     if (currentExam.id !== exam.id) {
       setExam(currentExam);
-      setTimeLeft(currentExam.durationMinutes * 60);
+      const nextDuration = (currentExam.durationMinutes || 90) * 60;
+      setTimeLeft(nextDuration);
+      timeLeftRef.current = nextDuration;
       setAnswers({});
+      answersRef.current = {};
       setIsSubmitted(false);
+      isSubmittedRef.current = false;
       setIsDisqualified(false);
+      isDisqualifiedRef.current = false;
       setInfractionCount(0);
+      infractionCountRef.current = 0;
+      lastInfractionAtRef.current = 0;
       setScoreReport(null);
     }
-  }, [currentExam]);
+  }, [currentExam, exam.id]);
 
-  // 1. Khởi tạo & nạp bản nháp từ LocalStorage (Auto-Save Restore)
+  // 1. Khởi tạo & nạp bản nháp từ LocalStorage (Auto-Save Restore theo từng học sinh)
   useEffect(() => {
+    if (!exam.id) return;
     try {
-      const draft = localStorage.getItem(`math_draft_${exam.id}`);
+      const draftKey = `math_draft_${studentId}_${exam.id}`;
+      const draft = localStorage.getItem(draftKey);
       if (draft && !isMaxAttemptsReached && isExamTimeActive) {
-        setAnswers(JSON.parse(draft));
+        const parsedDraft = JSON.parse(draft);
+        setAnswers(parsedDraft);
+        answersRef.current = parsedDraft;
         setLastAutoSaved('Đã khôi phục bản nháp trước đó');
       }
     } catch (e) {
       // ignore
     }
-  }, [exam.id, isMaxAttemptsReached, isExamTimeActive]);
+  }, [exam.id, studentId, isMaxAttemptsReached, isExamTimeActive]);
 
   // 2. Bộ đếm ngược thời gian làm bài
   useEffect(() => {
@@ -184,11 +212,14 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
+          timeLeftRef.current = 0;
           clearInterval(interval);
-          handleSubmitExam('Hết giờ làm bài!');
+          handleSubmitExamRef.current('Hết giờ làm bài!');
           return 0;
         }
-        return prev - 1;
+        const next = prev - 1;
+        timeLeftRef.current = next;
+        return next;
       });
     }, 1000);
 
@@ -197,17 +228,17 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
 
   // 3. Tự động lưu bản nháp mỗi 10 giây vào LocalStorage
   useEffect(() => {
-    if (isSubmitted || isDisqualified || isMaxAttemptsReached || !isExamTimeActive) return;
+    if (!exam.id || isSubmitted || isDisqualified || isMaxAttemptsReached || !isExamTimeActive) return;
 
     const saveTimer = setInterval(() => {
-      if (Object.keys(answers).length > 0) {
-        localStorage.setItem(`math_draft_${exam.id}`, JSON.stringify(answers));
+      if (Object.keys(answersRef.current).length > 0) {
+        localStorage.setItem(`math_draft_${studentId}_${exam.id}`, JSON.stringify(answersRef.current));
         setLastAutoSaved(`Đã lưu nháp lúc ${new Date().toLocaleTimeString('vi-VN')}`);
       }
     }, 10000);
 
     return () => clearInterval(saveTimer);
-  }, [answers, exam.id, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
+  }, [exam.id, studentId, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
 
   // Cấu hình kiểm soát màn hình từ đề thi (mặc định bật trừ khi giáo viên chọn Tắt)
   const isScreenMonitoringEnabled = exam.enableScreenMonitoring !== false;
@@ -234,12 +265,18 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [isScreenMonitoringEnabled, infractionCount, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
+  }, [isScreenMonitoringEnabled, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
 
   const registerInfraction = (reason: string) => {
-    if (!isScreenMonitoringEnabled) return;
+    if (!isScreenMonitoringEnabled || isSubmittedRef.current || isDisqualifiedRef.current) return;
 
-    const nextCount = infractionCount + 1;
+    // Chống đếm trùng khi 1 thao tác rời tab kích hoạt đồng thời visibilitychange, blur và fullscreenchange
+    const now = Date.now();
+    if (now - lastInfractionAtRef.current < 1000) return;
+    lastInfractionAtRef.current = now;
+
+    const nextCount = infractionCountRef.current + 1;
+    infractionCountRef.current = nextCount;
     setInfractionCount(nextCount);
 
     const newLog: CheatLog = {
@@ -247,7 +284,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       examId: exam.id,
       examTitle: exam.title,
       studentId: studentId,
-      studentName: studentProfile?.name || 'Nguyễn Văn An (12A1)',
+      studentName: studentProfile?.name || 'Học sinh',
       timestamp: new Date().toISOString(),
       infractionNumber: Math.min(nextCount, maxAllowedInfractions),
       event: 'window_unfocus',
@@ -268,9 +305,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       );
       setShowWarningModal(true);
     } else {
+      isDisqualifiedRef.current = true;
       setIsDisqualified(true);
       setShowWarningModal(false);
-      handleSubmitExam(`Đình chỉ bài thi: Vi phạm quy chế thi quá ${maxAllowedInfractions} lần!`);
+      handleSubmitExamRef.current(`Đình chỉ bài thi: Vi phạm quy chế thi quá ${maxAllowedInfractions} lần!`);
     }
   };
 
@@ -290,7 +328,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     const handleFullscreenChange = () => {
       const isFull = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
       setIsFullscreen(isFull);
-      if (isScreenMonitoringEnabled && !isFull && !isSubmitted && !isDisqualified && isExamTimeActive && !isMaxAttemptsReached) {
+      if (isScreenMonitoringEnabled && !isFull && !isSubmittedRef.current && !isDisqualifiedRef.current && isExamTimeActive && !isMaxAttemptsReached) {
         registerInfraction('Thoát khỏi chế độ toàn màn hình khi đang làm bài thi');
       }
     };
@@ -302,11 +340,18 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
-  }, [isScreenMonitoringEnabled, isSubmitted, isDisqualified, isExamTimeActive, isMaxAttemptsReached, infractionCount]);
+  }, [isScreenMonitoringEnabled, isSubmitted, isDisqualified, isExamTimeActive, isMaxAttemptsReached]);
 
   // 7. Chấm điểm bài thi tự động (CHỈ 3 PHẦN: MCQ, Đúng/Sai, Trả lời ngắn - KHÔNG CÓ TỰ LUẬN)
   // Tổng điểm bài thi dựa hoàn toàn trên tổng điểm từng câu hỏi của bài
   const handleSubmitExam = (disqualifyReason?: string) => {
+    if (isSubmittedRef.current) return;
+    isSubmittedRef.current = true;
+
+    const latestAnswers = answersRef.current;
+    const latestInfractionCount = infractionCountRef.current;
+    const latestTimeLeft = timeLeftRef.current;
+
     let part1Score = 0;
     let part2Score = 0;
     let part3Score = 0;
@@ -321,7 +366,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       if (q.part === 'part_1_mcq') {
         const qPoints = q.points || 0.25;
         part1Max += qPoints;
-        const studentAns = answers[q.id];
+        const studentAns = latestAnswers[q.id];
         const isCorrect = studentAns === q.correctAnswer;
         const earned = isCorrect ? qPoints : 0;
         part1Score += earned;
@@ -330,10 +375,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         const qPoints = q.points || 1.0;
         part2Max += qPoints;
         const studentTF = {
-          a: answers[`${q.id}_a`],
-          b: answers[`${q.id}_b`],
-          c: answers[`${q.id}_c`],
-          d: answers[`${q.id}_d`],
+          a: latestAnswers[`${q.id}_a`],
+          b: latestAnswers[`${q.id}_b`],
+          c: latestAnswers[`${q.id}_c`],
+          d: latestAnswers[`${q.id}_d`],
         };
         const correctTF = {
           a: q.items.find((i) => i.subKey === 'a')?.isCorrect || false,
@@ -349,7 +394,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       } else if (q.part === 'part_3_short_answer') {
         const qPoints = q.points || 0.5;
         part3Max += qPoints;
-        const rawAns = answers[q.id] || '';
+        const rawAns = latestAnswers[q.id] || '';
         const validation = validatePart3ShortAnswerFormat(rawAns);
         const isCorrect = validation.isValidFormat && isAnswerEquivalent(validation.sanitized, q.correctAnswer);
         const earned = isCorrect ? qPoints : 0;
@@ -374,7 +419,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       disqualifyReason,
     });
 
-    const timeSpent = exam.durationMinutes * 60 - timeLeft;
+    const timeSpent = exam.durationMinutes * 60 - latestTimeLeft;
 
     if (onSubmitExam) {
       const submission: StudentExamSubmission = {
@@ -382,8 +427,8 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         examId: exam.id,
         examTitle: exam.title,
         studentId: studentProfile?.id || 'usr_student_01',
-        studentName: studentProfile?.name || 'Nguyễn Văn An',
-        studentEmail: studentProfile?.email || 'an.nguyen@thpt-nbk.edu.vn',
+        studentName: studentProfile?.name || 'Học sinh',
+        studentEmail: studentProfile?.email || 'student@thpt-nbk.edu.vn',
         classId: defaultClassId,
         submittedAt: new Date().toISOString(),
         score: totalCalculated,
@@ -392,8 +437,8 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
           part2: Number(part2Score.toFixed(2)),
           part3: Number(part3Score.toFixed(2)),
         },
-        answers,
-        infractionCount,
+        answers: latestAnswers,
+        infractionCount: latestInfractionCount,
         isDisqualified: !!disqualifyReason,
         timeSpentSeconds: timeSpent > 0 ? timeSpent : 60,
       };
@@ -401,9 +446,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     }
 
     setIsSubmitted(true);
-    localStorage.removeItem(`math_draft_${exam.id}`);
+    localStorage.removeItem(`math_draft_${studentId}_${exam.id}`);
     exitFullscreen();
   };
+
+  handleSubmitExamRef.current = handleSubmitExam;
 
   const formatTimer = (sec: number) => {
     const m = Math.floor(sec / 60);

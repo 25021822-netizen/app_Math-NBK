@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, Classroom, StudentExamSubmission } from '../../types/math';
 import {
   User,
@@ -75,9 +75,29 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   // ==========================================
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploadSuccess, setAvatarUploadSuccess] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   // Đổi mật khẩu
   const [currentPasswordDisplay, setCurrentPasswordDisplay] = useState(userProfile.password || 'AnNguyen@2025');
+
+  useEffect(() => {
+    setName(userProfile.name);
+    setEmail(userProfile.email);
+    setPhone(userProfile.phone || '0912 345 678');
+    setSchoolName(userProfile.schoolName || 'Toán Học LIKI');
+    setGrade(userProfile.grade);
+    setSubject(userProfile.subject || (userProfile.role === 'teacher' ? 'Tổ Toán - Tin THPT' : 'Toán Học'));
+    setBio(
+      userProfile.bio ||
+        (userProfile.role === 'teacher'
+          ? 'Giáo viên phụ trách bồi dưỡng chuyên đề Toán Giải tích và Hình học không gian THPT.'
+          : 'Học sinh lớp 12 chuyên Toán, định hướng ôn luyện kỳ thi Tốt nghiệp THPT 2025.')
+    );
+    setAvatarUrl(
+      userProfile.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userProfile.name)}`
+    );
+    setCurrentPasswordDisplay(userProfile.password || 'AnNguyen@2025');
+  }, [userProfile]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -119,9 +139,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   // 1. Tải ảnh từ máy tính / thiết bị làm ảnh đại diện
   const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setAvatarError(null);
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        alert('Dung lượng ảnh vượt quá 10MB. Vui lòng chọn ảnh nhỏ hơn!');
+        setAvatarError('Dung lượng ảnh vượt quá 10MB. Vui lòng chọn ảnh nhỏ hơn!');
         return;
       }
       const reader = new FileReader();
@@ -356,6 +377,13 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               </button>
             </div>
           </div>
+
+          {avatarError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <AlertTriangle size={16} />
+              <span>{avatarError}</span>
+            </div>
+          )}
 
           {avatarUploadSuccess && (
             <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">

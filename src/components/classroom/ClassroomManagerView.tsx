@@ -200,6 +200,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [lessonToDelete, setLessonToDelete] = useState<ClassroomLesson | null>(null);
   const [examToDeletePermanently, setExamToDeletePermanently] = useState<Exam | null>(null);
   const [isDeletingItem, setIsDeletingItem] = useState<boolean>(false);
+  const [deletedMessageIds, setDeletedMessageIds] = useState<Set<string>>(() => new Set());
+  const [pdfPreviewError, setPdfPreviewError] = useState<string | null>(null);
 
   // Tự động chọn lớp đầu tiên thuộc quyền truy cập của người dùng (trong danh sách được phép nhìn thấy)
   useEffect(() => {
@@ -462,14 +464,15 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     const remote = classroomMessages?.[currentClass.id] || [];
     const remoteByCode = (currentClass.code && classroomMessages?.[currentClass.code]) || [];
     const map = new Map<string, ClassroomChatMessage>();
-    local.forEach((m) => map.set(m.id, m));
-    localByCode.forEach((m) => map.set(m.id, m));
-    remote.forEach((m) => map.set(m.id, m));
-    remoteByCode.forEach((m) => map.set(m.id, m));
+    [...local, ...localByCode, ...remote, ...remoteByCode].forEach((m) => {
+      if (m && m.id && !deletedMessageIds.has(m.id)) {
+        map.set(m.id, m);
+      }
+    });
     return Array.from(map.values()).sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
-  }, [currentClass, isCurrentClassMember, localMessages, classroomMessages]);
+  }, [currentClass, isCurrentClassMember, localMessages, classroomMessages, deletedMessageIds]);
 
   // Danh sách bài học và chương học thuộc lớp đang chọn (Mục lục lớp)
   // Chỉ tải khi người dùng là thành viên chính thức, và CHỈ hiển thị đúng bài học của lớp này (không dùng loose filter classId === 'all')
@@ -826,7 +829,14 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
       // Ưu tiên 3: Nếu là link HTTP/HTTPS
       if (fileData && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
-        window.open(fileData, '_blank');
+        const link = document.createElement('a');
+        link.href = fileData;
+        link.download = finalFileName;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
         return;
       }
 
@@ -856,9 +866,16 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
   // Mở xem trước PDF trực tiếp trong tab mới (Học sinh & Giáo viên có thể đọc ngay)
   const handlePreviewPdf = async (fileName: string, fileData?: string, fileUrl?: string) => {
+    setPdfPreviewError(null);
+    const openOrWarn = (targetUrl: string) => {
+      const opened = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        setPdfPreviewError('Trình duyệt đã chặn cửa sổ xem trước PDF. Vui lòng nhấn nút "Tải PDF" để mở tài liệu!');
+      }
+    };
     try {
       if (fileUrl) {
-        window.open(fileUrl, '_blank');
+        openOrWarn(fileUrl);
         return;
       }
 
@@ -872,20 +889,21 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         }
         const blob = new Blob([bytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        openOrWarn(url);
         return;
       }
 
       if (fileData && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
-        window.open(fileData, '_blank');
+        openOrWarn(fileData);
         return;
       }
 
       const validPdfBlob = generateValidSamplePdf(fileName);
       const url = URL.createObjectURL(validPdfBlob);
-      window.open(url, '_blank');
+      openOrWarn(url);
     } catch (err) {
       console.error('Lỗi khi mở xem trước PDF:', err);
+      setPdfPreviewError('Không thể mở xem trước file PDF này. Vui lòng dùng nút "Tải PDF"!');
     }
   };
 
@@ -996,6 +1014,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
     setIsSubmittingLesson(true);
     setNewLessonError(null);
+    const newLessonId = `les_${Date.now()}`;
 
     try {
       let finalLessonPdf = newLessonPdfFile ? { ...newLessonPdfFile } : null;
@@ -1074,7 +1093,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       }
 
       const newLessonObj: ClassroomLesson = {
-        id: `les_${Date.now()}`,
+        id: newLessonId,
         classId: currentClass.id,
         chapter: newLessonChapter.trim(),
         title: newLessonTitle.trim(),
@@ -1125,8 +1144,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       setTimeout(() => setLessonActionSuccess(null), 3500);
     } catch (err: any) {
       console.error('Lỗi khi đăng bài học:', err);
-      // Hoàn tác bài học khỏi state cục bộ nếu đồng bộ thất bại
-      setLocalLessons((prev) => prev.filter((l) => l.chapter !== newLessonChapter || l.title !== newLessonTitle));
+      // Hoàn tác đúng bài học vừa tạo khỏi state cục bộ nếu đồng bộ thất bại
+      setLocalLessons((prev) => prev.filter((l) => l.id !== newLessonId));
       let errMsg = 'Có lỗi xảy ra khi lưu bài học, vui lòng thử lại!';
       if (err?.message) {
         try {
@@ -1813,12 +1832,20 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   // Xóa tin nhắn trong lớp học (Dành cho người gửi hoặc Giáo viên / Admin)
   const handleDeleteChatMessage = (messageId: string) => {
     if (!currentClass) return;
+    setDeletedMessageIds((prev) => {
+      const next = new Set(prev);
+      next.add(messageId);
+      return next;
+    });
     setLocalMessages((prev) => {
-      const list = prev[currentClass.id] || [];
-      return {
+      const next = {
         ...prev,
-        [currentClass.id]: list.filter((m) => m.id !== messageId),
+        [currentClass.id]: (prev[currentClass.id] || []).filter((m) => m.id !== messageId),
       };
+      if (currentClass.code && next[currentClass.code]) {
+        next[currentClass.code] = next[currentClass.code].filter((m) => m.id !== messageId);
+      }
+      return next;
     });
     if (onDeleteChatMessage) {
       onDeleteChatMessage(messageId, currentClass.id);
@@ -4911,6 +4938,15 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     <Paperclip size={14} className="text-blue-600" />
                     <span>File PDF Gắn Cho Ô Bài Học:</span>
                   </h4>
+
+                  {pdfPreviewError && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between gap-2">
+                      <span>{pdfPreviewError}</span>
+                      <button type="button" onClick={() => setPdfPreviewError(null)} className="text-rose-600 hover:text-rose-900">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
 
                   {selectedLessonDetail.pdfAttachment ? (
                     <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
