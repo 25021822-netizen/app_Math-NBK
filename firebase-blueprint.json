@@ -94,6 +94,44 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "classId", "senderId", "content"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Exam created in Math&NBK platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "topic": { "type": "string" },
+        "grade": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "totalPoints": { "type": "number" },
+        "createdBy": { "type": "string" },
+        "distributionType": { "type": "string", "enum": ["classes", "repository"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title"]
+    },
+    "PublishedExam": {
+      "title": "PublishedExam",
+      "description": "Published exam stored in dedicated Firebase collection",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "title": { "type": "string" },
+        "topic": { "type": "string" },
+        "grade": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "totalPoints": { "type": "number" },
+        "questionsCount": { "type": "number" },
+        "createdBy": { "type": "string" },
+        "distributionType": { "type": "string", "enum": ["classes", "repository"] },
+        "status": { "type": "string", "enum": ["published"] },
+        "publishedAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "examId", "title", "status", "publishedAt"]
     }
   },
   "firestore": {
@@ -116,6 +154,14 @@
     "/lessons/{lessonId}": {
       "schema": { "$ref": "#/entities/ClassroomLesson" },
       "description": "Classroom lessons and study chapters"
+    },
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Exams created by teachers"
+    },
+    "/published_exams/{examId}": {
+      "schema": { "$ref": "#/entities/PublishedExam" },
+      "description": "Dedicated collection storing all published exams"
     },
     "/messages/{msgId}": {
       "schema": { "$ref": "#/entities/ClassroomMessage" },

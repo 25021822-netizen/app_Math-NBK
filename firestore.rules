@@ -19,6 +19,9 @@ service cloud.firestore {
     match /exams/{examId} {
       allow read, write: if true;
     }
+    match /published_exams/{examId} {
+      allow read, write: if true;
+    }
     match /messages/{msgId} {
       allow read, write: if true;
     }

@@ -1,12 +1,12 @@
 {
-  "version": 20,
-  "lastUpdated": "2026-11-02T09:55:19.547Z",
+  "version": 22,
+  "lastUpdated": "2026-11-14T04:22:11.120Z",
   "users": [
     {
       "schoolName": "Toán Học LIKI",
       "id": "25021822",
       "dailyScanCount": 0,
-      "lastActiveDate": "2026-11-02",
+      "lastActiveDate": "2026-11-14",
       "streakDays": 1,
       "bio": "Quản trị viên toàn quyền hệ thống Toán Học LIKI.",
       "grade": 12,
@@ -217,5 +217,17 @@
   "classroomMessages": {
     "cls_1792860475376": []
   },
-  "exams": []
+  "exams": [],
+  "adminSettings": {
+    "autoApproval": {
+      "enabled": true,
+      "autoApproveStudents": true,
+      "autoApproveTeachers": true,
+      "defaultTier": "free",
+      "notifyAdminOnAutoApproval": true
+    }
+  },
+  "deletedExamIds": [
+    "exam_verify_tmp_1794630130943"
+  ]
 }

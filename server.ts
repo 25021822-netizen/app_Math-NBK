@@ -1269,6 +1269,7 @@ interface ServerDatabase {
   classroomLessons: any[];
   classroomMessages: Record<string, any[]>;
   exams: any[];
+  deletedExamIds?: string[];
   adminSettings?: {
     autoApproval?: {
       enabled: boolean;
@@ -1321,6 +1322,7 @@ function getCleanInitialDb(): ServerDatabase {
     classroomLessons: [],
     classroomMessages: {},
     exams: [],
+    deletedExamIds: [],
     adminSettings: {
       autoApproval: {
         enabled: true,
@@ -1346,6 +1348,7 @@ function loadDatabase(): ServerDatabase {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
     parsed.exams = parsed.exams || [];
+    parsed.deletedExamIds = Array.isArray(parsed.deletedExamIds) ? parsed.deletedExamIds : [];
     // Cấu hình duyệt tự động mặc định nếu chưa có
     if (!parsed.adminSettings || !parsed.adminSettings.autoApproval) {
       parsed.adminSettings = {
@@ -1700,7 +1703,10 @@ app.post('/api/db/lesson/delete', (req, res) => {
 
 // 10d. Lưu danh sách toàn bộ đề thi
 app.post('/api/db/exams', (req, res) => {
-  serverDb.exams = req.body.exams || [];
+  const incoming = Array.isArray(req.body.exams) ? req.body.exams : [];
+  const incomingIds = new Set(incoming.map((e: any) => e?.id).filter(Boolean));
+  serverDb.exams = incoming;
+  serverDb.deletedExamIds = (serverDb.deletedExamIds || []).filter((id) => !incomingIds.has(id));
   serverDb.version = (serverDb.version || 1) + 1;
   saveDatabase(serverDb);
   res.json({ success: true, version: serverDb.version });
@@ -1716,6 +1722,7 @@ app.post('/api/db/exam/save', (req, res) => {
     } else {
       serverDb.exams = [exam, ...(serverDb.exams || [])];
     }
+    serverDb.deletedExamIds = (serverDb.deletedExamIds || []).filter((id) => id !== exam.id);
     serverDb.version = (serverDb.version || 1) + 1;
     saveDatabase(serverDb);
   }
@@ -1726,8 +1733,11 @@ app.post('/api/db/exam/save', (req, res) => {
 app.post('/api/db/exam/delete', (req, res) => {
   const { examId } = req.body;
   if (examId) {
-    // 1. Xóa đề thi
+    // 1. Xóa đề thi và lưu dấu vết đã xóa để đồng bộ xóa sạch trên mọi máy
     serverDb.exams = (serverDb.exams || []).filter((e: any) => e.id !== examId);
+    const delSet = new Set(serverDb.deletedExamIds || []);
+    delSet.add(examId);
+    serverDb.deletedExamIds = Array.from(delSet).slice(-500);
 
     // 2. Xóa toàn bộ bài làm / bài nộp (submissions) của đề này
     serverDb.submissions = (serverDb.submissions || []).filter((s: any) => s.examId !== examId);
@@ -1754,6 +1764,12 @@ app.get('/api/db/exams', (_req, res) => {
 
 // 10h. Xóa sạch toàn bộ dữ liệu đề thi cũ, bài làm, cheat logs và phân bổ đề thi
 app.post('/api/db/exams/purge-all', (_req, res) => {
+  const delSet = new Set(serverDb.deletedExamIds || []);
+  (serverDb.exams || []).forEach((e: any) => {
+    if (e?.id) delSet.add(e.id);
+  });
+  delSet.add('exam_bgd_2025_01');
+  serverDb.deletedExamIds = Array.from(delSet).slice(-500);
   serverDb.exams = [];
   serverDb.submissions = [];
   serverDb.cheatLogs = [];
