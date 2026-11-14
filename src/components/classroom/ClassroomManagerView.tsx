@@ -307,6 +307,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   };
 
   // Form thêm chương / bài học mới (Chương -> Bài học -> Ô Bài học & Ô Luyện tập)
+  const [chapterInputMode, setChapterInputMode] = useState<'existing' | 'new'>('existing');
   const [newLessonChapter, setNewLessonChapter] = useState('');
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonDesc, setNewLessonDesc] = useState('');
@@ -510,6 +511,39 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       return acc;
     }, {} as Record<string, ClassroomLesson[]>);
   }, [currentClassLessons]);
+
+  // Danh sách các chương đang có sẵn trong lớp hiện tại
+  const existingClassChapters = useMemo(() => {
+    return Object.keys(groupedLessons);
+  }, [groupedLessons]);
+
+  const openAddLessonModal = (presetChapter?: string) => {
+    if (presetChapter) {
+      setChapterInputMode('existing');
+      setNewLessonChapter(presetChapter);
+    } else if (existingClassChapters.length > 0) {
+      setChapterInputMode('existing');
+      setNewLessonChapter(existingClassChapters[0]);
+    } else {
+      setChapterInputMode('new');
+      setNewLessonChapter(
+        currentClass?.grade === 12
+          ? 'Chương 1: Ứng dụng đạo hàm để khảo sát hàm số'
+          : 'Chương 1: Hàm số và phương trình lượng giác'
+      );
+    }
+    setNewLessonTitle('');
+    setNewLessonDesc('');
+    setNewLessonTheory('');
+    setNewLessonPractice('');
+    setNewLessonExercisesCount('10');
+    setNewLessonExternalLink('');
+    setNewLessonPdfFile(null);
+    setNewLessonPracticePdfFile(null);
+    setNewLessonAttachmentName('');
+    setNewLessonError(null);
+    setShowAddLessonModal(true);
+  };
 
   // Danh sách toàn bộ học sinh đăng ký trong hệ thống
   const registeredStudents: UserProfile[] = (allUsers || []).filter((u) => u.role === 'student');
@@ -2521,24 +2555,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 {userRole === 'teacher' && activeRightTab === 'curriculum' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setNewLessonChapter(
-                        currentClass.grade === 12
-                          ? 'Chương 1: Ứng dụng đạo hàm để khảo sát hàm số'
-                          : 'Chương 1: Hàm số và phương trình lượng giác'
-                      );
-                      setNewLessonTitle('');
-                      setNewLessonDesc('');
-                      setNewLessonTheory('');
-                      setNewLessonPractice('');
-                      setNewLessonExercisesCount('10');
-                      setNewLessonExternalLink('');
-                      setNewLessonPdfFile(null);
-                      setNewLessonPracticePdfFile(null);
-                      setNewLessonAttachmentName('');
-                      setNewLessonError(null);
-                      setShowAddLessonModal(true);
-                    }}
+                    onClick={() => openAddLessonModal()}
                     className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-colors"
                   >
                     <FolderPlus size={14} />
@@ -2622,24 +2639,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     {userRole === 'teacher' && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setNewLessonChapter(
-                            currentClass.grade === 12
-                              ? 'Chương 1: Ứng dụng đạo hàm để khảo sát hàm số'
-                              : 'Chương 1: Hàm số và phương trình lượng giác'
-                          );
-                          setNewLessonTitle('');
-                          setNewLessonDesc('');
-                          setNewLessonTheory('');
-                          setNewLessonPractice('');
-                          setNewLessonExercisesCount('10');
-                          setNewLessonExternalLink('');
-                          setNewLessonPdfFile(null);
-                          setNewLessonPracticePdfFile(null);
-                          setNewLessonAttachmentName('');
-                          setNewLessonError(null);
-                          setShowAddLessonModal(true);
-                        }}
+                        onClick={() => openAddLessonModal()}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5"
                       >
                         <FolderPlus size={15} />
@@ -2658,15 +2658,17 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                           key={chIdx}
                           className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xs transition-all hover:border-blue-200"
                         >
-                          {/* Nút bấm Tiêu đề chương học - Nhấp để mở rộng / thu gọn các bài học */}
-                          <button
-                            type="button"
-                            onClick={() => toggleChapter(chapterTitle)}
-                            className={`w-full p-4 flex items-center justify-between gap-3 text-left transition-colors ${
+                          {/* Tiêu đề chương học - Nhấp để mở rộng / thu gọn các bài học */}
+                          <div
+                            className={`w-full p-4 flex items-center justify-between gap-3 transition-colors ${
                               isExpanded ? 'bg-blue-50/70 border-b border-blue-100' : 'hover:bg-slate-50/80'
                             }`}
                           >
-                            <div className="flex items-center gap-3 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => toggleChapter(chapterTitle)}
+                              className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+                            >
                               <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-2xs">
                                 {chIdx + 1}
                               </span>
@@ -2683,17 +2685,33 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                   {lessons.length} bài học {userRole === 'student' ? `(Đã học ${completedCount}/${lessons.length})` : ''} · Nhấp để {isExpanded ? 'thu gọn' : 'xem từng bài học'}
                                 </span>
                               </div>
-                            </div>
+                            </button>
 
                             <div className="flex items-center gap-2 shrink-0">
+                              {userRole === 'teacher' && (
+                                <button
+                                  type="button"
+                                  onClick={() => openAddLessonModal(chapterTitle)}
+                                  className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                  title={`Thêm bài học mới vào "${chapterTitle}"`}
+                                >
+                                  <Plus size={13} />
+                                  <span className="hidden sm:inline">Thêm bài</span>
+                                </button>
+                              )}
                               <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 text-[11px] font-bold shadow-2xs">
                                 {lessons.length} bài
                               </span>
-                              <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => toggleChapter(chapterTitle)}
+                                className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 shadow-2xs cursor-pointer"
+                                aria-label={isExpanded ? 'Thu gọn chương' : 'Mở rộng chương'}
+                              >
                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                              </div>
+                              </button>
                             </div>
-                          </button>
+                          </div>
 
                           {/* Danh sách từng bài học trong chương (chỉ hiện khi nhấn vào chương) */}
                           {isExpanded && (
@@ -4222,22 +4240,84 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
             )}
 
             <form onSubmit={handleCreateLessonSubmit} className="space-y-4 text-xs">
-              {/* Chọn hoặc nhập Chương học */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">Tên Chương học / Chuyên đề *</label>
-                  <span className="text-[10px] text-blue-600 font-semibold">Gợi ý chương GDPT</span>
+              {/* Chọn chương có sẵn hoặc tạo chương mới */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="font-bold text-slate-700">Chương học / Chuyên đề *</label>
+                  {existingClassChapters.length > 0 ? (
+                    <div className="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChapterInputMode('existing');
+                          if (!existingClassChapters.includes(newLessonChapter)) {
+                            setNewLessonChapter(existingClassChapters[0]);
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                          chapterInputMode === 'existing'
+                            ? 'bg-white text-blue-700 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Chọn chương có sẵn ({existingClassChapters.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChapterInputMode('new');
+                          if (existingClassChapters.includes(newLessonChapter)) {
+                            setNewLessonChapter('');
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                          chapterInputMode === 'new'
+                            ? 'bg-white text-blue-700 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        + Tạo chương mới
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-blue-600 font-semibold">Gợi ý chương GDPT</span>
+                  )}
                 </div>
-                <input
-                  type="text"
-                  list="suggested-chapters"
-                  value={newLessonChapter}
-                  onChange={(e) => setNewLessonChapter(e.target.value)}
-                  placeholder="Ví dụ: Chương 1: Ứng dụng đạo hàm để khảo sát hàm số"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
-                  required
-                />
+
+                {existingClassChapters.length > 0 && chapterInputMode === 'existing' ? (
+                  <div className="space-y-1.5">
+                    <select
+                      value={existingClassChapters.includes(newLessonChapter) ? newLessonChapter : existingClassChapters[0]}
+                      onChange={(e) => setNewLessonChapter(e.target.value)}
+                      className="w-full h-10 px-3 rounded-xl border border-blue-300 bg-blue-50/40 font-semibold text-slate-800 focus:border-blue-600 focus:outline-none cursor-pointer"
+                      required
+                    >
+                      {existingClassChapters.map((ch) => (
+                        <option key={ch} value={ch}>
+                          {ch} ({groupedLessons[ch]?.length || 0} bài học)
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-500">
+                      Bài học mới sẽ được thêm trực tiếp vào chương đang chọn ở trên.
+                    </p>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    list="suggested-chapters"
+                    value={newLessonChapter}
+                    onChange={(e) => setNewLessonChapter(e.target.value)}
+                    placeholder="Ví dụ: Chương 1: Ứng dụng đạo hàm để khảo sát hàm số"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
+                    required
+                  />
+                )}
+
                 <datalist id="suggested-chapters">
+                  {existingClassChapters.map((ch) => (
+                    <option key={ch} value={ch} />
+                  ))}
                   <option value="Chương 1: Ứng dụng đạo hàm để khảo sát hàm số" />
                   <option value="Chương 2: Tọa độ trong không gian Oxyz" />
                   <option value="Chương 3: Nguyên hàm, Tích phân và Ứng dụng" />
@@ -4540,8 +4620,27 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
             <form onSubmit={handleEditLessonSubmit} className="space-y-4 text-xs">
               {/* Sửa Chương học */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">Tên Chương học / Chuyên đề *</label>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="font-bold text-slate-700">Tên Chương học / Chuyên đề *</label>
+                  {existingClassChapters.length > 0 && (
+                    <select
+                      value={existingClassChapters.includes(editLessonChapter) ? editLessonChapter : ''}
+                      onChange={(e) => {
+                        if (e.target.value) setEditLessonChapter(e.target.value);
+                      }}
+                      className="h-7 px-2 rounded-lg border border-slate-300 bg-slate-50 text-[11px] font-semibold text-slate-700 focus:border-amber-600 focus:outline-none max-w-[240px]"
+                      title="Chọn nhanh chương có sẵn trong lớp"
+                    >
+                      <option value="">-- Chọn nhanh chương có sẵn --</option>
+                      {existingClassChapters.map((ch) => (
+                        <option key={ch} value={ch}>
+                          {ch}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <input
                   type="text"
                   list="suggested-chapters"
