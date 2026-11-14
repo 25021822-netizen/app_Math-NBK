@@ -27,6 +27,10 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
+  Flag,
+  LayoutGrid,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface ExamEngineViewProps {
@@ -80,6 +84,14 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   const [lastAutoSaved, setLastAutoSaved] = useState<string>('');
   // Bật / tắt xem đáp án chi tiết khi nộp bài xong
   const [showDetailedAnswers, setShowDetailedAnswers] = useState<boolean>(true);
+  // Danh sách ID các câu hỏi được đánh dấu xem lại
+  const [flaggedQuestionIds, setFlaggedQuestionIds] = useState<Set<string>>(() => new Set());
+  // Bộ lọc bảng câu hỏi (Tất cả / Chưa làm / Đã làm / Đánh dấu)
+  const [paletteFilter, setPaletteFilter] = useState<'all' | 'unanswered' | 'answered' | 'flagged'>('all');
+  // Thu gọn/mở rộng bảng câu hỏi trên màn hình nhỏ
+  const [isPaletteExpandedMobile, setIsPaletteExpandedMobile] = useState<boolean>(true);
+  // Highlight tạm thời câu hỏi vừa nhảy tới
+  const [highlightedQuestionId, setHighlightedQuestionId] = useState<string | null>(null);
 
   // Trạng thái chế độ toàn màn hình
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
@@ -134,26 +146,64 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     timeLeftRef.current = timeLeft;
   }, [timeLeft]);
 
-  // Thống kê tiến độ câu hỏi đã làm
+  // Kiểm tra trạng thái đã làm của từng câu hỏi
+  const isQuestionAnswered = (q: Question): boolean => {
+    if (q.part === 'part_1_mcq') {
+      return Boolean(answers[q.id]);
+    }
+    if (q.part === 'part_2_true_false') {
+      const hasA = answers[`${q.id}_a`] !== undefined;
+      const hasB = answers[`${q.id}_b`] !== undefined;
+      const hasC = answers[`${q.id}_c`] !== undefined;
+      const hasD = answers[`${q.id}_d`] !== undefined;
+      return hasA || hasB || hasC || hasD;
+    }
+    if (q.part === 'part_3_short_answer') {
+      return Boolean(answers[q.id] && String(answers[q.id]).trim().length > 0);
+    }
+    return false;
+  };
+
+  const getPart2AnsweredSubCount = (q: Question): number => {
+    if (q.part !== 'part_2_true_false') return 0;
+    return (['a', 'b', 'c', 'd'] as const).filter((k) => answers[`${q.id}_${k}`] !== undefined).length;
+  };
+
+  // Thống kê tiến độ câu hỏi đã làm & đánh dấu
   const totalQuestionCount = exam.questions.length;
   const answeredQuestionCount = useMemo(() => {
-    let count = 0;
-    exam.questions.forEach((q) => {
-      if (q.part === 'part_1_mcq') {
-        if (answers[q.id]) count++;
-      } else if (q.part === 'part_2_true_false') {
-        const hasA = answers[`${q.id}_a`] !== undefined;
-        const hasB = answers[`${q.id}_b`] !== undefined;
-        const hasC = answers[`${q.id}_c`] !== undefined;
-        const hasD = answers[`${q.id}_d`] !== undefined;
-        if (hasA || hasB || hasC || hasD) count++;
-      } else if (q.part === 'part_3_short_answer') {
-        if (answers[q.id] && String(answers[q.id]).trim().length > 0) count++;
-      }
-    });
-    return count;
+    return exam.questions.filter((q) => isQuestionAnswered(q)).length;
   }, [exam.questions, answers]);
   const unansweredQuestionCount = Math.max(0, totalQuestionCount - answeredQuestionCount);
+  const flaggedQuestionCount = useMemo(() => {
+    return exam.questions.filter((q) => flaggedQuestionIds.has(q.id)).length;
+  }, [exam.questions, flaggedQuestionIds]);
+
+  const toggleFlagQuestion = (qId: string) => {
+    if (isSubmitted || isMaxAttemptsReached || !isExamTimeActive) return;
+    setFlaggedQuestionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(qId)) next.delete(qId);
+      else next.add(qId);
+      if (exam.id) {
+        try {
+          localStorage.setItem(`math_flags_${studentId}_${exam.id}`, JSON.stringify(Array.from(next)));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const scrollToQuestion = (qId: string) => {
+    const el = document.getElementById(`question-card-${qId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setHighlightedQuestionId(qId);
+      setTimeout(() => {
+        setHighlightedQuestionId((curr) => (curr === qId ? null : curr));
+      }, 1500);
+    }
+  };
 
   // Số lượt làm bài đã thực hiện của học sinh đối với đề thi này
   const studentId = studentProfile?.id || 'usr_student_01';
@@ -177,6 +227,8 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       timeLeftRef.current = nextDuration;
       setAnswers({});
       answersRef.current = {};
+      setFlaggedQuestionIds(new Set());
+      setPaletteFilter('all');
       setIsSubmitted(false);
       isSubmittedRef.current = false;
       setIsDisqualified(false);
@@ -199,6 +251,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         setAnswers(parsedDraft);
         answersRef.current = parsedDraft;
         setLastAutoSaved('Đã khôi phục bản nháp trước đó');
+      }
+      const flagsRaw = localStorage.getItem(`math_flags_${studentId}_${exam.id}`);
+      if (flagsRaw && !isMaxAttemptsReached && isExamTimeActive) {
+        const parsedFlags = JSON.parse(flagsRaw);
+        if (Array.isArray(parsedFlags)) {
+          setFlaggedQuestionIds(new Set(parsedFlags));
+        }
       }
     } catch (e) {
       // ignore
@@ -447,6 +506,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
 
     setIsSubmitted(true);
     localStorage.removeItem(`math_draft_${studentId}_${exam.id}`);
+    localStorage.removeItem(`math_flags_${studentId}_${exam.id}`);
     exitFullscreen();
   };
 
@@ -618,7 +678,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 pt-6 space-y-6">
+      <div className="max-w-6xl mx-auto px-4 pt-6 space-y-6">
         {/* Banner nhắc nhở & chuyển nhanh sang Toàn Màn Hình (Chỉ khi BẬT kiểm soát màn hình) */}
         {!isFullscreen && isScreenMonitoringEnabled && !isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
           <div className="p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in">
@@ -790,6 +850,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                   setInfractionCount(0);
                   setTimeLeft(exam.durationMinutes * 60);
                   setAnswers({});
+                  setFlaggedQuestionIds(new Set());
+                  setPaletteFilter('all');
+                  try {
+                    localStorage.removeItem(`math_flags_${studentId}_${exam.id}`);
+                  } catch {}
                 }}
                 className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
               >
@@ -822,7 +887,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         </div>
       )}
 
-      {/* Danh Sách Các Câu Hỏi (CHỈ 3 PHẦN - KHÔNG CÓ TỰ LUẬN) */}
+      {/* Bố cục 2 cột: Danh sách câu hỏi & Bảng trạng thái câu hỏi */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_310px] gap-6 items-start">
+      <div className="space-y-6 min-w-0">
       <div className="space-y-8">
         {/* PHẦN 1: TRẮC NGHIỆM 4 PHƯƠNG ÁN */}
         {exam.questions.some((q) => q.part === 'part_1_mcq') && (
@@ -848,8 +915,20 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               .filter((q) => q.part === 'part_1_mcq')
               .map((q) => {
                 const result = scoreReport?.details[q.id];
+                const isFlagged = flaggedQuestionIds.has(q.id);
+                const isHighlighted = highlightedQuestionId === q.id;
                 return (
-                  <div key={q.id} className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4 shadow-xs">
+                  <div
+                    key={q.id}
+                    id={`question-card-${q.id}`}
+                    className={`bg-white p-6 rounded-3xl border space-y-4 shadow-xs scroll-mt-24 transition-all ${
+                      isHighlighted
+                        ? 'border-blue-500 ring-2 ring-blue-300'
+                        : isFlagged
+                        ? 'border-amber-300 ring-1 ring-amber-200'
+                        : 'border-slate-200'
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <span className="text-xs font-bold text-blue-600">Câu {q.questionNumber}:</span>
@@ -859,7 +938,22 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                         {q.latex && <MathView math={q.latex} block />}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
+                          <button
+                            type="button"
+                            onClick={() => toggleFlagQuestion(q.id)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-1 transition-colors cursor-pointer ${
+                              isFlagged
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200'
+                            }`}
+                            title={isFlagged ? 'Bỏ đánh dấu câu này' : 'Đánh dấu câu này để xem lại'}
+                          >
+                            <Flag size={12} className={isFlagged ? 'fill-amber-500 text-amber-600' : ''} />
+                            <span className="hidden sm:inline">{isFlagged ? 'Đã đánh dấu' : 'Đánh dấu'}</span>
+                          </button>
+                        )}
                         <span className="text-xs font-mono font-bold text-slate-400">({q.points}đ)</span>
                         {isSubmitted && result && (
                           <span
@@ -1005,8 +1099,20 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               .filter((q) => q.part === 'part_2_true_false')
               .map((q) => {
                 const result = scoreReport?.details[q.id];
+                const isFlagged = flaggedQuestionIds.has(q.id);
+                const isHighlighted = highlightedQuestionId === q.id;
                 return (
-                  <div key={q.id} className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4 shadow-xs">
+                  <div
+                    key={q.id}
+                    id={`question-card-${q.id}`}
+                    className={`bg-white p-6 rounded-3xl border space-y-4 shadow-xs scroll-mt-24 transition-all ${
+                      isHighlighted
+                        ? 'border-purple-500 ring-2 ring-purple-300'
+                        : isFlagged
+                        ? 'border-amber-300 ring-1 ring-amber-200'
+                        : 'border-slate-200'
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <span className="text-xs font-bold text-purple-600">Câu {q.questionNumber}:</span>
@@ -1016,7 +1122,22 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                         {q.latex && <MathView math={q.latex} block />}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
+                          <button
+                            type="button"
+                            onClick={() => toggleFlagQuestion(q.id)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-1 transition-colors cursor-pointer ${
+                              isFlagged
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200'
+                            }`}
+                            title={isFlagged ? 'Bỏ đánh dấu câu này' : 'Đánh dấu câu này để xem lại'}
+                          >
+                            <Flag size={12} className={isFlagged ? 'fill-amber-500 text-amber-600' : ''} />
+                            <span className="hidden sm:inline">{isFlagged ? 'Đã đánh dấu' : 'Đánh dấu'}</span>
+                          </button>
+                        )}
                         <span className="text-xs font-mono font-bold text-slate-400">({q.points}đ)</span>
                         {isSubmitted && result && (
                           <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 text-purple-800">
@@ -1152,8 +1273,20 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               .filter((q) => q.part === 'part_3_short_answer')
               .map((q) => {
                 const result = scoreReport?.details[q.id];
+                const isFlagged = flaggedQuestionIds.has(q.id);
+                const isHighlighted = highlightedQuestionId === q.id;
                 return (
-                  <div key={q.id} className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4 shadow-xs">
+                  <div
+                    key={q.id}
+                    id={`question-card-${q.id}`}
+                    className={`bg-white p-6 rounded-3xl border space-y-4 shadow-xs scroll-mt-24 transition-all ${
+                      isHighlighted
+                        ? 'border-amber-500 ring-2 ring-amber-300'
+                        : isFlagged
+                        ? 'border-amber-300 ring-1 ring-amber-200'
+                        : 'border-slate-200'
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <span className="text-xs font-bold text-amber-600">Câu {q.questionNumber}:</span>
@@ -1163,7 +1296,22 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                         {q.latex && <MathView math={q.latex} block />}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
+                          <button
+                            type="button"
+                            onClick={() => toggleFlagQuestion(q.id)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-1 transition-colors cursor-pointer ${
+                              isFlagged
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200'
+                            }`}
+                            title={isFlagged ? 'Bỏ đánh dấu câu này' : 'Đánh dấu câu này để xem lại'}
+                          >
+                            <Flag size={12} className={isFlagged ? 'fill-amber-500 text-amber-600' : ''} />
+                            <span className="hidden sm:inline">{isFlagged ? 'Đã đánh dấu' : 'Đánh dấu'}</span>
+                          </button>
+                        )}
                         <span className="text-xs font-mono font-bold text-slate-400">({q.points}đ)</span>
                         {isSubmitted && result && (
                           <span
@@ -1255,7 +1403,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
           <div>
             <h4 className="font-bold text-slate-900 text-sm">Bạn đã làm xong bài kiểm tra?</h4>
             <p className="text-xs text-slate-500 mt-0.5">
-              Đã trả lời <strong className="text-blue-600 font-bold">{answeredQuestionCount}/{totalQuestionCount}</strong> câu hỏi. Hãy kiểm tra lại trước khi nộp bài.
+              Đã trả lời <strong className="text-blue-600 font-bold">{answeredQuestionCount}/{totalQuestionCount}</strong> câu hỏi
+              {flaggedQuestionCount > 0 ? (
+                <> · Đang đánh dấu <strong className="text-amber-600 font-bold">{flaggedQuestionCount}</strong> câu</>
+              ) : null}. Hãy kiểm tra lại trước khi nộp bài.
             </p>
           </div>
           <button
@@ -1268,6 +1419,231 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
           </button>
         </div>
       )}
+      </div>
+
+      {/* Bảng Câu Hỏi (Chưa làm / Đã làm / Đánh dấu) */}
+      <aside className="order-first lg:order-last lg:sticky lg:top-24 bg-white rounded-3xl border border-slate-200 shadow-xs p-4 sm:p-5 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <LayoutGrid size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900 leading-tight">Bảng Câu Hỏi</h3>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Đã làm <strong className="text-emerald-600">{answeredQuestionCount}/{totalQuestionCount}</strong> câu
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsPaletteExpandedMobile((prev) => !prev)}
+            className="lg:hidden px-2.5 py-1 rounded-xl border border-slate-200 text-slate-600 text-[11px] font-bold flex items-center gap-1"
+          >
+            <span>{isPaletteExpandedMobile ? 'Thu gọn' : 'Mở bảng'}</span>
+            {isPaletteExpandedMobile ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+
+        <div className={`${isPaletteExpandedMobile ? 'block' : 'hidden'} lg:block space-y-3.5`}>
+          {/* Thanh lọc trạng thái */}
+          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setPaletteFilter('all')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold border text-left flex items-center justify-between transition-colors cursor-pointer ${
+                paletteFilter === 'all'
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <span>Tất cả</span>
+              <span className="font-mono">{totalQuestionCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaletteFilter('unanswered')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold border text-left flex items-center justify-between transition-colors cursor-pointer ${
+                paletteFilter === 'unanswered'
+                  ? 'bg-slate-700 text-white border-slate-700'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <span>Chưa làm</span>
+              <span className="font-mono">{unansweredQuestionCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaletteFilter('answered')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold border text-left flex items-center justify-between transition-colors cursor-pointer ${
+                paletteFilter === 'answered'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+              }`}
+            >
+              <span>Đã làm</span>
+              <span className="font-mono">{answeredQuestionCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaletteFilter('flagged')}
+              className={`px-2.5 py-1.5 rounded-xl font-bold border text-left flex items-center justify-between transition-colors cursor-pointer ${
+                paletteFilter === 'flagged'
+                  ? 'bg-amber-500 text-white border-amber-500'
+                  : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+              }`}
+            >
+              <span className="flex items-center gap-1">
+                <Flag size={11} className={paletteFilter === 'flagged' ? 'fill-white' : 'fill-amber-500 text-amber-600'} />
+                <span>Đánh dấu</span>
+              </span>
+              <span className="font-mono">{flaggedQuestionCount}</span>
+            </button>
+          </div>
+
+          {/* Chú thích màu sắc */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-500 px-0.5">
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-white border border-slate-300 inline-block" />
+              <span>Chưa làm</span>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-emerald-600 inline-block" />
+              <span>Đã làm</span>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-amber-400 border border-amber-500 inline-block" />
+              <span>Đánh dấu</span>
+            </span>
+          </div>
+
+          {/* Lưới các câu hỏi theo từng phần */}
+          <div className="space-y-3 max-h-[340px] lg:max-h-[420px] overflow-y-auto pr-1">
+            {(
+              [
+                { part: 'part_1_mcq', label: 'Phần I · Trắc nghiệm' },
+                { part: 'part_2_true_false', label: 'Phần II · Đúng / Sai' },
+                { part: 'part_3_short_answer', label: 'Phần III · Trả lời ngắn' },
+              ] as const
+            ).map(({ part, label }) => {
+              const partQuestions = exam.questions.filter((q) => {
+                if (q.part !== part) return false;
+                const answered = isQuestionAnswered(q);
+                const flagged = flaggedQuestionIds.has(q.id);
+                if (paletteFilter === 'unanswered') return !answered;
+                if (paletteFilter === 'answered') return answered;
+                if (paletteFilter === 'flagged') return flagged;
+                return true;
+              });
+
+              if (partQuestions.length === 0) return null;
+
+              return (
+                <div key={part} className="space-y-1.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                    {label}
+                  </span>
+                  <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-5 gap-1.5">
+                    {partQuestions.map((q) => {
+                      const answered = isQuestionAnswered(q);
+                      const flagged = flaggedQuestionIds.has(q.id);
+                      const subCount = part === 'part_2_true_false' ? getPart2AnsweredSubCount(q) : 0;
+                      const result = scoreReport?.details[q.id];
+
+                      let btnStyle = 'bg-white text-slate-700 border-slate-300 hover:border-blue-400 hover:bg-blue-50';
+                      if (isSubmitted && result) {
+                        const isFull =
+                          part === 'part_2_true_false' ? result.correctCount === 4 : Boolean(result.isCorrect);
+                        const isPartial =
+                          part === 'part_2_true_false' && result.correctCount > 0 && result.correctCount < 4;
+                        if (isFull) {
+                          btnStyle = 'bg-emerald-600 text-white border-emerald-600';
+                        } else if (isPartial) {
+                          btnStyle = 'bg-amber-500 text-white border-amber-500';
+                        } else {
+                          btnStyle = 'bg-rose-500 text-white border-rose-500';
+                        }
+                      } else if (answered && flagged) {
+                        btnStyle = 'bg-emerald-600 text-white border-amber-400 ring-2 ring-amber-300';
+                      } else if (answered) {
+                        btnStyle = 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700';
+                      } else if (flagged) {
+                        btnStyle = 'bg-amber-100 text-amber-900 border-amber-500 ring-1 ring-amber-300 hover:bg-amber-200';
+                      }
+
+                      return (
+                        <button
+                          key={q.id}
+                          type="button"
+                          onClick={() => scrollToQuestion(q.id)}
+                          title={`Câu ${q.questionNumber}${answered ? (part === 'part_2_true_false' && subCount < 4 ? ` (Đã làm ${subCount}/4 ý)` : ' (Đã làm)') : ' (Chưa làm)'}${flagged ? ' · Đã đánh dấu' : ''}`}
+                          className={`relative h-9 rounded-xl border text-xs font-extrabold flex items-center justify-center transition-all cursor-pointer ${btnStyle}`}
+                        >
+                          <span>{q.questionNumber}</span>
+                          {flagged && (
+                            <span
+                              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 border border-white flex items-center justify-center shadow-2xs"
+                              aria-label="Đã đánh dấu"
+                            >
+                              <Flag size={8} className="text-white fill-white" />
+                            </span>
+                          )}
+                          {!isSubmitted && part === 'part_2_true_false' && answered && subCount < 4 && (
+                            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1 rounded bg-white text-[8px] leading-tight font-black text-purple-700 border border-purple-200">
+                              {subCount}/4
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {exam.questions.filter((q) => {
+              const answered = isQuestionAnswered(q);
+              const flagged = flaggedQuestionIds.has(q.id);
+              if (paletteFilter === 'unanswered') return !answered;
+              if (paletteFilter === 'answered') return answered;
+              if (paletteFilter === 'flagged') return flagged;
+              return true;
+            }).length === 0 && (
+              <div className="py-5 text-center text-xs text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                Không có câu hỏi nào trong mục này
+              </div>
+            )}
+          </div>
+
+          {/* Nút thao tác nhanh */}
+          {!isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              {unansweredQuestionCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextUnanswered = exam.questions.find((q) => !isQuestionAnswered(q));
+                    if (nextUnanswered) scrollToQuestion(nextUnanswered.id);
+                  }}
+                  className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition-colors cursor-pointer"
+                >
+                  Tới câu chưa làm tiếp theo
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowSubmitModal(true)}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Send size={14} />
+                <span>Nộp Bài Thi ({answeredQuestionCount}/{totalQuestionCount})</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+      </div>
 
       {/* Modal Phóng To Hình Ảnh Đính Kèm */}
       {zoomedImage && (
@@ -1377,7 +1753,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               </div>
             </div>
 
-            {/* Cảnh báo nếu còn câu chưa trả lời */}
+            {/* Cảnh báo nếu còn câu chưa trả lời hoặc đang đánh dấu */}
             {unansweredQuestionCount > 0 ? (
               <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
                 <div className="flex items-center gap-1.5 font-bold text-amber-800">
@@ -1385,8 +1761,16 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                   <span>Bạn còn {unansweredQuestionCount} câu hỏi chưa làm!</span>
                 </div>
                 <p className="text-[11px] text-amber-700 leading-relaxed">
-                  Các câu hỏi bỏ trống sẽ nhận 0 điểm. Bạn có chắc chắn muốn nộp bài bây giờ không?
+                  Các câu hỏi bỏ trống sẽ nhận 0 điểm.{flaggedQuestionCount > 0 ? ` Ngoài ra bạn đang đánh dấu ${flaggedQuestionCount} câu cần xem lại.` : ''} Bạn có chắc chắn muốn nộp bài bây giờ không?
                 </p>
+              </div>
+            ) : flaggedQuestionCount > 0 ? (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                <Flag size={16} className="text-amber-600 fill-amber-500 shrink-0" />
+                <div>
+                  <span className="font-bold block">Bạn đang đánh dấu {flaggedQuestionCount} câu cần xem lại!</span>
+                  <span className="text-amber-700 text-[11px]">Bạn đã trả lời đủ {totalQuestionCount} câu, có muốn kiểm tra lại các câu đã đánh dấu trước khi nộp không?</span>
+                </div>
               </div>
             ) : (
               <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2">
