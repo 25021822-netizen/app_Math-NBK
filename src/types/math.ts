@@ -226,6 +226,7 @@ export interface Classroom {
   studentIds: string[];
   pendingStudentIds?: string[]; // Học sinh đang chờ giáo viên duyệt vào lớp
   requiresApproval?: boolean; // Chế độ duyệt thành viên
+  visibility?: 'public' | 'private'; // 'public': Nhóm lớp công khai, 'private': Nhóm lớp cá nhân (chỉ thành viên trong nhóm mới nhìn thấy)
   assignedExamIds: string[];
   createdAt: string;
   description?: string;

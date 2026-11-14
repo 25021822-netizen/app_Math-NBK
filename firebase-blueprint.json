@@ -38,7 +38,8 @@
         "code": { "type": "string" },
         "grade": { "type": "number" },
         "teacherId": { "type": "string" },
-        "teacherName": { "type": "string" }
+        "teacherName": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public", "private"] }
       },
       "required": ["id", "name", "code", "teacherId"]
     },

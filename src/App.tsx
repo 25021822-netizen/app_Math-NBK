@@ -216,6 +216,28 @@ export default function App() {
     }
   }, [currentTab, classrooms, isAuthenticated]);
 
+  // Kiểm tra quyền nhìn thấy / là thành viên hợp lệ của nhóm lớp (nhóm cá nhân chỉ thành viên trong nhóm mới thấy)
+  const canUserSeeClassroom = (cls: Classroom | undefined | null, user: UserProfile): boolean => {
+    if (!cls) return false;
+    if (cls.visibility !== 'private') return true;
+    const lowerId = (user.id || '').toLowerCase().trim();
+    const lowerEmail = (user.email || '').toLowerCase().trim();
+    const isOwnerTeacher = Boolean(lowerId && (cls.teacherId || '').toLowerCase().trim() === lowerId);
+    const isEnrolledStudent = Boolean(
+      cls.studentIds &&
+      cls.studentIds.some((sId) => {
+        const lowerS = (sId || '').toLowerCase().trim();
+        return (lowerId && lowerS === lowerId) || (lowerEmail && lowerS === lowerEmail);
+      })
+    );
+    return isOwnerTeacher || isEnrolledStudent;
+  };
+
+  const visibleClassrooms = useMemo(
+    () => classrooms.filter((c) => canUserSeeClassroom(c, userProfile)),
+    [classrooms, userProfile]
+  );
+
   // Tính toán số lượng tin nhắn chưa đọc trong các nhóm lớp mà người dùng tham gia
   const unreadClassroomMessagesCount = useMemo(() => {
     if (currentTab === 'classroom' || !isAuthenticated) return 0;
@@ -226,14 +248,19 @@ export default function App() {
     const lowerEmail = (userProfile.email || '').toLowerCase().trim();
 
     classrooms.forEach((c) => {
-      const isMember =
-        userProfile.role === 'admin' ||
-        userProfile.role === 'teacher' ||
-        (c.studentIds &&
+      const isDirectMember =
+        (lowerUserId && (c.teacherId || '').toLowerCase().trim() === lowerUserId) ||
+        Boolean(
+          c.studentIds &&
           c.studentIds.some((sId) => {
             const lowerS = (sId || '').toLowerCase().trim();
-            return lowerS === lowerUserId || (lowerEmail && lowerS === lowerEmail);
-          }));
+            return (lowerUserId && lowerS === lowerUserId) || (lowerEmail && lowerS === lowerEmail);
+          })
+        );
+      const isMember =
+        c.visibility === 'private'
+          ? isDirectMember
+          : userProfile.role === 'admin' || userProfile.role === 'teacher' || isDirectMember;
 
       if (isMember) {
         myClassIds.add(c.id);
@@ -555,8 +582,14 @@ export default function App() {
               const className = matchedClass ? matchedClass.name : 'Nhóm lớp';
 
               // Kiểm tra xem người dùng có phải thành viên của nhóm lớp này không
+              const lowerCurId = (curUser.id || '').toLowerCase().trim();
+              const lowerCurEmail = (curUser.email || '').toLowerCase().trim();
               const isMember = matchedClass
-                ? matchedClass.teacherId === curUser.id || matchedClass.studentIds.includes(curUser.id)
+                ? (matchedClass.teacherId || '').toLowerCase().trim() === lowerCurId ||
+                  (matchedClass.studentIds || []).some((sid) => {
+                    const ls = (sid || '').toLowerCase().trim();
+                    return ls === lowerCurId || (lowerCurEmail && ls === lowerCurEmail);
+                  })
                 : true;
 
               if (isMember) {
@@ -1098,7 +1131,7 @@ export default function App() {
       ? []
       : newExam.targetClassIds && newExam.targetClassIds.length > 0
       ? newExam.targetClassIds
-      : classrooms.map((c) => c.id);
+      : visibleClassrooms.map((c) => c.id);
 
     const examWithTargets: Exam = {
       ...newExam,
@@ -1281,7 +1314,7 @@ export default function App() {
       if (currentTab === 'teacher_gradebook') {
         return (
           <TeacherGradebookView
-            classrooms={classrooms}
+            classrooms={visibleClassrooms}
             submissions={submissions}
             examsList={examsList}
             onSelectClassroom={() => {
@@ -1328,7 +1361,7 @@ export default function App() {
         return (
           <TeacherPortalView
             initialMode="manage_exams"
-            classrooms={classrooms}
+            classrooms={visibleClassrooms}
             onPublishExam={handlePublishExam}
             currentUserName={userProfile.name}
             examsList={examsList}
@@ -1346,7 +1379,7 @@ export default function App() {
       return (
         <TeacherPortalView
           initialMode="manual"
-          classrooms={classrooms}
+          classrooms={visibleClassrooms}
           onPublishExam={handlePublishExam}
           currentUserName={userProfile.name}
           examsList={examsList}

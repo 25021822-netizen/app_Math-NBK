@@ -73,6 +73,8 @@ import {
   Clock,
   KeyRound,
   Shield,
+  Globe,
+  EyeOff,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -130,21 +132,40 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onDeleteChatMessage,
   onDisbandClassroom,
 }) => {
-  // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp (Admin & Giáo viên có toàn quyền xem và tương tác)
+  // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp
   const isMemberOfClass = (cls: Classroom | undefined | null): boolean => {
     if (!cls) return false;
-    if (userRole === 'admin' || userRole === 'teacher') return true;
-    // Học sinh bắt buộc phải nằm trong danh sách studentIds đã được phê duyệt (kiểm tra không phân biệt hoa thường)
     const lowerUserId = (currentUserId || '').toLowerCase().trim();
     const lowerEmail = (currentUserEmail || '').toLowerCase().trim();
-    return Boolean(
+    const isOwnerTeacher = Boolean(lowerUserId && (cls.teacherId || '').toLowerCase().trim() === lowerUserId);
+    const isEnrolledStudent = Boolean(
       cls.studentIds &&
       cls.studentIds.some((sId) => {
         const lowerS = (sId || '').toLowerCase().trim();
-        return lowerS === lowerUserId || (lowerEmail && lowerS === lowerEmail);
+        return (lowerUserId && lowerS === lowerUserId) || (lowerEmail && lowerS === lowerEmail);
       })
     );
+
+    // Nhóm lớp cá nhân: CHỈ thành viên trong nhóm (giáo viên tạo nhóm hoặc học sinh đã vào nhóm) mới có quyền xem
+    if (cls.visibility === 'private') {
+      return isOwnerTeacher || isEnrolledStudent;
+    }
+
+    if (userRole === 'admin' || userRole === 'teacher') return true;
+    return isEnrolledStudent;
   };
+
+  // 1b. Kiểm tra quyền nhìn thấy nhóm lớp trong danh sách (nhóm cá nhân chỉ thành viên trong nhóm mới nhìn thấy)
+  const canSeeClassroom = (cls: Classroom | undefined | null): boolean => {
+    if (!cls) return false;
+    if (cls.visibility !== 'private') return true;
+    return isMemberOfClass(cls);
+  };
+
+  const visibleClassrooms = useMemo(
+    () => classrooms.filter((cls) => canSeeClassroom(cls)),
+    [classrooms, currentUserId, currentUserEmail, userRole]
+  );
 
   // 2. Kiểm tra học sinh đang ở trạng thái chờ duyệt vào lớp
   const isPendingApprovalInClass = (cls: Classroom | undefined | null): boolean => {
@@ -156,17 +177,17 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     );
   };
 
-  // Khởi tạo selectedClassId: ưu tiên lớp mà người dùng thực sự là thành viên, không tự ý gán lớp lạ
+  // Khởi tạo selectedClassId: ưu tiên lớp mà người dùng thực sự là thành viên / được phép nhìn thấy
   const [selectedClassId, setSelectedClassId] = useState<string>(() => {
     if (userRole === 'student') {
-      const myClasses = classrooms.filter((cls) => cls.studentIds && cls.studentIds.includes(currentUserId));
+      const myClasses = visibleClassrooms.filter((cls) => isMemberOfClass(cls));
       return myClasses[0]?.id || '';
     }
     if (userRole === 'teacher') {
-      const myClasses = classrooms.filter((cls) => cls.teacherId === currentUserId);
-      return myClasses[0]?.id || classrooms[0]?.id || '';
+      const myClasses = visibleClassrooms.filter((cls) => cls.teacherId === currentUserId);
+      return myClasses[0]?.id || visibleClassrooms[0]?.id || '';
     }
-    return classrooms[0]?.id || '';
+    return visibleClassrooms[0]?.id || '';
   });
   const [activeRightTab, setActiveRightTab] = useState<'curriculum' | 'chat' | 'students' | 'approvals'>('curriculum');
   const [approvalActionSuccess, setApprovalActionSuccess] = useState<string | null>(null);
@@ -180,39 +201,40 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [examToDeletePermanently, setExamToDeletePermanently] = useState<Exam | null>(null);
   const [isDeletingItem, setIsDeletingItem] = useState<boolean>(false);
 
-  // Tự động chọn lớp đầu tiên thuộc quyền truy cập của người dùng
+  // Tự động chọn lớp đầu tiên thuộc quyền truy cập của người dùng (trong danh sách được phép nhìn thấy)
   useEffect(() => {
-    if (classrooms.length > 0) {
+    if (visibleClassrooms.length > 0) {
       if (userRole === 'student') {
-        const enrolled = classrooms.filter((cls) => cls.studentIds && cls.studentIds.includes(currentUserId));
+        const enrolled = visibleClassrooms.filter((cls) => isMemberOfClass(cls));
         if (enrolled.length > 0) {
-          if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
+          if (!selectedClassId || !visibleClassrooms.some((c) => c.id === selectedClassId)) {
             setSelectedClassId(enrolled[0].id);
           }
         } else {
-          // Chưa tham gia lớp nào -> không auto chọn lớp để lộ nội dung
-          if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
+          if (!selectedClassId || !visibleClassrooms.some((c) => c.id === selectedClassId)) {
             setSelectedClassId('');
           }
         }
       } else if (userRole === 'teacher') {
-        const myClasses = classrooms.filter((cls) => cls.teacherId === currentUserId);
+        const myClasses = visibleClassrooms.filter((cls) => cls.teacherId === currentUserId);
         if (myClasses.length > 0) {
           if (!selectedClassId || !myClasses.some((c) => c.id === selectedClassId)) {
             setSelectedClassId(myClasses[0].id);
           }
         } else {
-          if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
-            setSelectedClassId(classrooms[0].id);
+          if (!selectedClassId || !visibleClassrooms.some((c) => c.id === selectedClassId)) {
+            setSelectedClassId(visibleClassrooms[0].id);
           }
         }
       } else {
-        if (!selectedClassId || !classrooms.some((c) => c.id === selectedClassId)) {
-          setSelectedClassId(classrooms[0].id);
+        if (!selectedClassId || !visibleClassrooms.some((c) => c.id === selectedClassId)) {
+          setSelectedClassId(visibleClassrooms[0].id);
         }
       }
+    } else if (selectedClassId) {
+      setSelectedClassId('');
     }
-  }, [classrooms, selectedClassId, currentUserId, userRole]);
+  }, [visibleClassrooms, selectedClassId, currentUserId, userRole]);
 
   // Đồng bộ Real-Time danh sách bài học chuyên đề từ máy khác qua Firestore
   useEffect(() => {
@@ -329,6 +351,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [newClassGrade, setNewClassGrade] = useState<10 | 11 | 12>(12);
   const [newClassCode, setNewClassCode] = useState('');
   const [newClassDesc, setNewClassDesc] = useState('');
+  const [newClassVisibility, setNewClassVisibility] = useState<'public' | 'private'>('public');
 
   // State thêm học sinh vào lớp (Admin-only rule for account creation)
   const [searchStudentTerm, setSearchStudentTerm] = useState('');
@@ -426,8 +449,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     }
   }, [localMessages, classroomMessages, activeRightTab]);
 
-  // Lớp học đang chọn (trả về null nếu chưa chọn hoặc id không tồn tại)
-  const currentClass = selectedClassId ? (classrooms.find((c) => c.id === selectedClassId) || null) : null;
+  // Lớp học đang chọn (chỉ trả về nếu người dùng được phép nhìn thấy)
+  const currentClass = selectedClassId ? (visibleClassrooms.find((c) => c.id === selectedClassId) || null) : null;
   const isCurrentClassMember = isMemberOfClass(currentClass);
   const isCurrentClassPending = isPendingApprovalInClass(currentClass);
 
@@ -592,6 +615,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       teacherName: currentUserName,
       studentIds: [],
       assignedExamIds: [],
+      requiresApproval: true,
+      visibility: newClassVisibility,
       createdAt: new Date().toISOString().split('T')[0],
       description: newClassDesc.trim() || 'Nhóm lớp bồi dưỡng Toán THPT.',
     };
@@ -603,6 +628,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setNewClassName('');
     setNewClassCode('');
     setNewClassDesc('');
+    setNewClassVisibility('public');
   };
 
   // 2. Giáo viên THÊM học sinh vào lớp (CHỈ thêm học sinh đã có tài khoản do Admin tạo!)
@@ -1494,7 +1520,9 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       });
 
       onUpdateClassrooms(updated);
-      setSelectedClassId(foundClass.id);
+      if (foundClass.visibility !== 'private') {
+        setSelectedClassId(foundClass.id);
+      }
       setJoinMessage({
         text: `Đã gửi yêu cầu tham gia "${foundClass.name}" thành công! Vui lòng chờ giáo viên duyệt.`,
         type: 'success',
@@ -1658,6 +1686,31 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       nextVal
         ? 'Đã BẬT chế độ duyệt thành viên: Học sinh nhập mã cần giáo viên phê duyệt mới được vào lớp!'
         : 'Đã TẮT chế độ duyệt thành viên: Học sinh nhập đúng mã sẽ vào lớp ngay lập tức!'
+    );
+    setTimeout(() => setApprovalActionSuccess(null), 4000);
+  };
+
+  // 4f. Giáo viên chuyển đổi chế độ hiển thị nhóm lớp (Công khai <-> Cá nhân)
+  const handleToggleClassVisibility = () => {
+    if (!currentClass) return;
+    const isCurrentlyPrivate = currentClass.visibility === 'private';
+    const nextVisibility: 'public' | 'private' = isCurrentlyPrivate ? 'public' : 'private';
+
+    const updatedClassrooms = classrooms.map((cls) => {
+      if (cls.id === currentClass.id) {
+        return {
+          ...cls,
+          visibility: nextVisibility,
+        };
+      }
+      return cls;
+    });
+
+    onUpdateClassrooms(updatedClassrooms);
+    setApprovalActionSuccess(
+      nextVisibility === 'private'
+        ? 'Đã chuyển sang Nhóm lớp cá nhân: Chỉ thành viên trong nhóm mới nhìn thấy!'
+        : 'Đã chuyển sang Nhóm lớp công khai: Mọi thành viên hệ thống đều có thể nhìn thấy!'
     );
     setTimeout(() => setApprovalActionSuccess(null), 4000);
   };
@@ -1969,10 +2022,11 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
 
       {/* Classroom Selection Tabs */}
       <div className="flex items-center gap-3 overflow-x-auto pb-2">
-        {classrooms.map((cls) => {
+        {visibleClassrooms.map((cls) => {
           const isSelected = cls.id === currentClass?.id;
           const isMember = isMemberOfClass(cls);
           const isPending = isPendingApprovalInClass(cls);
+          const isPrivate = cls.visibility === 'private';
           return (
             <button
               key={cls.id}
@@ -1994,6 +2048,20 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   </span>
                   <span className={`text-[11px] font-mono ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
                     #{cls.code}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                      isPrivate
+                        ? isSelected
+                          ? 'bg-indigo-800 text-indigo-100'
+                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                        : isSelected
+                        ? 'bg-sky-700/70 text-sky-100'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    }`}
+                  >
+                    {isPrivate ? <EyeOff size={10} /> : <Globe size={10} />}
+                    <span>{isPrivate ? 'Cá nhân' : 'Công khai'}</span>
                   </span>
                 </div>
 
@@ -2061,9 +2129,21 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   <GraduationCap size={20} className="text-blue-600" />
                   <h3 className="font-extrabold text-base text-slate-900">Thông Tin Nhóm Lớp</h3>
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold">
-                  Khối {currentClass.grade}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold inline-flex items-center gap-1 ${
+                      currentClass.visibility === 'private'
+                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    }`}
+                  >
+                    {currentClass.visibility === 'private' ? <EyeOff size={11} /> : <Globe size={11} />}
+                    <span>{currentClass.visibility === 'private' ? 'Cá nhân' : 'Công khai'}</span>
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold">
+                    Khối {currentClass.grade}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-3 text-xs">
@@ -2122,6 +2202,31 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   <div>
                     <span className="text-slate-400 block">Mô tả</span>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">{currentClass.description}</p>
+                  </div>
+                )}
+
+                {(userRole === 'teacher' || userRole === 'admin') && (
+                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-800 block">Quyền hiển thị nhóm lớp</span>
+                      <span className="text-[10px] text-slate-500">
+                        {currentClass.visibility === 'private'
+                          ? 'Cá nhân: Chỉ thành viên trong nhóm mới thấy'
+                          : 'Công khai: Mọi người đều thấy trong danh sách'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleClassVisibility}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1.5 border transition-colors shrink-0 ${
+                        currentClass.visibility === 'private'
+                          ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {currentClass.visibility === 'private' ? <EyeOff size={12} /> : <Globe size={12} />}
+                      <span>{currentClass.visibility === 'private' ? 'Cá nhân' : 'Công khai'}</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -3720,6 +3825,47 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     placeholder="VD: NBK-12A2"
                     className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono font-bold uppercase focus:border-blue-600 focus:outline-none"
                   />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Chế độ hiển thị nhóm lớp</label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setNewClassVisibility('public')}
+                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1 ${
+                      newClassVisibility === 'public'
+                        ? 'bg-blue-50 border-blue-600 text-blue-900 ring-1 ring-blue-600'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-extrabold text-xs">
+                      <Globe size={14} className={newClassVisibility === 'public' ? 'text-blue-600' : 'text-slate-500'} />
+                      <span>Nhóm lớp công khai</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-snug">
+                      Hiển thị công khai trong danh sách lớp để học sinh xin vào.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewClassVisibility('private')}
+                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1 ${
+                      newClassVisibility === 'private'
+                        ? 'bg-indigo-50 border-indigo-600 text-indigo-900 ring-1 ring-indigo-600'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-extrabold text-xs">
+                      <EyeOff size={14} className={newClassVisibility === 'private' ? 'text-indigo-600' : 'text-slate-500'} />
+                      <span>Nhóm lớp cá nhân</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-snug">
+                      Chỉ thành viên trong nhóm mới nhìn thấy nhóm lớp này.
+                    </span>
+                  </button>
                 </div>
               </div>
 
