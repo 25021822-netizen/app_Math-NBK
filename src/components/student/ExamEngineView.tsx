@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Exam, Question, CheatLog, StudentExamSubmission } from '../../types/math';
 import { gradePart2TrueFalse, validatePart3ShortAnswerFormat, isAnswerEquivalent } from '../../lib/scoringEngine';
 import { MathView } from '../MathView';
+import { ExamImage } from '../common/ExamImage';
 import {
   Clock,
   ShieldAlert,
@@ -969,12 +970,12 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
 
                     {/* Ảnh đính kèm câu hỏi nếu có */}
                     {(q.pdfAttachmentUrl || q.imageAttachment) && (
-                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
+                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full">
                         <div className="relative group cursor-pointer" onClick={() => setZoomedImage((q.pdfAttachmentUrl || q.imageAttachment)!)}>
-                          <img
+                          <ExamImage
                             src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt="Hình vẽ đính kèm đề bài"
-                            className="max-h-52 rounded-xl object-contain bg-white"
+                            className="max-h-56 max-w-full w-auto rounded-xl object-contain bg-white"
                           />
                           <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-opacity">
                             <ZoomIn size={16} className="mr-1" /> Phóng to hình ảnh
@@ -994,10 +995,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     {/* Ảnh khối đáp án đính kèm nếu có */}
                     {q.optionsAttachmentUrl && (
                       <div
-                        className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2 cursor-pointer relative group"
+                        className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full my-2 cursor-pointer relative group"
                         onClick={() => setZoomedImage(q.optionsAttachmentUrl!)}
                       >
-                        <img src={q.optionsAttachmentUrl} alt="Bảng 4 phương án lựa chọn" className="max-h-56 rounded-xl object-contain bg-white" />
+                        <ExamImage src={q.optionsAttachmentUrl} alt="Bảng 4 phương án lựa chọn" className="max-h-56 max-w-full w-auto rounded-xl object-contain bg-white" />
                         <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-opacity">
                           <ZoomIn size={16} className="mr-1" /> Phóng to bảng đáp án
                         </div>
@@ -1042,10 +1043,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                               {opt.text && <MathView math={opt.text} />}
                               {opt.latex && <MathView math={opt.latex} block />}
                               {opt.imageUrl && (
-                                <img
+                                <ExamImage
                                   src={opt.imageUrl}
                                   alt={`Phương án ${opt.key}`}
-                                  className="max-h-28 object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
+                                  className="max-h-28 max-w-full w-auto object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setZoomedImage(opt.imageUrl!);
@@ -1149,12 +1150,12 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
 
                     {/* Ảnh đính kèm */}
                     {(q.pdfAttachmentUrl || q.imageAttachment) && (
-                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
+                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full">
                         <div className="relative group cursor-pointer" onClick={() => setZoomedImage((q.pdfAttachmentUrl || q.imageAttachment)!)}>
-                          <img
+                          <ExamImage
                             src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt="Hình vẽ đính kèm đề bài"
-                            className="max-h-52 rounded-xl object-contain bg-white"
+                            className="max-h-56 max-w-full w-auto rounded-xl object-contain bg-white"
                           />
                           <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-opacity">
                             <ZoomIn size={16} className="mr-1" /> Phóng to hình ảnh
@@ -1166,10 +1167,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     {/* Ảnh khối 4 ý a, b, c, d nếu có */}
                     {q.optionsAttachmentUrl && (
                       <div
-                        className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2 cursor-pointer relative group"
+                        className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full my-2 cursor-pointer relative group"
                         onClick={() => setZoomedImage(q.optionsAttachmentUrl!)}
                       >
-                        <img src={q.optionsAttachmentUrl} alt="Bảng 4 ý đúng sai" className="max-h-56 rounded-xl object-contain bg-white" />
+                        <ExamImage src={q.optionsAttachmentUrl} alt="Bảng 4 ý đúng sai" className="max-h-56 max-w-full w-auto rounded-xl object-contain bg-white" />
                         <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-opacity">
                           <ZoomIn size={16} className="mr-1" /> Phóng to bảng ý
                         </div>
@@ -1192,10 +1193,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                               {item.text && <MathView math={item.text} />}
                               {item.latex && <MathView math={item.latex} block />}
                               {item.imageUrl && (
-                                <img
+                                <ExamImage
                                   src={item.imageUrl}
                                   alt={`Ý ${item.subKey}`}
-                                  className="max-h-28 object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
+                                  className="max-h-28 max-w-full w-auto object-contain rounded-lg border border-slate-200 mt-1 bg-white cursor-pointer hover:opacity-90"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setZoomedImage(item.imageUrl!);
@@ -1327,12 +1328,12 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
 
                     {/* Ảnh đính kèm */}
                     {(q.pdfAttachmentUrl || q.imageAttachment) && (
-                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
+                      <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full">
                         <div className="relative group cursor-pointer" onClick={() => setZoomedImage((q.pdfAttachmentUrl || q.imageAttachment)!)}>
-                          <img
+                          <ExamImage
                             src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt="Hình vẽ đính kèm đề bài"
-                            className="max-h-52 rounded-xl object-contain bg-white"
+                            className="max-h-56 max-w-full w-auto rounded-xl object-contain bg-white"
                           />
                           <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-opacity">
                             <ZoomIn size={16} className="mr-1" /> Phóng to hình ảnh
@@ -1344,10 +1345,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                     {/* Ảnh khối đáp án / lời giải nếu có */}
                     {q.optionsAttachmentUrl && (
                       <div
-                        className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2 cursor-pointer relative group"
+                        className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full my-2 cursor-pointer relative group"
                         onClick={() => setZoomedImage(q.optionsAttachmentUrl!)}
                       >
-                        <img src={q.optionsAttachmentUrl} alt="Đáp án/lời giải đính kèm" className="max-h-56 rounded-xl object-contain bg-white" />
+                        <ExamImage src={q.optionsAttachmentUrl} alt="Đáp án/lời giải đính kèm" className="max-h-56 max-w-full w-auto rounded-xl object-contain bg-white" />
                         <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-opacity">
                           <ZoomIn size={16} className="mr-1" /> Phóng to hình ảnh
                         </div>
@@ -1658,7 +1659,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
             >
               <X size={18} />
             </button>
-            <img src={zoomedImage} alt="Hình vẽ phóng to" className="max-h-[85vh] w-auto rounded-2xl object-contain" />
+            <ExamImage src={zoomedImage} alt="Hình vẽ phóng to" className="max-h-[85vh] max-w-full w-auto rounded-2xl object-contain" />
           </div>
         </div>
       )}

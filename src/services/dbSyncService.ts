@@ -23,6 +23,12 @@ import {
   Exam,
   AutoApprovalSettings,
 } from '../types/math';
+import {
+  persistExamImagesEverywhere,
+  examNeedsImageCloudSync,
+  deleteExamImagesFromFirestore,
+  pickPreferredImageUrl,
+} from './examImageService';
 
 // Theo dõi các đề thi đã bị xóa và đề thi vừa lưu cục bộ để chống sync ngược / tái sinh sau khi xóa
 const DELETED_EXAMS_STORAGE_KEY = 'math_liki_deleted_exam_ids';
@@ -56,6 +62,7 @@ const recentlySavedExamIds: Map<string, number> = (() => {
   return map;
 })();
 const backfilledExamIds = new Set<string>();
+const migratedImageExamIds = new Set<string>();
 const deletedLessonIdsSet = new Set<string>();
 const deletedMessageIdsSet = new Set<string>();
 let lastClassroomSaveAt = 0;
@@ -1086,85 +1093,14 @@ function saveExamToLocalStorageImmediate(exam: Exam) {
 }
 
 /**
- * Chuyển đổi các ảnh cắt dạng base64 thành file URL vĩnh viễn trên máy chủ (/api/files/...)
- * Giúp giảm kích thước tài liệu Firestore từ vài MB xuống còn vài KB, loại bỏ hoàn toàn nguy cơ vượt giới hạn 1MB của Firestore
+ * Chuyển đổi toàn bộ ảnh cắt (base64 hoặc /api/files/...) sang lưu trữ đồng bộ trên cả Cloud Firestore (exam_images)
+ * lẫn Máy chủ (/api/files/...) để mọi thiết bị (máy tính & điện thoại) đều hiển thị được ảnh.
  */
 async function persistExamSnippets(exam: Exam): Promise<Exam> {
   if (!exam || !Array.isArray(exam.questions)) return exam;
-
   try {
-    const updatedQuestions = await Promise.all(
-      exam.questions.map(async (q, qIdx) => {
-        const qCopy: any = { ...q };
-
-        // 1. Ảnh đề bài cắt từ PDF (hỗ trợ cả pdfAttachmentUrl và imageAttachment)
-        const promptImg = q.pdfAttachmentUrl || q.imageAttachment;
-        if (promptImg && typeof promptImg === 'string' && promptImg.startsWith('data:image/')) {
-          try {
-            const ext = promptImg.startsWith('data:image/png') ? '.png' : '.jpg';
-            const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_prompt_${Date.now()}${ext}`, promptImg);
-            if (res.success && res.fileUrl) {
-              qCopy.pdfAttachmentUrl = res.fileUrl;
-              qCopy.imageAttachment = res.fileUrl;
-            }
-          } catch {}
-        }
-
-        // 2. Ảnh khối đáp án cắt cả khối
-        if (q.optionsAttachmentUrl && typeof q.optionsAttachmentUrl === 'string' && q.optionsAttachmentUrl.startsWith('data:image/')) {
-          try {
-            const ext = q.optionsAttachmentUrl.startsWith('data:image/png') ? '.png' : '.jpg';
-            const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_opts_${Date.now()}${ext}`, q.optionsAttachmentUrl);
-            if (res.success && res.fileUrl) {
-              qCopy.optionsAttachmentUrl = res.fileUrl;
-            }
-          } catch {}
-        }
-
-        // 3. Ảnh từng phương án A, B, C, D
-        if (q.part === 'part_1_mcq' && Array.isArray((q as any).options)) {
-          qCopy.options = await Promise.all(
-            (q as any).options.map(async (opt: any) => {
-              if (opt.imageUrl && typeof opt.imageUrl === 'string' && opt.imageUrl.startsWith('data:image/')) {
-                try {
-                  const ext = opt.imageUrl.startsWith('data:image/png') ? '.png' : '.jpg';
-                  const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_opt_${opt.key}_${Date.now()}${ext}`, opt.imageUrl);
-                  if (res.success && res.fileUrl) {
-                    return { ...opt, imageUrl: res.fileUrl };
-                  }
-                } catch {}
-              }
-              return opt;
-            })
-          );
-        }
-
-        // 4. Ảnh từng mệnh đề a, b, c, d (Đúng/Sai)
-        if (q.part === 'part_2_true_false' && Array.isArray((q as any).items)) {
-          qCopy.items = await Promise.all(
-            (q as any).items.map(async (item: any) => {
-              if (item.imageUrl && typeof item.imageUrl === 'string' && item.imageUrl.startsWith('data:image/')) {
-                try {
-                  const ext = item.imageUrl.startsWith('data:image/png') ? '.png' : '.jpg';
-                  const res = await dbUploadPdfFile(`crop_q${qIdx + 1}_item_${item.subKey}_${Date.now()}${ext}`, item.imageUrl);
-                  if (res.success && res.fileUrl) {
-                    return { ...item, imageUrl: res.fileUrl };
-                  }
-                } catch {}
-              }
-              return item;
-            })
-          );
-        }
-
-        return qCopy;
-      })
-    );
-
-    return {
-      ...exam,
-      questions: updatedQuestions,
-    };
+    const res = await persistExamImagesEverywhere(exam);
+    return res.exam;
   } catch (err) {
     console.warn('Lỗi khi tối ưu hóa ảnh cắt đề thi:', err);
     return exam;
@@ -1204,8 +1140,9 @@ export async function dbSaveExam(exam: Exam): Promise<boolean> {
     } catch {}
   }
 
-  // 1. Chuyển đổi và lưu trữ vĩnh viễn các ảnh cắt đề thi sang /api/files/...
-  const persistedExam = hasInline ? await persistExamSnippets(exam) : exam;
+  // 1. Chuyển đổi và lưu trữ vĩnh viễn các ảnh cắt đề thi lên Cloud Firestore & /api/files/...
+  const needsImgSync = hasInline || examNeedsImageCloudSync(exam);
+  const persistedExam = needsImgSync ? await persistExamSnippets(exam) : exam;
   const cleanExam = sanitizeExamForFirestore(persistedExam);
   if (!cleanExam || !cleanExam.id) return false;
 
@@ -1389,10 +1326,11 @@ export async function dbDeleteExam(examId: string): Promise<boolean> {
   // 2. Xóa triệt để trên Firestore Real-Time Database
   const firestorePromise = (async () => {
     try {
-      // 2a. Xóa document đề thi ở cả 'exams' và 'published_exams', đồng thời ghi nhận tombstone ở 'meta/deleted_exams'
+      // 2a. Xóa document đề thi ở cả 'exams', 'published_exams' và ảnh 'exam_images', đồng thời ghi nhận tombstone ở 'meta/deleted_exams'
       await Promise.allSettled([
         deleteDoc(doc(db, 'exams', examId)).catch((e) => console.warn('Lỗi xóa exam doc:', e)),
         deleteDoc(doc(db, 'published_exams', examId)).catch((e) => console.warn('Lỗi xóa published_exam doc:', e)),
+        deleteExamImagesFromFirestore(examId).catch(() => {}),
         setDoc(
           doc(db, 'meta', 'deleted_exams'),
           { ids: arrayUnion(examId), updatedAt: new Date().toISOString() },
@@ -1785,13 +1723,11 @@ function smartMergeExamPair(localExam: Exam, remoteExam: Exam): Exam {
     return {
       ...secondary,
       ...primary,
-      pdfAttachmentUrl: primary.pdfAttachmentUrl || secondary.pdfAttachmentUrl,
+      pdfAttachmentUrl: pickPreferredImageUrl(primary.pdfAttachmentUrl, secondary.pdfAttachmentUrl),
       imageAttachment:
-        primary.imageAttachment ||
-        secondary.imageAttachment ||
-        primary.pdfAttachmentUrl ||
-        secondary.pdfAttachmentUrl,
-      optionsAttachmentUrl: primary.optionsAttachmentUrl || secondary.optionsAttachmentUrl,
+        pickPreferredImageUrl(primary.imageAttachment, secondary.imageAttachment) ||
+        pickPreferredImageUrl(primary.pdfAttachmentUrl, secondary.pdfAttachmentUrl),
+      optionsAttachmentUrl: pickPreferredImageUrl(primary.optionsAttachmentUrl, secondary.optionsAttachmentUrl),
       options:
         primary.part === 'part_1_mcq' && Array.isArray((primary as any).options)
           ? (primary as any).options.map((popt: any) => {
@@ -1801,7 +1737,7 @@ function smartMergeExamPair(localExam: Exam, remoteExam: Exam): Exam {
                   : null;
               return {
                 ...popt,
-                imageUrl: popt.imageUrl || sopt?.imageUrl,
+                imageUrl: pickPreferredImageUrl(popt.imageUrl, sopt?.imageUrl),
               };
             })
           : (primary as any).options,
@@ -1814,7 +1750,7 @@ function smartMergeExamPair(localExam: Exam, remoteExam: Exam): Exam {
                   : null;
               return {
                 ...pitem,
-                imageUrl: pitem.imageUrl || sitem?.imageUrl,
+                imageUrl: pickPreferredImageUrl(pitem.imageUrl, sitem?.imageUrl),
               };
             })
           : (primary as any).items,
@@ -2247,11 +2183,24 @@ export function startDbPolling(
               hasChanges = true;
             }
 
-            // Tự phục hồi đồng bộ: nếu có đề hợp lệ trong localStorage/Firestore mà Server DB chưa có, đẩy bổ sung lên Server ngay
+            // Tự phục hồi đồng bộ:
+            // - Nếu Server DB chưa có đề này, đẩy lên Server ngay.
+            // - Nếu đề cũ có ảnh /api/files/... chưa đồng bộ lên Cloud Firestore exam_images, tự động sao lưu từ máy chủ hiện tại lên Firestore để điện thoại xem được.
             mergedExams.forEach((ex) => {
-              if (ex && ex.id && !serverExamIds.has(ex.id) && !deletedExamIdsSet.has(ex.id) && !backfilledExamIds.has(ex.id)) {
+              if (!ex || !ex.id || deletedExamIdsSet.has(ex.id)) return;
+              if (!serverExamIds.has(ex.id) && !backfilledExamIds.has(ex.id)) {
                 backfilledExamIds.add(ex.id);
+                migratedImageExamIds.add(ex.id);
                 dbSaveExam(ex).catch(() => {});
+              } else if (examNeedsImageCloudSync(ex) && !migratedImageExamIds.has(ex.id)) {
+                migratedImageExamIds.add(ex.id);
+                persistExamImagesEverywhere(ex)
+                  .then((res) => {
+                    if (res.changed) {
+                      return dbSaveExam(res.exam);
+                    }
+                  })
+                  .catch(() => {});
               }
             });
           }

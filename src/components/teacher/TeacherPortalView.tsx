@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Exam, Question, ExamPartType, Classroom } from '../../types/math';
 import { SAMPLE_CLASSROOMS } from '../../data/mockData';
 import { MathView } from '../MathView';
+import { ExamImage } from '../common/ExamImage';
 import { ParsedExamSchema } from '../../lib/pdfParserSchema';
 import {
   FileText,
@@ -1550,22 +1551,22 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
                 {/* File ảnh đề bài đính kèm / cắt từ PDF */}
                 {(q.pdfAttachmentUrl || q.imageAttachment) && (
-                  <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
-                    <img
+                  <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full">
+                    <ExamImage
                       src={q.pdfAttachmentUrl || q.imageAttachment}
                       alt="Ảnh đính kèm đề bài"
-                      className="max-h-48 rounded-xl object-contain bg-white"
+                      className="max-h-48 max-w-full w-auto rounded-xl object-contain bg-white"
                     />
                   </div>
                 )}
 
                 {/* Khối đáp án cắt cả khối */}
                 {q.optionsAttachmentUrl && (
-                  <div className="p-2 bg-teal-50 rounded-2xl border border-teal-200 inline-block">
-                    <img
+                  <div className="p-2 bg-teal-50 rounded-2xl border border-teal-200 inline-block max-w-full">
+                    <ExamImage
                       src={q.optionsAttachmentUrl}
                       alt="Khối đáp án đã cắt"
-                      className="max-h-44 rounded-xl object-contain bg-white"
+                      className="max-h-44 max-w-full w-auto rounded-xl object-contain bg-white"
                     />
                   </div>
                 )}
@@ -1602,7 +1603,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                         </div>
                         {opt.imageUrl && (
                           <div className="rounded border border-slate-200 bg-white p-1">
-                            <img src={opt.imageUrl} alt={`Đáp án ${opt.key}`} className="max-h-20 object-contain mx-auto" />
+                            <ExamImage src={opt.imageUrl} alt={`Đáp án ${opt.key}`} className="max-h-20 max-w-full w-auto object-contain mx-auto" />
                           </div>
                         )}
                       </div>
@@ -1637,7 +1638,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                         </div>
                         {item.imageUrl && (
                           <div className="rounded border border-slate-200 bg-white p-1">
-                            <img src={item.imageUrl} alt={`Ý ${item.subKey}`} className="max-h-20 object-contain mx-auto" />
+                            <ExamImage src={item.imageUrl} alt={`Ý ${item.subKey}`} className="max-h-20 max-w-full w-auto object-contain mx-auto" />
                           </div>
                         )}
                       </div>
@@ -2271,22 +2272,22 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
                       {/* File ảnh đề bài đính kèm / cắt từ PDF */}
                       {(question.pdfAttachmentUrl || question.imageAttachment) && (
-                        <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
-                          <img
+                        <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full">
+                          <ExamImage
                             src={question.pdfAttachmentUrl || question.imageAttachment}
                             alt={`Ảnh đề bài câu ${question.questionNumber}`}
-                            className="max-h-52 rounded-xl object-contain bg-white"
+                            className="max-h-52 max-w-full w-auto rounded-xl object-contain bg-white"
                           />
                         </div>
                       )}
 
                       {/* Khối đáp án cắt cả khối */}
                       {question.optionsAttachmentUrl && (
-                        <div className="p-2 bg-teal-50 rounded-2xl border border-teal-200 inline-block">
-                          <img
+                        <div className="p-2 bg-teal-50 rounded-2xl border border-teal-200 inline-block max-w-full">
+                          <ExamImage
                             src={question.optionsAttachmentUrl}
                             alt={`Khối đáp án câu ${question.questionNumber}`}
-                            className="max-h-48 rounded-xl object-contain bg-white"
+                            className="max-h-48 max-w-full w-auto rounded-xl object-contain bg-white"
                           />
                         </div>
                       )}
@@ -2324,7 +2325,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                                 </div>
                                 {opt.imageUrl && (
                                   <div className="rounded border border-slate-200 bg-white p-1 mt-1">
-                                    <img src={opt.imageUrl} alt={`Đáp án ${opt.key}`} className="max-h-20 object-contain mx-auto" />
+                                    <ExamImage src={opt.imageUrl} alt={`Đáp án ${opt.key}`} className="max-h-20 max-w-full w-auto object-contain mx-auto" />
                                   </div>
                                 )}
                               </div>
@@ -2362,7 +2363,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                               </div>
                               {item.imageUrl && (
                                 <div className="rounded border border-slate-200 bg-white p-1 mt-1">
-                                  <img src={item.imageUrl} alt={`Ý ${item.subKey}`} className="max-h-20 object-contain mx-auto" />
+                                  <ExamImage src={item.imageUrl} alt={`Ý ${item.subKey}`} className="max-h-20 max-w-full w-auto object-contain mx-auto" />
                                 </div>
                               )}
                             </div>
@@ -2577,7 +2578,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               {/* Preview ảnh đính kèm */}
               {modalImageAttachment && (
                 <div className="relative inline-block mt-2">
-                  <img
+                  <ExamImage
                     src={modalImageAttachment}
                     alt="Preview ảnh đính kèm"
                     className="max-h-36 rounded-xl border border-slate-200 object-contain bg-white"
@@ -2596,7 +2597,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               {modalOptionsAttachmentUrl && (
                 <div className="relative inline-block mt-2 ml-2">
                   <div className="p-1 rounded-xl border border-teal-200 bg-teal-50 inline-block">
-                    <img
+                    <ExamImage
                       src={modalOptionsAttachmentUrl}
                       alt="Preview khối đáp án"
                       className="max-h-36 rounded-lg object-contain bg-white"

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { StudentExamSubmission, Exam, Classroom } from '../../types/math';
 import { MathView } from '../MathView';
+import { ExamImage } from '../common/ExamImage';
 import {
   FileCheck,
   Award,
@@ -440,15 +441,15 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
 
                     {/* Ảnh đính kèm nếu có */}
                     {(q.pdfAttachmentUrl || q.imageAttachment) && (
-                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block">
-                        <img src={q.pdfAttachmentUrl || q.imageAttachment} alt="Ảnh đề bài" className="max-h-40 rounded-lg object-contain bg-white" />
+                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block max-w-full">
+                        <ExamImage src={q.pdfAttachmentUrl || q.imageAttachment} alt="Ảnh đề bài" className="max-h-40 max-w-full w-auto rounded-lg object-contain bg-white" />
                       </div>
                     )}
 
                     {/* Ảnh khối đáp án nếu có */}
                     {q.optionsAttachmentUrl && (
-                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block">
-                        <img src={q.optionsAttachmentUrl} alt="Khối đáp án" className="max-h-40 rounded-lg object-contain bg-white" />
+                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block max-w-full">
+                        <ExamImage src={q.optionsAttachmentUrl} alt="Khối đáp án" className="max-h-40 max-w-full w-auto rounded-lg object-contain bg-white" />
                       </div>
                     )}
 

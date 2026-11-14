@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Classroom, StudentExamSubmission, Exam, UserRole } from '../../types/math';
 import { SAMPLE_STUDENTS } from '../../data/mockData';
 import { MathView } from '../MathView';
+import { ExamImage } from '../common/ExamImage';
 import {
   Award,
   Users,
@@ -774,9 +775,9 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                     <p className="font-semibold text-slate-900">{q.prompt}</p>
 
                     {/* Ảnh đính kèm nếu có */}
-                    {q.imageAttachment && (
-                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block">
-                        <img src={q.imageAttachment} alt="Ảnh đề bài" className="max-h-40 rounded-lg object-contain bg-white" />
+                    {(q.pdfAttachmentUrl || q.imageAttachment) && (
+                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block max-w-full">
+                        <ExamImage src={q.pdfAttachmentUrl || q.imageAttachment} alt="Ảnh đề bài" className="max-h-40 max-w-full w-auto rounded-lg object-contain bg-white" />
                       </div>
                     )}
 

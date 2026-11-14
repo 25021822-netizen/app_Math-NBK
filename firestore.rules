@@ -28,5 +28,8 @@ service cloud.firestore {
     match /meta/{metaId} {
       allow read, write: if true;
     }
+    match /exam_images/{imageId} {
+      allow read, write: if true;
+    }
   }
 }

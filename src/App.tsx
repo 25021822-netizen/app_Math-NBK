@@ -23,6 +23,7 @@ import {
   SAMPLE_CLASSROOM_LESSONS,
   ALL_INITIAL_USERS,
 } from './data/mockData';
+import { pickPreferredImageUrl } from './services/examImageService';
 import {
   fetchDbState,
   startDbPolling,
@@ -479,13 +480,11 @@ export default function App() {
               return {
                 ...secondary,
                 ...primary,
-                pdfAttachmentUrl: primary.pdfAttachmentUrl || secondary.pdfAttachmentUrl,
+                pdfAttachmentUrl: pickPreferredImageUrl(primary.pdfAttachmentUrl, secondary.pdfAttachmentUrl),
                 imageAttachment:
-                  primary.imageAttachment ||
-                  secondary.imageAttachment ||
-                  primary.pdfAttachmentUrl ||
-                  secondary.pdfAttachmentUrl,
-                optionsAttachmentUrl: primary.optionsAttachmentUrl || secondary.optionsAttachmentUrl,
+                  pickPreferredImageUrl(primary.imageAttachment, secondary.imageAttachment) ||
+                  pickPreferredImageUrl(primary.pdfAttachmentUrl, secondary.pdfAttachmentUrl),
+                optionsAttachmentUrl: pickPreferredImageUrl(primary.optionsAttachmentUrl, secondary.optionsAttachmentUrl),
                 options:
                   primary.part === 'part_1_mcq' && Array.isArray((primary as any).options)
                     ? (primary as any).options.map((popt: any) => {
@@ -495,7 +494,7 @@ export default function App() {
                             : null;
                         return {
                           ...popt,
-                          imageUrl: popt.imageUrl || sopt?.imageUrl,
+                          imageUrl: pickPreferredImageUrl(popt.imageUrl, sopt?.imageUrl),
                         };
                       })
                     : (primary as any).options,
@@ -508,7 +507,7 @@ export default function App() {
                             : null;
                         return {
                           ...pitem,
-                          imageUrl: pitem.imageUrl || sitem?.imageUrl,
+                          imageUrl: pickPreferredImageUrl(pitem.imageUrl, sitem?.imageUrl),
                         };
                       })
                     : (primary as any).items,

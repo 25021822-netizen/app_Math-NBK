@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Question, Exam, QuestionPart1MCQ, QuestionPart2TrueFalse, QuestionPart3ShortAnswer, Classroom } from '../../types/math';
 import { MathView } from '../MathView';
+import { ExamImage } from '../common/ExamImage';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
 import { cleanPdfNoiseAndOcr } from '../../lib/ocrNoiseCleaner';
 import {
@@ -1655,10 +1656,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                               Xóa ảnh
                             </button>
                           </div>
-                          <img
+                          <ExamImage
                             src={q.pdfAttachmentUrl || q.imageAttachment}
                             alt={`Đề bài câu ${q.questionNumber}`}
-                            className="max-h-36 object-contain mx-auto rounded"
+                            className="max-h-36 max-w-full w-auto object-contain mx-auto rounded"
                           />
                         </div>
                       )}
@@ -1679,10 +1680,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                               Xóa khối đáp án
                             </button>
                           </div>
-                          <img
+                          <ExamImage
                             src={q.optionsAttachmentUrl}
                             alt={`Khối đáp án câu ${q.questionNumber}`}
-                            className="max-h-32 object-contain mx-auto rounded"
+                            className="max-h-32 max-w-full w-auto object-contain mx-auto rounded"
                           />
                         </div>
                       )}
@@ -1763,10 +1764,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                                   {/* Hiển thị ảnh phương án nếu đã cắt */}
                                   {opt.imageUrl ? (
                                     <div className="rounded border border-slate-200 bg-white p-1 my-1">
-                                      <img
+                                      <ExamImage
                                         src={opt.imageUrl}
                                         alt={`Phương án ${key}`}
-                                        className="max-h-16 object-contain mx-auto"
+                                        className="max-h-16 max-w-full w-auto object-contain mx-auto"
                                       />
                                     </div>
                                   ) : null}
@@ -1869,10 +1870,10 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                                         Xóa ảnh
                                       </button>
                                     </div>
-                                    <img
+                                    <ExamImage
                                       src={item.imageUrl}
                                       alt={`Mệnh đề ${item.subKey}`}
-                                      className="max-h-16 object-contain mx-auto"
+                                      className="max-h-16 max-w-full w-auto object-contain mx-auto"
                                     />
                                   </div>
                                 )}
