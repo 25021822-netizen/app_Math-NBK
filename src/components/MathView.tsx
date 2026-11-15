@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import katex from 'katex';
+import { parseTextWithLinks } from '../lib/linkify';
 
 interface MathViewProps {
   math?: string;
@@ -249,11 +250,22 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
     }
     // D. Văn bản tiếng Việt thông thường
     else {
-      // Escape HTML, hỗ trợ **in đậm** an toàn và bảo lưu các ký tự xuống dòng
-      const safeText = escapeHtml(part)
-        .replace(/\*\*([^*]+?)\*\*/g, '<strong class="font-bold">$1</strong>')
-        .replace(/\r?\n/g, '<br />');
-      resultHtml += safeText;
+      const boldSegments = part.split(/(\*\*[^*]+?\*\*)/g);
+      for (const bSeg of boldSegments) {
+        if (!bSeg) continue;
+        const isBold = bSeg.startsWith('**') && bSeg.endsWith('**') && bSeg.length > 4;
+        const inner = isBold ? bSeg.slice(2, -2) : bSeg;
+        const linkSegments = parseTextWithLinks(inner);
+        let segmentHtml = '';
+        for (const lSeg of linkSegments) {
+          if (lSeg.type === 'link' && lSeg.href) {
+            segmentHtml += `<a href="${escapeHtml(lSeg.href)}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline decoration-blue-400/70 underline-offset-2 font-medium break-all">${escapeHtml(lSeg.text)}</a>`;
+          } else {
+            segmentHtml += escapeHtml(lSeg.text).replace(/\r?\n/g, '<br />');
+          }
+        }
+        resultHtml += isBold ? `<strong class="font-bold">${segmentHtml}</strong>` : segmentHtml;
+      }
     }
   }
 

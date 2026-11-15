@@ -5,6 +5,7 @@ import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSa
 import { MathView } from '../MathView';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import { isNotificationsEnabled, setNotificationsEnabled } from '../../utils/notificationService';
+import { normalizeSafeHref, renderTextWithLinks } from '../../lib/linkify';
 import {
   Users,
   UserPlus,
@@ -1148,11 +1149,15 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         });
       }
 
-      if (newLessonExternalLink.trim()) {
+      const normalizedExternalLink = newLessonExternalLink.trim()
+        ? normalizeSafeHref(newLessonExternalLink.trim(), true) || newLessonExternalLink.trim()
+        : '';
+
+      if (normalizedExternalLink) {
         attachmentsList.push({
           name: 'Link tài liệu trực tuyến',
           type: 'link' as const,
-          url: newLessonExternalLink.trim(),
+          url: normalizedExternalLink,
           size: 'Web',
         });
       }
@@ -1162,7 +1167,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         classId: currentClass.id,
         chapter: newLessonChapter.trim(),
         title: newLessonTitle.trim(),
-        description: newLessonDesc.trim() || 'Tài liệu lý thuyết và bài tập luyện tập theo chuẩn chương trình GDPT 2018.',
+        description: newLessonDesc.trim() || 'Tài liệu lý thuyết và bài tập luyện tập.',
         theoryContent:
           newLessonTheory.trim() ||
           'Nội dung tóm tắt kiến thức trọng tâm, định lý, công thức và phương pháp giải bài tập.',
@@ -1181,7 +1186,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
             ? 10
             : Math.max(0, parseInt(newLessonExercisesCount, 10) || 0),
         completedStudentIds: [],
-        externalLink: newLessonExternalLink.trim() || undefined,
+        externalLink: normalizedExternalLink || undefined,
         pdfAttachment: cleanLessonPdf,
         practicePdfAttachment: cleanPracticePdf,
         attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
@@ -1342,11 +1347,15 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           size: cleanPracticePdf.fileSize,
         });
       }
-      if (editLessonExternalLink.trim()) {
+      const normalizedEditLink = editLessonExternalLink.trim()
+        ? normalizeSafeHref(editLessonExternalLink.trim(), true) || editLessonExternalLink.trim()
+        : '';
+
+      if (normalizedEditLink) {
         attachmentsList.push({
           name: 'Link tài liệu trực tuyến',
           type: 'link' as const,
-          url: editLessonExternalLink.trim(),
+          url: normalizedEditLink,
           size: 'Web',
         });
       }
@@ -1368,7 +1377,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           editLessonExercisesCount.trim() === ''
             ? 10
             : Math.max(0, parseInt(editLessonExercisesCount, 10) || 0),
-        externalLink: editLessonExternalLink.trim() || undefined,
+        externalLink: normalizedEditLink || undefined,
         pdfAttachment: cleanLessonPdf,
         practicePdfAttachment: cleanPracticePdf,
         attachments: attachmentsList.length > 0 ? attachmentsList : undefined,
@@ -1420,8 +1429,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           if (trimmed.startsWith('### ')) {
             return (
               <h5 key={pIdx} className="font-extrabold text-sm text-blue-900 mt-3 mb-1 flex items-center gap-1.5">
-                <span className="w-1.5 h-3.5 bg-blue-600 rounded-full inline-block"></span>
-                <span>{trimmed.replace('### ', '')}</span>
+                <span className="w-1.5 h-3.5 bg-blue-600 rounded-full inline-block shrink-0"></span>
+                <span>{renderTextWithLinks(trimmed.replace('### ', ''))}</span>
               </h5>
             );
           }
@@ -1445,9 +1454,13 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 const boldParts = part.split(/(\*\*[^\*]+\*\*)/g);
                 return boldParts.map((bPart, bIdx) => {
                   if (bPart.startsWith('**') && bPart.endsWith('**')) {
-                    return <strong key={bIdx} className="font-bold text-slate-900">{bPart.slice(2, -2)}</strong>;
+                    return (
+                      <strong key={bIdx} className="font-bold text-slate-900">
+                        {renderTextWithLinks(bPart.slice(2, -2))}
+                      </strong>
+                    );
                   }
-                  return <span key={bIdx}>{bPart}</span>;
+                  return <span key={bIdx}>{renderTextWithLinks(bPart)}</span>;
                 });
               })}
             </p>
@@ -2023,10 +2036,13 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     setShowMentionPicker(false);
   };
 
-  // Hàm render nội dung tin nhắn kèm định dạng highlight cho @tag
-  const renderMessageContent = (content: string) => {
+  // Hàm render nội dung tin nhắn kèm định dạng highlight cho @tag và tự động nhận diện link
+  const renderMessageContent = (content: string, isMe: boolean = false) => {
     const mentionPattern = /(@[A-Za-z0-9À-ỹ\s\.]+?)(?=\s|$)/g;
     const parts = content.split(mentionPattern);
+    const linkClass = isMe
+      ? 'text-white hover:text-blue-100 underline decoration-white/80 underline-offset-2 font-semibold break-all'
+      : 'text-blue-600 hover:text-blue-800 underline decoration-blue-400/70 underline-offset-2 font-medium break-all';
 
     return parts.map((part, i) => {
       if (part.startsWith('@')) {
@@ -2039,7 +2055,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           </span>
         );
       }
-      return <span key={i}>{part}</span>;
+      return <span key={i}>{renderTextWithLinks(part, linkClass)}</span>;
     });
   };
 
@@ -2837,7 +2853,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                           )}
                                         </div>
                                         <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                                          {lesson.description}
+                                          {renderTextWithLinks(lesson.description)}
                                         </p>
                                       </div>
 
@@ -2906,12 +2922,31 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                         </span>
                                       )}
 
-                                      {hasLink && (
-                                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200 flex items-center gap-1">
-                                          <ExternalLink size={11} />
-                                          <span>Link trực tuyến</span>
-                                        </span>
-                                      )}
+                                      {hasLink && (() => {
+                                        const rawLinkUrl =
+                                          lesson.externalLink ||
+                                          lesson.attachments?.find((a) => a.type === 'link')?.url ||
+                                          '';
+                                        const safeHref = normalizeSafeHref(rawLinkUrl, true);
+                                        return safeHref ? (
+                                          <a
+                                            href={safeHref}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold border border-blue-200 flex items-center gap-1 transition-colors"
+                                            title={`Mở liên kết: ${safeHref}`}
+                                          >
+                                            <ExternalLink size={11} />
+                                            <span>Mở link</span>
+                                          </a>
+                                        ) : (
+                                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200 flex items-center gap-1">
+                                            <ExternalLink size={11} />
+                                            <span>Link trực tuyến</span>
+                                          </span>
+                                        );
+                                      })()}
 
                                       {userRole === 'student' && (
                                         <div className="ml-auto">
@@ -3106,7 +3141,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                               }`}
                             >
                               {/* Message text with formatted mentions */}
-                              <div className="whitespace-pre-wrap">{renderMessageContent(msg.content)}</div>
+                              <div className="whitespace-pre-wrap">{renderMessageContent(msg.content, isMe)}</div>
 
                               {/* Attached Image if present */}
                               {msg.imageUrl && (
@@ -4614,7 +4649,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               <div className="space-y-1">
                 <label className="font-bold text-slate-700">Link tài liệu trực tuyến (Tùy chọn)</label>
                 <input
-                  type="url"
+                  type="text"
                   value={newLessonExternalLink}
                   onChange={(e) => setNewLessonExternalLink(e.target.value)}
                   placeholder="https://drive.google.com/... hoặc link video bài giảng"
@@ -4957,7 +4992,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               <div className="space-y-1">
                 <label className="font-bold text-slate-700">Link tài liệu trực tuyến (Tùy chọn)</label>
                 <input
-                  type="url"
+                  type="text"
                   value={editLessonExternalLink}
                   onChange={(e) => setEditLessonExternalLink(e.target.value)}
                   placeholder="https://drive.google.com/..."
@@ -5050,7 +5085,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
             {selectedLessonDetail.description && (
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed">
                 <span className="font-bold text-slate-900 block mb-0.5">Mục tiêu bài học:</span>
-                {selectedLessonDetail.description}
+                {renderTextWithLinks(selectedLessonDetail.description)}
               </div>
             )}
 
@@ -5281,23 +5316,36 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
             )}
 
             {/* Link tài liệu trực tuyến nếu có */}
-            {selectedLessonDetail.externalLink && (
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 text-slate-700 truncate">
-                  <ExternalLink size={14} className="text-blue-600 shrink-0" />
-                  <span className="font-bold">Link tham khảo trực tuyến:</span>
-                  <span className="text-slate-500 font-mono truncate">{selectedLessonDetail.externalLink}</span>
+            {selectedLessonDetail.externalLink && (() => {
+              const safeExternalHref =
+                normalizeSafeHref(selectedLessonDetail.externalLink, true) ||
+                selectedLessonDetail.externalLink;
+              return (
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-slate-700 truncate min-w-0">
+                    <ExternalLink size={14} className="text-blue-600 shrink-0" />
+                    <span className="font-bold shrink-0">Link tài liệu:</span>
+                    <a
+                      href={safeExternalHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline font-mono truncate"
+                      title={`Mở liên kết: ${safeExternalHref}`}
+                    >
+                      {selectedLessonDetail.externalLink}
+                    </a>
+                  </div>
+                  <a
+                    href={safeExternalHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shrink-0 transition-colors"
+                  >
+                    Mở Link
+                  </a>
                 </div>
-                <a
-                  href={selectedLessonDetail.externalLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white text-blue-700 font-bold border border-slate-200 hover:bg-slate-100 shrink-0 transition-colors"
-                >
-                  Mở Link
-                </a>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Footer action */}
             <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 flex-wrap">
