@@ -102,7 +102,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   const [activeCategory, setActiveCategory] = useState<'points' | 'lines' | 'planes' | 'move'>('points');
 
   // Trạng thái thao tác Tạo Điểm
-  const [pointCreationMode, setPointCreationMode] = useState<'ratio' | 'centroid' | 'manual'>('ratio');
+  const [pointCreationMode, setPointCreationMode] = useState<
+    'ratio' | 'centroid' | 'intersect_segments' | 'intersect_line_plane' | 'manual'
+  >('ratio');
   const [ratioPointA, setRatioPointA] = useState<string>('');
   const [ratioPointB, setRatioPointB] = useState<string>('');
   const [ratioK, setRatioK] = useState<number>(0.5);
@@ -112,6 +114,27 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   const [centroidB, setCentroidB] = useState<string>('');
   const [centroidC, setCentroidC] = useState<string>('');
   const [centroidLabel, setCentroidLabel] = useState<string>('G');
+
+  // Giao của 2 đoạn / đường thẳng
+  const [seg1PointA, setSeg1PointA] = useState<string>('');
+  const [seg1PointB, setSeg1PointB] = useState<string>('');
+  const [seg2PointA, setSeg2PointA] = useState<string>('');
+  const [seg2PointB, setSeg2PointB] = useState<string>('');
+  const [intersectSegExtend, setIntersectSegExtend] = useState<boolean>(false);
+  const [intersectSegDrawExt, setIntersectSegDrawExt] = useState<boolean>(true);
+  const [intersectSegLabel, setIntersectSegLabel] = useState<string>('I');
+  const [intersectSegColor, setIntersectSegColor] = useState<string>('#8b5cf6');
+
+  // Giao của 1 đường thẳng với 1 mặt phẳng
+  const [lpLinePointA, setLpLinePointA] = useState<string>('');
+  const [lpLinePointB, setLpLinePointB] = useState<string>('');
+  const [lpPlanePoint1, setLpPlanePoint1] = useState<string>('');
+  const [lpPlanePoint2, setLpPlanePoint2] = useState<string>('');
+  const [lpPlanePoint3, setLpPlanePoint3] = useState<string>('');
+  const [lpRestrictSegment, setLpRestrictSegment] = useState<boolean>(false);
+  const [lpDrawExtension, setLpDrawExtension] = useState<boolean>(true);
+  const [intersectLPLabel, setIntersectLPLabel] = useState<string>('K');
+  const [intersectLPColor, setIntersectLPColor] = useState<string>('#e11d48');
 
   const [manualPointName, setManualPointName] = useState<string>('M');
   const [manualPointX, setManualPointX] = useState<number>(0);
@@ -303,8 +326,110 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       if (!centroidC || !allPointNames.includes(centroidC)) {
         setCentroidC(allPointNames[2] || allPointNames[0]);
       }
+
+      // Mặc định thông minh cho giao 2 đoạn (ví dụ AC và BD trên chóp tứ giác)
+      if (!seg1PointA || !allPointNames.includes(seg1PointA)) {
+        setSeg1PointA(allPointNames.includes('A') ? 'A' : allPointNames[0]);
+      }
+      if (!seg1PointB || !allPointNames.includes(seg1PointB)) {
+        setSeg1PointB(allPointNames.includes('C') ? 'C' : allPointNames[1]);
+      }
+      if (!seg2PointA || !allPointNames.includes(seg2PointA)) {
+        setSeg2PointA(allPointNames.includes('B') ? 'B' : allPointNames[1]);
+      }
+      if (!seg2PointB || !allPointNames.includes(seg2PointB)) {
+        setSeg2PointB(allPointNames.includes('D') ? 'D' : allPointNames[2] || allPointNames[0]);
+      }
+
+      // Mặc định cho giao 1 đường với 1 mặt phẳng
+      if (!lpLinePointA || !allPointNames.includes(lpLinePointA)) setLpLinePointA(allPointNames[0]);
+      if (!lpLinePointB || !allPointNames.includes(lpLinePointB)) setLpLinePointB(allPointNames[1]);
+      if (!lpPlanePoint1 || !allPointNames.includes(lpPlanePoint1)) {
+        setLpPlanePoint1(allPointNames[2] || allPointNames[0]);
+      }
+      if (!lpPlanePoint2 || !allPointNames.includes(lpPlanePoint2)) {
+        setLpPlanePoint2(allPointNames[3] || allPointNames[1]);
+      }
+      if (!lpPlanePoint3 || !allPointNames.includes(lpPlanePoint3)) {
+        setLpPlanePoint3(allPointNames[4] || allPointNames[2] || allPointNames[0]);
+      }
     }
   }, [allPointNames]);
+
+  // Danh sách các đoạn/cạnh hiện có (dùng để chọn nhanh khi tìm giao điểm)
+  const availableSegmentOptions = useMemo(() => {
+    const list: { key: string; label: string; p1: string; p2: string }[] = [];
+    const seen = new Set<string>();
+    const addEdge = (p1: string, p2: string, label: string) => {
+      if (!allPointsMap[p1] || !allPointsMap[p2]) return;
+      const k = `${p1}->${p2}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      list.push({ key: k, label, p1, p2 });
+    };
+
+    customLines.forEach((l) => {
+      const kind = l.type === 'segment' ? 'Đoạn' : l.type === 'line' ? 'Đường' : l.type === 'ray' ? 'Tia' : '⊥';
+      addEdge(l.p1, l.p2, `${kind} ${allPointsMap[l.p1]?.name || l.p1}${allPointsMap[l.p2]?.name || l.p2}`);
+    });
+
+    if (selectedShape === 'pyramid_quad') {
+      addEdge('S', 'A', 'Cạnh SA');
+      addEdge('S', 'B', 'Cạnh SB');
+      addEdge('S', 'C', 'Cạnh SC');
+      addEdge('S', 'D', 'Cạnh SD');
+      addEdge('A', 'B', 'Cạnh AB');
+      addEdge('B', 'C', 'Cạnh BC');
+      addEdge('C', 'D', 'Cạnh CD');
+      addEdge('D', 'A', 'Cạnh DA');
+      addEdge('A', 'C', 'Đường chéo AC');
+      addEdge('B', 'D', 'Đường chéo BD');
+    } else if (selectedShape === 'pyramid_tri') {
+      addEdge('S', 'A', 'Cạnh SA');
+      addEdge('S', 'B', 'Cạnh SB');
+      addEdge('S', 'C', 'Cạnh SC');
+      addEdge('A', 'B', 'Cạnh AB');
+      addEdge('B', 'C', 'Cạnh BC');
+      addEdge('C', 'A', 'Cạnh CA');
+    } else if (selectedShape === 'cone') {
+      addEdge('S', 'A', 'Đường sinh SA');
+      addEdge('S', 'B', 'Đường sinh SB');
+      addEdge('S', 'O', 'Đường cao SO');
+      addEdge('A', 'B', 'Đường kính AB');
+    } else if (selectedShape === 'cube') {
+      addEdge('A', 'B', 'Cạnh AB');
+      addEdge('B', 'C', 'Cạnh BC');
+      addEdge('C', 'D', 'Cạnh CD');
+      addEdge('D', 'A', 'Cạnh DA');
+      addEdge('A1', 'B1', "Cạnh A'B'");
+      addEdge('B1', 'C1', "Cạnh B'C'");
+      addEdge('C1', 'D1', "Cạnh C'D'");
+      addEdge('D1', 'A1', "Cạnh D'A'");
+      addEdge('A', 'A1', "Cạnh AA'");
+      addEdge('B', 'B1', "Cạnh BB'");
+      addEdge('C', 'C1', "Cạnh CC'");
+      addEdge('D', 'D1', "Cạnh DD'");
+      addEdge('A', 'C', 'Đường chéo AC');
+      addEdge('B', 'D', 'Đường chéo BD');
+    } else if (selectedShape === 'prism') {
+      addEdge('A', 'B', 'Cạnh AB');
+      addEdge('B', 'C', 'Cạnh BC');
+      addEdge('C', 'A', 'Cạnh CA');
+      addEdge('A1', 'B1', "Cạnh A'B'");
+      addEdge('B1', 'C1', "Cạnh B'C'");
+      addEdge('C1', 'A1', "Cạnh C'A'");
+      addEdge('A', 'A1', "Cạnh AA'");
+      addEdge('B', 'B1', "Cạnh BB'");
+      addEdge('C', 'C1', "Cạnh CC'");
+    } else if (selectedShape === 'cylinder') {
+      addEdge('A', 'A1', "Đường sinh AA'");
+      addEdge('B', 'B1', "Đường sinh BB'");
+      addEdge('O', 'O1', "Trục OO'");
+      addEdge('A', 'B', 'Đường kính đáy AB');
+    }
+
+    return list;
+  }, [allPointsMap, customLines, selectedShape]);
 
   // ==========================================
   // HÀM CHIẾU 3D TOÁN HỌC (3D PROJECTION)
@@ -426,6 +551,385 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       if (!existingNames.includes(l)) return l;
     }
     return `M${existingNames.length + 1}`;
+  };
+
+  // Làm tròn tọa độ 1 chữ số thập phân (tránh -0)
+  const roundCoord1 = (val: number): number => {
+    const r = Math.round(val * 10) / 10;
+    return Object.is(r, -0) ? 0 : r;
+  };
+
+  // Tính giao điểm của 2 đoạn / đường thẳng trong không gian 3D
+  const computeSegmentIntersection3D = (
+    p1: Point3D | undefined,
+    p2: Point3D | undefined,
+    p3: Point3D | undefined,
+    p4: Point3D | undefined,
+    allowExtended: boolean
+  ): {
+    ok: boolean;
+    reason?: 'invalid' | 'parallel' | 'skew' | 'outside';
+    point?: { x: number; y: number; z: number };
+    t?: number;
+    s?: number;
+    message: string;
+  } => {
+    if (!p1 || !p2 || !p3 || !p4) {
+      return { ok: false, reason: 'invalid', message: 'Vui lòng chọn đủ các điểm cho 2 đoạn.' };
+    }
+    const u = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+    const v = { x: p4.x - p3.x, y: p4.y - p3.y, z: p4.z - p3.z };
+    const a = u.x * u.x + u.y * u.y + u.z * u.z;
+    const c = v.x * v.x + v.y * v.y + v.z * v.z;
+
+    if (a < 1e-4 || c < 1e-4) {
+      return { ok: false, reason: 'invalid', message: 'Hai đầu mút của mỗi đoạn thẳng phải khác nhau.' };
+    }
+
+    const b = u.x * v.x + u.y * v.y + u.z * v.z;
+    const w0 = { x: p1.x - p3.x, y: p1.y - p3.y, z: p1.z - p3.z };
+    const d = u.x * w0.x + u.y * w0.y + u.z * w0.z;
+    const e = v.x * w0.x + v.y * w0.y + v.z * w0.z;
+
+    const denom = a * c - b * b;
+    if (denom < 1e-5 * a * c) {
+      return {
+        ok: false,
+        reason: 'parallel',
+        message: 'Hai đoạn/đường thẳng song song hoặc trùng nhau, không có giao điểm duy nhất.',
+      };
+    }
+
+    const t = (b * e - c * d) / denom;
+    const s = (a * e - b * d) / denom;
+
+    const q1 = { x: p1.x + t * u.x, y: p1.y + t * u.y, z: p1.z + t * u.z };
+    const q2 = { x: p3.x + s * v.x, y: p3.y + s * v.y, z: p3.z + s * v.z };
+    const dist = Math.hypot(q1.x - q2.x, q1.y - q2.y, q1.z - q2.z);
+
+    if (dist > 3.0) {
+      return {
+        ok: false,
+        reason: 'skew',
+        message: `Hai đường thẳng chéo nhau trong không gian (khoảng cách ≈ ${roundCoord1(dist)}), không cắt nhau.`,
+      };
+    }
+
+    const pt = {
+      x: roundCoord1((q1.x + q2.x) / 2),
+      y: roundCoord1((q1.y + q2.y) / 2),
+      z: roundCoord1((q1.z + q2.z) / 2),
+    };
+
+    const onSeg1 = t >= -0.02 && t <= 1.02;
+    const onSeg2 = s >= -0.02 && s <= 1.02;
+
+    if (!allowExtended && (!onSeg1 || !onSeg2)) {
+      return {
+        ok: false,
+        reason: 'outside',
+        point: pt,
+        t,
+        s,
+        message: 'Hai đường đồng phẳng nhưng giao điểm nằm ngoài phạm vi 2 đoạn. Bật "Cho phép kéo dài" để tạo điểm này.',
+      };
+    }
+
+    return {
+      ok: true,
+      point: pt,
+      t,
+      s,
+      message:
+        onSeg1 && onSeg2
+          ? `Hai đoạn cắt nhau tại (${pt.x}, ${pt.y}, ${pt.z})`
+          : `Hai đường cắt nhau trên phần kéo dài tại (${pt.x}, ${pt.y}, ${pt.z})`,
+    };
+  };
+
+  // Tính giao điểm của 1 đường thẳng (L1L2) với 1 mặt phẳng (ABC) trong không gian 3D
+  const computeLinePlaneIntersection3D = (
+    l1: Point3D | undefined,
+    l2: Point3D | undefined,
+    pA: Point3D | undefined,
+    pB: Point3D | undefined,
+    pC: Point3D | undefined,
+    restrictToSegment: boolean
+  ): {
+    ok: boolean;
+    reason?: 'invalid' | 'parallel' | 'coincident' | 'outside';
+    point?: { x: number; y: number; z: number };
+    t?: number;
+    message: string;
+  } => {
+    if (!l1 || !l2 || !pA || !pB || !pC) {
+      return { ok: false, reason: 'invalid', message: 'Vui lòng chọn đủ điểm cho đường thẳng và mặt phẳng.' };
+    }
+
+    const u = { x: l2.x - l1.x, y: l2.y - l1.y, z: l2.z - l1.z };
+    const uLen = Math.hypot(u.x, u.y, u.z);
+    if (uLen < 1e-3) {
+      return { ok: false, reason: 'invalid', message: 'Hai điểm xác định đường thẳng phải khác nhau.' };
+    }
+
+    const e1 = { x: pB.x - pA.x, y: pB.y - pA.y, z: pB.z - pA.z };
+    const e2 = { x: pC.x - pA.x, y: pC.y - pA.y, z: pC.z - pA.z };
+    const n = {
+      x: e1.y * e2.z - e1.z * e2.y,
+      y: e1.z * e2.x - e1.x * e2.z,
+      z: e1.x * e2.y - e1.y * e2.x,
+    };
+    const nLen = Math.hypot(n.x, n.y, n.z);
+    if (nLen < 1e-3) {
+      return { ok: false, reason: 'invalid', message: 'Ba điểm tạo mặt phẳng bị trùng hoặc thẳng hàng.' };
+    }
+
+    const denom = n.x * u.x + n.y * u.y + n.z * u.z;
+    const cosAngle = Math.abs(denom) / (nLen * uLen);
+
+    const diff = { x: pA.x - l1.x, y: pA.y - l1.y, z: pA.z - l1.z };
+    const num = n.x * diff.x + n.y * diff.y + n.z * diff.z;
+
+    if (cosAngle < 1e-4) {
+      const distToPlane = Math.abs(num) / nLen;
+      if (distToPlane < 2.0) {
+        return {
+          ok: false,
+          reason: 'coincident',
+          message: 'Đường thẳng nằm trong mặt phẳng (có vô số giao điểm).',
+        };
+      }
+      return {
+        ok: false,
+        reason: 'parallel',
+        message: 'Đường thẳng song song với mặt phẳng, không có giao điểm.',
+      };
+    }
+
+    const t = num / denom;
+    const pt = {
+      x: roundCoord1(l1.x + t * u.x),
+      y: roundCoord1(l1.y + t * u.y),
+      z: roundCoord1(l1.z + t * u.z),
+    };
+
+    const onSeg = t >= -0.02 && t <= 1.02;
+    if (restrictToSegment && !onSeg) {
+      return {
+        ok: false,
+        reason: 'outside',
+        point: pt,
+        t,
+        message: 'Giao điểm nằm ngoài phạm vi đoạn thẳng. Bỏ chọn giới hạn đoạn để lấy giao điểm trên phần kéo dài.',
+      };
+    }
+
+    return {
+      ok: true,
+      point: pt,
+      t,
+      message: onSeg
+        ? `Đường thẳng cắt mặt phẳng ngay trên đoạn tại (${pt.x}, ${pt.y}, ${pt.z})`
+        : `Đường thẳng cắt mặt phẳng trên phần kéo dài tại (${pt.x}, ${pt.y}, ${pt.z})`,
+    };
+  };
+
+  // Kết quả tính thử thời gian thực cho 2 chế độ giao điểm
+  const segIntersectPreview = useMemo(() => {
+    if (activeCategory !== 'points' || pointCreationMode !== 'intersect_segments') return null;
+    return computeSegmentIntersection3D(
+      allPointsMap[seg1PointA],
+      allPointsMap[seg1PointB],
+      allPointsMap[seg2PointA],
+      allPointsMap[seg2PointB],
+      intersectSegExtend
+    );
+  }, [
+    activeCategory,
+    pointCreationMode,
+    allPointsMap,
+    seg1PointA,
+    seg1PointB,
+    seg2PointA,
+    seg2PointB,
+    intersectSegExtend,
+  ]);
+
+  const linePlaneIntersectPreview = useMemo(() => {
+    if (activeCategory !== 'points' || pointCreationMode !== 'intersect_line_plane') return null;
+    return computeLinePlaneIntersection3D(
+      allPointsMap[lpLinePointA],
+      allPointsMap[lpLinePointB],
+      allPointsMap[lpPlanePoint1],
+      allPointsMap[lpPlanePoint2],
+      allPointsMap[lpPlanePoint3],
+      lpRestrictSegment
+    );
+  }, [
+    activeCategory,
+    pointCreationMode,
+    allPointsMap,
+    lpLinePointA,
+    lpLinePointB,
+    lpPlanePoint1,
+    lpPlanePoint2,
+    lpPlanePoint3,
+    lpRestrictSegment,
+  ]);
+
+  // Tạo điểm giao của 2 đoạn / đường thẳng
+  const handleCreateSegmentIntersectionPoint = () => {
+    const res = computeSegmentIntersection3D(
+      allPointsMap[seg1PointA],
+      allPointsMap[seg1PointB],
+      allPointsMap[seg2PointA],
+      allPointsMap[seg2PointB],
+      intersectSegExtend
+    );
+
+    if (!res.ok || !res.point) {
+      setStatusMessage(res.message);
+      setTimeout(() => setStatusMessage(null), 4000);
+      return;
+    }
+
+    const name = intersectSegLabel.trim() || getNextFreePointName(allPointNames);
+    const n1 = allPointsMap[seg1PointA]?.name || seg1PointA;
+    const n2 = allPointsMap[seg1PointB]?.name || seg1PointB;
+    const n3 = allPointsMap[seg2PointA]?.name || seg2PointA;
+    const n4 = allPointsMap[seg2PointB]?.name || seg2PointB;
+
+    const newPoint: Point3D = {
+      name,
+      x: res.point.x,
+      y: res.point.y,
+      z: res.point.z,
+      label: `${name} (${n1}${n2} ∩ ${n3}${n4})`,
+      color: intersectSegColor || '#8b5cf6',
+      isCustom: true,
+    };
+
+    setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+
+    // Tùy chọn tự vẽ nét đứt nối từ đầu mút gần hơn tới giao điểm nếu nằm trên phần kéo dài
+    if (intersectSegDrawExt && res.t !== undefined && res.s !== undefined) {
+      const extLines: Line3D[] = [];
+      if (res.t < -0.02) {
+        extLines.push({
+          id: `line_ext1_${Date.now()}`,
+          type: 'segment',
+          p1: seg1PointA,
+          p2: name,
+          style: 'dashed',
+          color: intersectSegColor || '#8b5cf6',
+          label: `${n1}${name}`,
+        });
+      } else if (res.t > 1.02) {
+        extLines.push({
+          id: `line_ext1_${Date.now()}`,
+          type: 'segment',
+          p1: seg1PointB,
+          p2: name,
+          style: 'dashed',
+          color: intersectSegColor || '#8b5cf6',
+          label: `${n2}${name}`,
+        });
+      }
+      if (res.s < -0.02) {
+        extLines.push({
+          id: `line_ext2_${Date.now() + 1}`,
+          type: 'segment',
+          p1: seg2PointA,
+          p2: name,
+          style: 'dashed',
+          color: intersectSegColor || '#8b5cf6',
+          label: `${n3}${name}`,
+        });
+      } else if (res.s > 1.02) {
+        extLines.push({
+          id: `line_ext2_${Date.now() + 1}`,
+          type: 'segment',
+          p1: seg2PointB,
+          p2: name,
+          style: 'dashed',
+          color: intersectSegColor || '#8b5cf6',
+          label: `${n4}${name}`,
+        });
+      }
+      if (extLines.length > 0) {
+        setCustomLines((prev) => [...prev, ...extLines]);
+      }
+    }
+
+    setSelectedPointName(name);
+    setStatusMessage(`Đã tạo giao điểm [${name}] = ${n1}${n2} ∩ ${n3}${n4} tại (${res.point.x}, ${res.point.y}, ${res.point.z})!`);
+    setTimeout(() => setStatusMessage(null), 4000);
+
+    const nextName = getNextFreePointName([...allPointNames, name]);
+    setIntersectSegLabel(nextName);
+  };
+
+  // Tạo điểm giao của 1 đường thẳng với 1 mặt phẳng
+  const handleCreateLinePlaneIntersectionPoint = () => {
+    const res = computeLinePlaneIntersection3D(
+      allPointsMap[lpLinePointA],
+      allPointsMap[lpLinePointB],
+      allPointsMap[lpPlanePoint1],
+      allPointsMap[lpPlanePoint2],
+      allPointsMap[lpPlanePoint3],
+      lpRestrictSegment
+    );
+
+    if (!res.ok || !res.point) {
+      setStatusMessage(res.message);
+      setTimeout(() => setStatusMessage(null), 4000);
+      return;
+    }
+
+    const name = intersectLPLabel.trim() || getNextFreePointName(allPointNames);
+    const lA = allPointsMap[lpLinePointA]?.name || lpLinePointA;
+    const lB = allPointsMap[lpLinePointB]?.name || lpLinePointB;
+    const p1N = allPointsMap[lpPlanePoint1]?.name || lpPlanePoint1;
+    const p2N = allPointsMap[lpPlanePoint2]?.name || lpPlanePoint2;
+    const p3N = allPointsMap[lpPlanePoint3]?.name || lpPlanePoint3;
+
+    const newPoint: Point3D = {
+      name,
+      x: res.point.x,
+      y: res.point.y,
+      z: res.point.z,
+      label: `${name} (${lA}${lB} ∩ (${p1N}${p2N}${p3N}))`,
+      color: intersectLPColor || '#e11d48',
+      isCustom: true,
+    };
+
+    setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+
+    if (lpDrawExtension && res.t !== undefined && (res.t < -0.02 || res.t > 1.02)) {
+      const anchorPt = res.t < -0.02 ? lpLinePointA : lpLinePointB;
+      const anchorName = allPointsMap[anchorPt]?.name || anchorPt;
+      setCustomLines((prev) => [
+        ...prev,
+        {
+          id: `line_lp_ext_${Date.now()}`,
+          type: 'segment',
+          p1: anchorPt,
+          p2: name,
+          style: 'dashed',
+          color: intersectLPColor || '#e11d48',
+          label: `${anchorName}${name}`,
+        },
+      ]);
+    }
+
+    setSelectedPointName(name);
+    setStatusMessage(
+      `Đã tạo giao điểm [${name}] = ${lA}${lB} ∩ (${p1N}${p2N}${p3N}) tại (${res.point.x}, ${res.point.y}, ${res.point.z})!`
+    );
+    setTimeout(() => setStatusMessage(null), 4000);
+
+    const nextName = getNextFreePointName([...allPointNames, name]);
+    setIntersectLPLabel(nextName);
   };
 
   // Tính toán tia chiếu 3D từ điểm ảnh màn hình SVG (svgX, svgY)
@@ -1154,11 +1658,11 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
           {/* ========================================================= */}
           {activeCategory === 'points' && (
             <div className="space-y-3.5 animate-in fade-in">
-              <div className="flex gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 font-bold text-[11px]">
+              <div className="grid grid-cols-6 gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 font-bold text-[10.5px]">
                 <button
                   type="button"
                   onClick={() => setPointCreationMode('ratio')}
-                  className={`flex-1 py-1 rounded-lg transition-all ${
+                  className={`col-span-2 py-1.5 px-1 rounded-lg transition-all ${
                     pointCreationMode === 'ratio'
                       ? 'bg-white text-emerald-700 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -1169,7 +1673,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                 <button
                   type="button"
                   onClick={() => setPointCreationMode('centroid')}
-                  className={`flex-1 py-1 rounded-lg transition-all ${
+                  className={`col-span-2 py-1.5 px-1 rounded-lg transition-all ${
                     pointCreationMode === 'centroid'
                       ? 'bg-white text-amber-700 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -1180,14 +1684,38 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                 <button
                   type="button"
                   onClick={() => setPointCreationMode('manual')}
-                  className={`flex-1 py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                  className={`col-span-2 py-1.5 px-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                     pointCreationMode === 'manual'
                       ? 'bg-white text-emerald-700 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <MousePointerClick size={12} className="text-emerald-600" />
-                  <span>Điểm Tự Do (Ấn Vào Hình)</span>
+                  <MousePointerClick size={12} className="text-emerald-600 shrink-0" />
+                  <span>Điểm Tự Do</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPointCreationMode('intersect_segments')}
+                  className={`col-span-3 py-1.5 px-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                    pointCreationMode === 'intersect_segments'
+                      ? 'bg-white text-violet-700 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Crosshair size={12} className="text-violet-600 shrink-0" />
+                  <span>Giao 2 Đoạn</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPointCreationMode('intersect_line_plane')}
+                  className={`col-span-3 py-1.5 px-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                    pointCreationMode === 'intersect_line_plane'
+                      ? 'bg-white text-rose-700 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Target size={12} className="text-rose-600 shrink-0" />
+                  <span>Giao Đường & Mặt Phẳng</span>
                 </button>
               </div>
 
@@ -1349,6 +1877,360 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       <Plus size={14} />
                       <span>Tạo Trọng Tâm G</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tab 2b: Giao điểm của 2 đoạn thẳng */}
+              {pointCreationMode === 'intersect_segments' && (
+                <div className="p-3.5 rounded-2xl bg-violet-50/70 border border-violet-200 space-y-3">
+                  <span className="text-[10.5px] font-bold text-violet-900 block">
+                    Tìm Giao Điểm Của 2 Đoạn Thẳng Trong Không Gian:
+                  </span>
+
+                  {/* Đoạn 1 */}
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-violet-200 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold text-violet-800">Đoạn 1:</span>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const found = availableSegmentOptions.find((o) => o.key === e.target.value);
+                          if (found) {
+                            setSeg1PointA(found.p1);
+                            setSeg1PointB(found.p2);
+                          }
+                        }}
+                        className="h-6 px-1.5 rounded-lg border border-violet-200 bg-violet-50 text-[10px] font-semibold text-violet-800 max-w-[155px]"
+                      >
+                        <option value="">Chọn nhanh cạnh/đoạn...</option>
+                        {availableSegmentOptions.map((opt) => (
+                          <option key={opt.key} value={opt.key}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={seg1PointA}
+                        onChange={(e) => setSeg1PointA(e.target.value)}
+                        className="h-8 px-2 rounded-xl border border-violet-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={seg1PointB}
+                        onChange={(e) => setSeg1PointB(e.target.value)}
+                        className="h-8 px-2 rounded-xl border border-violet-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Đoạn 2 */}
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-violet-200 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold text-violet-800">Đoạn 2:</span>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const found = availableSegmentOptions.find((o) => o.key === e.target.value);
+                          if (found) {
+                            setSeg2PointA(found.p1);
+                            setSeg2PointB(found.p2);
+                          }
+                        }}
+                        className="h-6 px-1.5 rounded-lg border border-violet-200 bg-violet-50 text-[10px] font-semibold text-violet-800 max-w-[155px]"
+                      >
+                        <option value="">Chọn nhanh cạnh/đoạn...</option>
+                        {availableSegmentOptions.map((opt) => (
+                          <option key={opt.key} value={opt.key}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={seg2PointA}
+                        onChange={(e) => setSeg2PointA(e.target.value)}
+                        className="h-8 px-2 rounded-xl border border-violet-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={seg2PointB}
+                        onChange={(e) => setSeg2PointB(e.target.value)}
+                        className="h-8 px-2 rounded-xl border border-violet-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Tùy chọn mở rộng */}
+                  <div className="space-y-1.5 text-[10.5px] font-semibold text-slate-700">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={intersectSegExtend}
+                        onChange={(e) => setIntersectSegExtend(e.target.checked)}
+                        className="rounded text-violet-600 focus:ring-violet-500"
+                      />
+                      <span>Cho phép cắt trên phần kéo dài (đường thẳng)</span>
+                    </label>
+                    {intersectSegExtend && (
+                      <label className="flex items-center gap-2 cursor-pointer pl-5 text-[10px] text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={intersectSegDrawExt}
+                          onChange={(e) => setIntersectSegDrawExt(e.target.checked)}
+                          className="rounded text-violet-600 focus:ring-violet-500"
+                        />
+                        <span>Tự động vẽ nét đứt nối tới giao điểm</span>
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Xem trước kết quả tính toán */}
+                  {segIntersectPreview && (
+                    <div
+                      className={`px-2.5 py-2 rounded-xl text-[10.5px] font-bold border ${
+                        segIntersectPreview.ok
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                          : 'bg-amber-50 border-amber-200 text-amber-800'
+                      }`}
+                    >
+                      {segIntersectPreview.message}
+                    </div>
+                  )}
+
+                  {/* Tên điểm, màu & nút tạo */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-600 shrink-0">Tên:</span>
+                    <input
+                      type="text"
+                      value={intersectSegLabel}
+                      onChange={(e) => setIntersectSegLabel(e.target.value.toUpperCase())}
+                      maxLength={4}
+                      className="w-14 h-8 px-2 rounded-xl border border-violet-300 font-bold text-center text-xs bg-white text-slate-900"
+                    />
+                    <input
+                      type="color"
+                      value={intersectSegColor}
+                      onChange={(e) => setIntersectSegColor(e.target.value)}
+                      className="w-7 h-7 rounded-lg cursor-pointer border border-violet-300 bg-transparent shrink-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateSegmentIntersectionPoint}
+                      className="flex-1 h-8 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-extrabold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Plus size={14} />
+                      <span>Tạo Giao Điểm</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tab 2c: Giao điểm của 1 đường thẳng với 1 mặt phẳng */}
+              {pointCreationMode === 'intersect_line_plane' && (
+                <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 space-y-3">
+                  <span className="text-[10.5px] font-bold text-rose-900 block">
+                    Tìm Giao Điểm Của Đường Thẳng (d) Và Mặt Phẳng (P):
+                  </span>
+
+                  {/* Đường thẳng (d) */}
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-rose-200 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold text-rose-800">Đường thẳng (đi qua 2 điểm):</span>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const found = availableSegmentOptions.find((o) => o.key === e.target.value);
+                          if (found) {
+                            setLpLinePointA(found.p1);
+                            setLpLinePointB(found.p2);
+                          }
+                        }}
+                        className="h-6 px-1.5 rounded-lg border border-rose-200 bg-rose-50 text-[10px] font-semibold text-rose-800 max-w-[145px]"
+                      >
+                        <option value="">Chọn nhanh đường...</option>
+                        {availableSegmentOptions.map((opt) => (
+                          <option key={opt.key} value={opt.key}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={lpLinePointA}
+                        onChange={(e) => setLpLinePointA(e.target.value)}
+                        className="h-8 px-2 rounded-xl border border-rose-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={lpLinePointB}
+                        onChange={(e) => setLpLinePointB(e.target.value)}
+                        className="h-8 px-2 rounded-xl border border-rose-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Mặt phẳng (P) */}
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-rose-200 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold text-rose-800">Mặt phẳng (qua 3 điểm):</span>
+                      {customPlanes.length > 0 && (
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const pl = customPlanes.find((p) => p.id === e.target.value);
+                            if (pl && pl.pointNames.length >= 3) {
+                              setLpPlanePoint1(pl.pointNames[0]);
+                              setLpPlanePoint2(pl.pointNames[1]);
+                              setLpPlanePoint3(pl.pointNames[2]);
+                            }
+                          }}
+                          className="h-6 px-1.5 rounded-lg border border-rose-200 bg-rose-50 text-[10px] font-semibold text-rose-800 max-w-[140px]"
+                        >
+                          <option value="">Lấy từ mặt đã tạo...</option>
+                          {customPlanes.map((pl) => (
+                            <option key={pl.id} value={pl.id}>
+                              Mặt {pl.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <select
+                        value={lpPlanePoint1}
+                        onChange={(e) => setLpPlanePoint1(e.target.value)}
+                        className="h-8 px-1.5 rounded-xl border border-rose-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={lpPlanePoint2}
+                        onChange={(e) => setLpPlanePoint2(e.target.value)}
+                        className="h-8 px-1.5 rounded-xl border border-rose-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={lpPlanePoint3}
+                        onChange={(e) => setLpPlanePoint3(e.target.value)}
+                        className="h-8 px-1.5 rounded-xl border border-rose-300 font-bold text-xs bg-white text-slate-800"
+                      >
+                        {allPointNames.map((n) => (
+                          <option key={n} value={n}>
+                            {allPointsMap[n]?.name || n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Tùy chọn đoạn / kéo dài */}
+                  <div className="space-y-1.5 text-[10.5px] font-semibold text-slate-700">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={lpRestrictSegment}
+                        onChange={(e) => setLpRestrictSegment(e.target.checked)}
+                        className="rounded text-rose-600 focus:ring-rose-500"
+                      />
+                      <span>Chỉ lấy giao điểm nằm trong đoạn thẳng</span>
+                    </label>
+                    {!lpRestrictSegment && (
+                      <label className="flex items-center gap-2 cursor-pointer pl-5 text-[10px] text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={lpDrawExtension}
+                          onChange={(e) => setLpDrawExtension(e.target.checked)}
+                          className="rounded text-rose-600 focus:ring-rose-500"
+                        />
+                        <span>Tự động vẽ nét đứt nối tới giao điểm</span>
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Xem trước kết quả tính toán */}
+                  {linePlaneIntersectPreview && (
+                    <div
+                      className={`px-2.5 py-2 rounded-xl text-[10.5px] font-bold border ${
+                        linePlaneIntersectPreview.ok
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                          : 'bg-amber-50 border-amber-200 text-amber-800'
+                      }`}
+                    >
+                      {linePlaneIntersectPreview.message}
+                    </div>
+                  )}
+
+                  {/* Tên điểm, màu & nút tạo */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-600 shrink-0">Tên:</span>
+                    <input
+                      type="text"
+                      value={intersectLPLabel}
+                      onChange={(e) => setIntersectLPLabel(e.target.value.toUpperCase())}
+                      maxLength={4}
+                      className="w-14 h-8 px-2 rounded-xl border border-rose-300 font-bold text-center text-xs bg-white text-slate-900"
+                    />
+                    <input
+                      type="color"
+                      value={intersectLPColor}
+                      onChange={(e) => setIntersectLPColor(e.target.value)}
+                      className="w-7 h-7 rounded-lg cursor-pointer border border-rose-300 bg-transparent shrink-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateLinePlaneIntersectionPoint}
+                      className="flex-1 h-8 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Plus size={14} />
+                      <span>Tạo Giao Điểm</span>
                     </button>
                   </div>
                 </div>
@@ -2875,7 +3757,55 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
               );
             })}
 
-            {/* 4. CON TRỎ NGẮM TẠO ĐIỂM TỰ DO THỜI GIAN THỰC */}
+            {/* 4. XEM TRƯỚC GIAO ĐIỂM (KHI ĐANG CHỌN GIAO 2 ĐOẠN HOẶC GIAO ĐƯỜNG - MẶT) */}
+            {(segIntersectPreview?.ok && segIntersectPreview.point) || (linePlaneIntersectPreview?.ok && linePlaneIntersectPreview.point) ? (() => {
+              const previewPt =
+                pointCreationMode === 'intersect_segments'
+                  ? segIntersectPreview?.point
+                  : linePlaneIntersectPreview?.point;
+              const previewColor =
+                pointCreationMode === 'intersect_segments' ? intersectSegColor : intersectLPColor;
+              const previewLabel =
+                pointCreationMode === 'intersect_segments'
+                  ? intersectSegLabel.trim() || 'I'
+                  : intersectLPLabel.trim() || 'K';
+              if (!previewPt) return null;
+              const p = project3D(previewPt.x, previewPt.y, previewPt.z);
+              return (
+                <g className="pointer-events-none select-none">
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r="10"
+                    fill="none"
+                    stroke={previewColor}
+                    strokeWidth="1.6"
+                    strokeDasharray="3 2"
+                  />
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r="4"
+                    fill={previewColor}
+                    fillOpacity="0.65"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    x={p.x + 11}
+                    y={p.y - 5}
+                    fill={previewColor}
+                    fontSize="10"
+                    fontWeight="bold"
+                    className="font-mono"
+                  >
+                    {previewLabel}?
+                  </text>
+                </g>
+              );
+            })() : null}
+
+            {/* 5. CON TRỎ NGẮM TẠO ĐIỂM TỰ DO THỜI GIAN THỰC */}
             {isFreePointMode && hover3DPoint && !draggingPointName && (
               <g className="pointer-events-none select-none">
                 {/* Vòng tròn xoay ngắm tọa độ */}
