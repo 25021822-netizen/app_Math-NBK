@@ -14,6 +14,8 @@ import {
   ClassroomLesson,
   ClassroomChatMessage,
   AutoApprovalSettings,
+  ScoreVisibilityMode,
+  canStudentViewExamScore,
 } from './types/math';
 import {
   INITIAL_USER_PROFILE,
@@ -187,7 +189,13 @@ export default function App() {
       targetTab: 'classroom',
     },
   ]);
-  const [activeToast, setActiveToast] = useState<PushNotificationItem | null>(null);
+  const [floatingToasts, setFloatingToasts] = useState<PushNotificationItem[]>([]);
+  const [externalClassJump, setExternalClassJump] = useState<{
+    classId: string;
+    tab?: 'curriculum' | 'chat';
+    lessonId?: string;
+    nonce: number;
+  } | null>(null);
   const deletedExamIdsRef = useRef<Set<string>>(new Set());
 
   // Theo dõi thời điểm đọc tin nhắn của từng nhóm lớp để tính số tin chưa đọc (Unread badge)
@@ -287,70 +295,226 @@ export default function App() {
     return count;
   }, [currentTab, classrooms, classroomMessages, userProfile, lastReadChatMap, isAuthenticated]);
 
-  // Tham chiếu người dùng và nhóm lớp hiện tại cho bộ xử lý Real-Time Polling
+  // Tham chiếu trạng thái mới nhất cho bộ xử lý Real-Time Polling
   const userProfileRef = useRef(userProfile);
   useEffect(() => {
     userProfileRef.current = userProfile;
   }, [userProfile]);
+
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   const classroomsRef = useRef(classrooms);
   useEffect(() => {
     classroomsRef.current = classrooms;
   }, [classrooms]);
 
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const examsListRef = useRef(examsList);
+  useEffect(() => {
+    examsListRef.current = examsList;
+  }, [examsList]);
 
-  // Lắng nghe sự kiện thông báo đẩy trong hệ thống
+  const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const dismissFloatingToast = (toastId: string) => {
+    const existingTimer = toastTimersRef.current.get(toastId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      toastTimersRef.current.delete(toastId);
+    }
+    setFloatingToasts((prev) => prev.filter((t) => t.id !== toastId));
+  };
+
+  // Lắng nghe sự kiện thông báo đẩy trong hệ thống (hiển thị dạng stack tối đa 3 thông báo nổi an toàn cho mobile)
   useEffect(() => {
     const handler = (e: Event) => {
       const customEvent = e as CustomEvent<PushNotificationItem>;
-      if (customEvent.detail) {
-        setNotifications((prev) => [customEvent.detail, ...prev]);
-        // Chỉ hiển thị popup Toast khi người dùng ĐANG BẬT thông báo (!isMuted)
-        if (!customEvent.detail.isMuted) {
-          if (toastTimerRef.current) {
-            clearTimeout(toastTimerRef.current);
-          }
-          setActiveToast(customEvent.detail);
-          toastTimerRef.current = setTimeout(() => {
-            setActiveToast((curr) => (curr?.id === customEvent.detail.id ? null : curr));
-            toastTimerRef.current = null;
-          }, 6000);
-        }
+      const detail = customEvent.detail;
+      if (!detail) return;
+
+      setNotifications((prev) => [detail, ...prev]);
+
+      if (!detail.isMuted) {
+        setFloatingToasts((prev) => [detail, ...prev.filter((t) => t.id !== detail.id)].slice(0, 3));
+        const existingTimer = toastTimersRef.current.get(detail.id);
+        if (existingTimer) clearTimeout(existingTimer);
+        const duration =
+          detail.type === 'lesson_published' || detail.type === 'exam_published' ? 12000 : 7000;
+        const timer = setTimeout(() => {
+          toastTimersRef.current.delete(detail.id);
+          setFloatingToasts((curr) => curr.filter((t) => t.id !== detail.id));
+        }, duration);
+        toastTimersRef.current.set(detail.id, timer);
       }
     };
     window.addEventListener('math_nbk_push_notification', handler);
     return () => {
       window.removeEventListener('math_nbk_push_notification', handler);
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current);
-      }
+      toastTimersRef.current.forEach((timer) => clearTimeout(timer));
+      toastTimersRef.current.clear();
     };
   }, []);
 
   // Tự động đồng bộ Real-Time cơ sở dữ liệu trên máy chủ (Sync đa thiết bị / khác máy)
   useEffect(() => {
+    const sampleLessonIdSet = new Set(SAMPLE_CLASSROOM_LESSONS.map((l) => l.id));
+    const RECENT_WINDOW_MS = 3 * 60 * 1000;
+
     let knownPendingIds = new Set<string>();
-    let knownLessonIds = new Set<string>(SAMPLE_CLASSROOM_LESSONS.map((l) => l.id));
-    let knownExamIds = new Set<string>();
+    let hasLoadedUsersOnce = false;
+    let knownLessonIds = new Set<string>();
+    let hasLoadedLessonsOnce = false;
+    let knownClassExamPairs = new Set<string>();
+    let hasLoadedAssignmentsOnce = false;
+    let latestRemoteClasses: Classroom[] = classroomsRef.current;
+    let latestRemoteExams: Exam[] = examsListRef.current;
     let knownChatMessageIds = new Set<string>();
     let isInitialMessageLoad = true;
+
+    const readSeenPosts = (uid: string): { lessons: Set<string>; exams: Set<string> } => {
+      try {
+        const raw = localStorage.getItem(`math_nbk_seen_posts_${uid}`);
+        if (!raw) return { lessons: new Set(), exams: new Set() };
+        const parsed = JSON.parse(raw);
+        return {
+          lessons: new Set(Array.isArray(parsed?.lessons) ? parsed.lessons : []),
+          exams: new Set(Array.isArray(parsed?.exams) ? parsed.exams : []),
+        };
+      } catch {
+        return { lessons: new Set(), exams: new Set() };
+      }
+    };
+
+    const markPostSeen = (uid: string, kind: 'lessons' | 'exams', postId: string) => {
+      if (!uid || !postId) return;
+      try {
+        const current = readSeenPosts(uid);
+        current[kind].add(postId);
+        const trimArr = (s: Set<string>) => Array.from(s).slice(-250);
+        localStorage.setItem(
+          `math_nbk_seen_posts_${uid}`,
+          JSON.stringify({
+            lessons: trimArr(current.lessons),
+            exams: trimArr(current.exams),
+          })
+        );
+      } catch {}
+    };
+
+    const isStudentMember = (cls: Classroom | undefined | null, user: UserProfile): boolean => {
+      if (!cls || user.role !== 'student') return false;
+      const lowerId = (user.id || '').toLowerCase().trim();
+      const lowerEmail = (user.email || '').toLowerCase().trim();
+      return Boolean(
+        cls.studentIds &&
+          cls.studentIds.some((sid) => {
+            const ls = (sid || '').toLowerCase().trim();
+            return (lowerId && ls === lowerId) || (lowerEmail && ls === lowerEmail);
+          })
+      );
+    };
+
+    const evaluateStudentExamNotifications = (classes: Classroom[], exams: Exam[]) => {
+      const curUser = userProfileRef.current;
+      const isLoggedInStudent = Boolean(isAuthenticatedRef.current && curUser?.id && curUser.role === 'student');
+
+      const currentPairs: Array<{ pairKey: string; cls: Classroom; exam: Exam }> = [];
+      const seenPairsInLoop = new Set<string>();
+
+      classes.forEach((cls) => {
+        const assignedSet = new Set<string>(cls.assignedExamIds || []);
+        exams.forEach((ex) => {
+          if (ex.targetClassIds?.includes(cls.id) && ex.distributionType !== 'repository') {
+            assignedSet.add(ex.id);
+          }
+        });
+        assignedSet.forEach((examId) => {
+          const examObj = exams.find((e) => e.id === examId);
+          if (!examObj || examObj.distributionType === 'repository') return;
+          const pairKey = `${cls.id}::${examId}`;
+          if (seenPairsInLoop.has(pairKey)) return;
+          seenPairsInLoop.add(pairKey);
+          currentPairs.push({ pairKey, cls, exam: examObj });
+        });
+      });
+
+      if (!hasLoadedAssignmentsOnce) {
+        if (classes.length > 0 || exams.length > 0) {
+          if (isLoggedInStudent) {
+            const seen = readSeenPosts(curUser.id);
+            const nowMs = Date.now();
+            currentPairs.forEach(({ pairKey, cls, exam }) => {
+              knownClassExamPairs.add(pairKey);
+              if (!isStudentMember(cls, curUser) || isExamRecentlySaved(exam.id) || seen.exams.has(exam.id)) {
+                return;
+              }
+              const createdMs = exam.createdAt ? new Date(exam.createdAt).getTime() : 0;
+              const isBrandNew = Number.isFinite(createdMs) && createdMs > 0 && nowMs - createdMs <= RECENT_WINDOW_MS;
+              if (isBrandNew) {
+                markPostSeen(curUser.id, 'exams', exam.id);
+                triggerPushNotification(`Đề thi mới: ${exam.title}`, {
+                  message: `Giáo viên vừa giao đề thi "${exam.title}" cho lớp ${cls.name} (${exam.durationMinutes} phút · ${exam.questions.length} câu). Nhấn để làm bài ngay!`,
+                  type: 'exam_published',
+                  targetTab: 'exam',
+                  targetClassId: cls.id,
+                  examId: exam.id,
+                  actionLabel: 'Làm bài ngay',
+                });
+              } else {
+                markPostSeen(curUser.id, 'exams', exam.id);
+              }
+            });
+          } else {
+            currentPairs.forEach(({ pairKey }) => knownClassExamPairs.add(pairKey));
+          }
+          hasLoadedAssignmentsOnce = true;
+        }
+        return;
+      }
+
+      const freshPairs = currentPairs.filter(({ pairKey }) => !knownClassExamPairs.has(pairKey));
+      if (freshPairs.length > 0 && isLoggedInStudent) {
+        const seen = readSeenPosts(curUser.id);
+        freshPairs.forEach(({ pairKey, cls, exam }) => {
+          knownClassExamPairs.add(pairKey);
+          if (!isStudentMember(cls, curUser) || isExamRecentlySaved(exam.id) || seen.exams.has(exam.id)) {
+            return;
+          }
+          seen.exams.add(exam.id);
+          markPostSeen(curUser.id, 'exams', exam.id);
+          triggerPushNotification(`Đề thi mới: ${exam.title}`, {
+            message: `Giáo viên vừa giao đề thi "${exam.title}" cho lớp ${cls.name} (${exam.durationMinutes} phút · ${exam.questions.length} câu). Nhấn để làm bài ngay!`,
+            type: 'exam_published',
+            targetTab: 'exam',
+            targetClassId: cls.id,
+            examId: exam.id,
+            actionLabel: 'Làm bài ngay',
+          });
+        });
+      }
+      currentPairs.forEach(({ pairKey }) => knownClassExamPairs.add(pairKey));
+    };
 
     const unsubscribe = startDbPolling((remoteData) => {
       if (remoteData.users && Array.isArray(remoteData.users)) {
         const freshPending = remoteData.users.filter((u) => u.status === 'pending_approval');
-        // Nếu có yêu cầu đăng ký mới từ thiết bị khác
-        const newArrivals = freshPending.filter((u) => !knownPendingIds.has(u.id));
-        if (newArrivals.length > 0 && knownPendingIds.size > 0) {
-          newArrivals.forEach((u) => {
-            triggerPushNotification('Yêu Cầu Cấp Tài Khoản Mới', {
-              message: `Người dùng ${u.name} (${u.role === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${u.id}) vừa gửi yêu cầu đăng ký. Vui lòng vào duyệt.`,
-              type: 'system',
-              targetTab: 'admin_dashboard',
+        const curUser = userProfileRef.current;
+        if (hasLoadedUsersOnce && isAuthenticatedRef.current && curUser?.role === 'admin') {
+          const newArrivals = freshPending.filter((u) => !knownPendingIds.has(u.id));
+          if (newArrivals.length > 0) {
+            newArrivals.forEach((u) => {
+              triggerPushNotification('Yêu Cầu Cấp Tài Khoản Mới', {
+                message: `Người dùng ${u.name} (${u.role === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ID: ${u.id}) vừa gửi yêu cầu đăng ký. Vui lòng vào duyệt.`,
+                type: 'system',
+                targetTab: 'admin_dashboard',
+              });
             });
-          });
+          }
         }
         knownPendingIds = new Set(freshPending.map((u) => u.id));
+        hasLoadedUsersOnce = true;
 
         setAllUsers(remoteData.users);
 
@@ -384,14 +548,15 @@ export default function App() {
       }
 
       if (remoteData.classrooms && Array.isArray(remoteData.classrooms)) {
-        setClassrooms(
-          remoteData.classrooms.map((c) => ({
-            ...c,
-            assignedExamIds: (c.assignedExamIds || []).filter(
-              (eid) => !deletedExamIdsRef.current.has(eid) && !isExamDeletedLocally(eid)
-            ),
-          }))
-        );
+        const sanitizedClasses = remoteData.classrooms.map((c) => ({
+          ...c,
+          assignedExamIds: (c.assignedExamIds || []).filter(
+            (eid) => !deletedExamIdsRef.current.has(eid) && !isExamDeletedLocally(eid)
+          ),
+        }));
+        latestRemoteClasses = sanitizedClasses;
+        setClassrooms(sanitizedClasses);
+        evaluateStudentExamNotifications(latestRemoteClasses, latestRemoteExams);
       }
 
       if (remoteData.submissions && Array.isArray(remoteData.submissions)) {
@@ -402,25 +567,70 @@ export default function App() {
         setCheatLogs(remoteData.cheatLogs);
       }
 
-      // Đồng bộ Bài học chuyên đề tức thời giữa các máy (Giáo viên đăng bài -> Học sinh nhận thông báo)
+      // Đồng bộ Bài học chuyên đề tức thời giữa các máy (Giáo viên đăng bài -> Học sinh nhận thông báo nổi)
       if (remoteData.classroomLessons && Array.isArray(remoteData.classroomLessons)) {
         const lessonMap = new Map<string, ClassroomLesson>();
         SAMPLE_CLASSROOM_LESSONS.forEach((l) => lessonMap.set(l.id, l));
         remoteData.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
         const mergedLessons = Array.from(lessonMap.values());
 
-        // Nếu có bài học mới được đăng tải từ máy giáo viên
-        const freshLessonArrivals = mergedLessons.filter((l) => !knownLessonIds.has(l.id));
-        if (freshLessonArrivals.length > 0 && knownLessonIds.size > 0) {
-          freshLessonArrivals.forEach((l) => {
-            triggerPushNotification(`Giáo viên vừa đăng bài học mới: ${l.title}`, {
-              message: `Thầy cô vừa đăng tải bài học "${l.title}" (${l.chapter}). Nhấn để mở xem ngay!`,
-              type: 'system',
-              targetTab: 'classroom',
+        const remoteNonSampleLessons = remoteData.classroomLessons.filter(
+          (l) => l && l.id && !sampleLessonIdSet.has(l.id)
+        );
+        const curUser = userProfileRef.current;
+        const isLoggedInStudent = Boolean(isAuthenticatedRef.current && curUser?.id && curUser.role === 'student');
+        const activeClasses = latestRemoteClasses.length > 0 ? latestRemoteClasses : classroomsRef.current;
+
+        if (!hasLoadedLessonsOnce) {
+          if (isLoggedInStudent) {
+            const seen = readSeenPosts(curUser.id);
+            const nowMs = Date.now();
+            remoteNonSampleLessons.forEach((l) => {
+              knownLessonIds.add(l.id);
+              const matchedClass = activeClasses.find((c) => c.id === l.classId);
+              if (!matchedClass || !isStudentMember(matchedClass, curUser) || seen.lessons.has(l.id)) {
+                return;
+              }
+              const pubMs = l.publishedAt ? new Date(l.publishedAt).getTime() : 0;
+              const isBrandNew = Number.isFinite(pubMs) && pubMs > 0 && nowMs - pubMs <= RECENT_WINDOW_MS;
+              markPostSeen(curUser.id, 'lessons', l.id);
+              if (isBrandNew) {
+                triggerPushNotification(`Bài học mới: ${l.title}`, {
+                  message: `Thầy cô vừa đăng tải bài học "${l.title}" (${l.chapter}) trong lớp ${matchedClass.name}. Nhấn để mở xem ngay!`,
+                  type: 'lesson_published',
+                  targetTab: 'classroom',
+                  targetClassId: matchedClass.id,
+                  lessonId: l.id,
+                  actionLabel: 'Xem bài học',
+                });
+              }
             });
-          });
+          } else {
+            remoteNonSampleLessons.forEach((l) => knownLessonIds.add(l.id));
+          }
+          hasLoadedLessonsOnce = true;
+        } else {
+          const freshLessonArrivals = remoteNonSampleLessons.filter((l) => !knownLessonIds.has(l.id));
+          if (freshLessonArrivals.length > 0 && isLoggedInStudent) {
+            const seen = readSeenPosts(curUser.id);
+            freshLessonArrivals.forEach((l) => {
+              const matchedClass = activeClasses.find((c) => c.id === l.classId);
+              if (!matchedClass || !isStudentMember(matchedClass, curUser) || seen.lessons.has(l.id)) {
+                return;
+              }
+              markPostSeen(curUser.id, 'lessons', l.id);
+              triggerPushNotification(`Bài học mới: ${l.title}`, {
+                message: `Thầy cô vừa đăng tải bài học "${l.title}" (${l.chapter}) trong lớp ${matchedClass.name}. Nhấn để mở xem ngay!`,
+                type: 'lesson_published',
+                targetTab: 'classroom',
+                targetClassId: matchedClass.id,
+                lessonId: l.id,
+                actionLabel: 'Xem bài học',
+              });
+            });
+          }
+          remoteNonSampleLessons.forEach((l) => knownLessonIds.add(l.id));
         }
-        knownLessonIds = new Set(mergedLessons.map((l) => l.id));
         setClassroomLessons(mergedLessons);
       }
 
@@ -433,7 +643,7 @@ export default function App() {
         });
       }
 
-      // Đồng bộ Đề thi tức thời giữa các máy (Giáo viên đăng đề -> Học sinh nhận thông báo & vào làm ngay)
+      // Đồng bộ Đề thi tức thời giữa các máy (Giáo viên đăng đề -> Học sinh nhận thông báo nổi & vào làm ngay)
       if (remoteData.exams && Array.isArray(remoteData.exams)) {
         const validExams = remoteData.exams.filter(
           (ex) =>
@@ -444,21 +654,8 @@ export default function App() {
             !isExamDeletedLocally(ex.id)
         );
 
-        // Nếu có đề thi mới được xuất bản từ máy khác
-        const freshExamArrivals = validExams.filter((ex) => !knownExamIds.has(ex.id));
-        if (freshExamArrivals.length > 0 && knownExamIds.size > 0) {
-          freshExamArrivals.forEach((ex) => {
-            if (!isExamRecentlySaved(ex.id)) {
-              triggerPushNotification(`Giáo viên vừa đăng đề thi mới: ${ex.title}`, {
-                message: `Thầy cô vừa đăng tải đề thi mới (${ex.durationMinutes} phút - ${ex.questions.length} câu). Nhấn để vào làm bài ngay!`,
-                type: 'exam_published',
-                targetTab: 'classroom',
-                examId: ex.id,
-              });
-            }
-          });
-        }
-        knownExamIds = new Set(validExams.map((ex) => ex.id));
+        latestRemoteExams = validExams;
+        evaluateStudentExamNotifications(latestRemoteClasses, latestRemoteExams);
         setExamsList((prevExams) => {
           const prevMap = new Map<string, Exam>();
           prevExams.forEach((e) => {
@@ -839,10 +1036,13 @@ export default function App() {
       console.log('[handleSaveLesson] Đồng bộ bài học lên Firestore & Server THÀNH CÔNG:', lesson.id);
       const targetClass = classrooms.find((c) => c.id === lesson.classId);
       const className = targetClass ? targetClass.name : 'Nhóm lớp';
-      triggerPushNotification(`Giáo viên vừa đăng bài học mới: ${lesson.title}`, {
+      triggerPushNotification(`Đã đăng bài học: ${lesson.title}`, {
         message: `Đã xuất bản bài học "${lesson.title}" (${lesson.chapter}) trong ${className}.`,
-        type: 'system',
+        type: 'lesson_published',
         targetTab: 'classroom',
+        targetClassId: lesson.classId,
+        lessonId: lesson.id,
+        actionLabel: 'Xem bài học',
       });
     } catch (error: any) {
       console.error('[handleSaveLesson] LỖI ĐỒNG BỘ BÀI HỌC LÊN FIRESTORE HOẶC SERVER:', {
@@ -1003,7 +1203,8 @@ export default function App() {
     openTime?: string,
     closeTime?: string,
     enableScreenMonitoring?: boolean,
-    maxInfractions?: number
+    maxInfractions?: number,
+    scoreVisibility?: ScoreVisibilityMode
   ) => {
     const targetExam = examsList.find((e) => e.id === examId);
     if (!targetExam) return;
@@ -1017,6 +1218,7 @@ export default function App() {
       closeTime: closeTime ?? targetExam.closeTime,
       enableScreenMonitoring: enableScreenMonitoring !== undefined ? enableScreenMonitoring : targetExam.enableScreenMonitoring,
       maxInfractions: maxInfractions ?? targetExam.maxInfractions,
+      scoreVisibility: scoreVisibility ?? targetExam.scoreVisibility,
     };
 
     markExamRecentlySaved(examId);
@@ -1247,16 +1449,32 @@ export default function App() {
     }
     dbUpdateUser(updatedUser).catch(console.error);
 
-    // Kích hoạt thông báo đẩy điểm thi và kết quả chấm bài
-    const formattedScore = submission.score.toFixed(1);
+    // Kích hoạt thông báo đẩy điểm thi hoặc xác nhận đã nộp bài (tôn trọng scoreVisibility của giáo viên)
+    const targetExam = examsListRef.current.find((e) => e.id === submission.examId);
+    const canViewScore = targetExam ? canStudentViewExamScore(targetExam) : true;
     const answersCount = Object.keys(submission.answers || {}).length;
-    triggerPushNotification(`Kết quả chấm bài: ${submission.examTitle}`, {
-      message: `Điểm số của bạn: ${formattedScore}/10 (${answersCount} câu đã làm). ${submission.score >= 8 ? 'Thành tích xuất sắc! 🎉' : 'Đã lưu học bạ. Nhấn để xem chi tiết lời giải.'}`,
-      type: 'exam_graded',
-      targetTab: 'student_history',
-      examId: submission.examId,
-      score: submission.score,
-    });
+
+    if (canViewScore) {
+      const formattedScore = submission.score.toFixed(1);
+      triggerPushNotification(`Kết quả chấm bài: ${submission.examTitle}`, {
+        message: `Điểm số của bạn: ${formattedScore}/10 (${answersCount} câu đã làm). ${submission.score >= 8 ? 'Thành tích xuất sắc! 🎉' : 'Đã lưu học bạ. Nhấn để xem chi tiết lời giải.'}`,
+        type: 'exam_graded',
+        targetTab: 'student_history',
+        examId: submission.examId,
+        score: submission.score,
+      });
+    } else {
+      triggerPushNotification(`Đã nộp bài: ${submission.examTitle}`, {
+        message: `Bài làm của bạn (${answersCount} câu đã làm) đã được ghi nhận an toàn. ${
+          targetExam?.scoreVisibility === 'after_close'
+            ? 'Điểm sẽ được công bố sau khi kết thúc đợt thi.'
+            : 'Giáo viên đang ẩn điểm cho đề thi này.'
+        }`,
+        type: 'exam_graded',
+        targetTab: 'student_history',
+        examId: submission.examId,
+      });
+    }
   };
 
   // Nội dung màn hình theo tab hiện tại và vai trò người dùng
@@ -1331,6 +1549,7 @@ export default function App() {
             onDeleteLesson={handleDeleteLesson}
             onDeleteExam={handleDeleteExam}
             onDisbandClassroom={handleDisbandClassroom}
+            externalClassJump={externalClassJump}
           />
         );
       }
@@ -1424,6 +1643,7 @@ export default function App() {
             examsList={examsList}
             onDeleteExam={handleDeleteExam}
             onAssignExamToClasses={handleAssignExamToClasses}
+            onSaveSingleExam={handleSaveSingleExam}
             onPreviewExam={(exam) => {
               setActiveExamId(exam.id);
               setCurrentTab('exam');
@@ -1442,6 +1662,7 @@ export default function App() {
           examsList={examsList}
           onDeleteExam={handleDeleteExam}
           onAssignExamToClasses={handleAssignExamToClasses}
+          onSaveSingleExam={handleSaveSingleExam}
           onPreviewExam={(exam) => {
             setActiveExamId(exam.id);
             setCurrentTab('exam');
@@ -1478,6 +1699,7 @@ export default function App() {
             onSaveLesson={handleSaveLesson}
             onDeleteLesson={handleDeleteLesson}
             onDisbandClassroom={handleDisbandClassroom}
+            externalClassJump={externalClassJump}
           />
         );
       case 'student_history':
@@ -1757,88 +1979,163 @@ export default function App() {
         </footer>
       )}
 
-      {/* Floating Push Notification Toast */}
-      {activeToast && (
+      {/* Floating Push Notification Toast Stack (Top-anchored, mobile-safe) */}
+      {floatingToasts.length > 0 && (
         <div
-          role="alert"
-          onClick={() => {
-            if (activeToast.targetTab) {
-              setCurrentTab(activeToast.targetTab);
-            }
-            if (activeToast.examId) {
-              setActiveExamId(activeToast.examId);
-            }
-            setActiveToast(null);
-          }}
-          className={`fixed bottom-5 right-5 z-50 max-w-sm w-full text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md cursor-pointer animate-in slide-in-from-bottom-5 duration-300 hover:scale-[1.02] transition-transform flex items-start gap-3 ${
-            activeToast.type === 'error'
-              ? 'bg-slate-950/95 border border-rose-500/60 ring-1 ring-rose-500/30'
-              : activeToast.type === 'chat_message'
-              ? 'bg-slate-900/95 border border-cyan-500/40 ring-1 ring-cyan-500/20'
-              : 'bg-slate-900/95 border border-blue-500/30'
-          }`}
+          aria-live="polite"
+          className="fixed top-3 left-3 right-3 sm:left-auto sm:top-5 sm:right-5 sm:w-[400px] z-[90] flex flex-col gap-2.5 pointer-events-none"
         >
-          <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
-              activeToast.type === 'error'
-                ? 'bg-gradient-to-br from-rose-600 to-red-700 text-white'
-                : activeToast.type === 'chat_message'
-                ? 'bg-gradient-to-br from-cyan-600 to-blue-700 text-white'
-                : activeToast.type === 'exam_graded'
-                ? 'bg-gradient-to-br from-blue-600 to-indigo-600'
-                : 'bg-gradient-to-br from-blue-600 to-indigo-600'
-            }`}
-          >
-            {activeToast.type === 'error' ? (
-              <AlertTriangle size={20} className="text-white animate-pulse" />
-            ) : activeToast.type === 'chat_message' ? (
-              <MessageSquare size={20} className="text-cyan-200" />
-            ) : activeToast.type === 'exam_graded' ? (
-              <FileCheck size={20} className="text-emerald-300" />
-            ) : (
-              <Sparkles size={20} className="text-amber-300" />
-            )}
-          </div>
-          <div className="flex-1 min-w-0 pr-1">
-            <div className="flex items-center justify-between">
-              <span
-                className={`text-[10px] font-black uppercase tracking-wider ${
-                  activeToast.type === 'error'
-                    ? 'text-rose-400'
-                    : activeToast.type === 'chat_message'
-                    ? 'text-cyan-400'
-                    : 'text-blue-400'
+          {floatingToasts.map((toast) => {
+            const handleToastAction = () => {
+              if (toast.type === 'lesson_published' && toast.targetClassId) {
+                setExternalClassJump({
+                  classId: toast.targetClassId,
+                  tab: 'curriculum',
+                  lessonId: toast.lessonId,
+                  nonce: Date.now(),
+                });
+                setCurrentTab('classroom');
+              } else if (toast.type === 'exam_published' && toast.examId) {
+                setActiveExamId(toast.examId);
+                setCurrentTab(toast.targetTab || 'exam');
+              } else {
+                if (toast.targetClassId) {
+                  setExternalClassJump({
+                    classId: toast.targetClassId,
+                    tab: toast.type === 'chat_message' ? 'chat' : 'curriculum',
+                    lessonId: toast.lessonId,
+                    nonce: Date.now(),
+                  });
+                }
+                if (toast.targetTab) {
+                  setCurrentTab(toast.targetTab);
+                }
+                if (toast.examId) {
+                  setActiveExamId(toast.examId);
+                }
+              }
+              dismissFloatingToast(toast.id);
+            };
+
+            const isLesson = toast.type === 'lesson_published';
+            const isExam = toast.type === 'exam_published';
+            const isError = toast.type === 'error';
+            const isChat = toast.type === 'chat_message';
+            const isGraded = toast.type === 'exam_graded';
+
+            return (
+              <div
+                key={toast.id}
+                role="alert"
+                onClick={handleToastAction}
+                className={`pointer-events-auto w-full text-white p-3.5 sm:p-4 rounded-2xl shadow-2xl backdrop-blur-md cursor-pointer animate-in slide-in-from-top-4 fade-in duration-300 hover:scale-[1.01] transition-transform flex items-start gap-3 ${
+                  isError
+                    ? 'bg-slate-950/95 border border-rose-500/70 ring-1 ring-rose-500/30'
+                    : isLesson
+                    ? 'bg-slate-900/95 border border-emerald-400/60 ring-1 ring-emerald-400/30'
+                    : isExam
+                    ? 'bg-slate-900/95 border border-blue-400/60 ring-1 ring-blue-400/30'
+                    : isChat
+                    ? 'bg-slate-900/95 border border-cyan-500/50 ring-1 ring-cyan-500/20'
+                    : 'bg-slate-900/95 border border-blue-500/30'
                 }`}
               >
-                {activeToast.type === 'error'
-                  ? 'Cảnh báo lỗi'
-                  : activeToast.type === 'chat_message'
-                  ? 'Tin nhắn & Nhắc tên'
-                  : activeToast.type === 'exam_graded'
-                  ? 'Kết quả chấm thi'
-                  : 'Thông báo mới'}
-              </span>
-              <span className="text-[10px] text-slate-400">Vừa xong</span>
-            </div>
-            <h4 className="text-xs font-bold text-white truncate mt-0.5">{activeToast.title}</h4>
-            <p
-              className={`text-[11px] line-clamp-2 mt-0.5 leading-snug ${
-                activeToast.type === 'error' ? 'text-rose-100 font-medium' : 'text-slate-300'
-              }`}
-            >
-              {activeToast.message}
-            </p>
-          </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveToast(null);
-            }}
-            aria-label="Đóng thông báo"
-            className="text-slate-400 hover:text-white transition-colors p-1"
-          >
-            <X size={14} />
-          </button>
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                    isError
+                      ? 'bg-gradient-to-br from-rose-600 to-red-700 text-white'
+                      : isLesson
+                      ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white'
+                      : isExam
+                      ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white'
+                      : isChat
+                      ? 'bg-gradient-to-br from-cyan-600 to-blue-700 text-white'
+                      : 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white'
+                  }`}
+                >
+                  {isError ? (
+                    <AlertTriangle size={20} className="text-white animate-pulse" />
+                  ) : isLesson ? (
+                    <BookOpen size={20} className="text-white" />
+                  ) : isExam ? (
+                    <Award size={20} className="text-amber-200" />
+                  ) : isChat ? (
+                    <MessageSquare size={20} className="text-cyan-200" />
+                  ) : isGraded ? (
+                    <FileCheck size={20} className="text-emerald-300" />
+                  ) : (
+                    <Bell size={20} className="text-amber-300" />
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 pr-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-wider truncate ${
+                        isError
+                          ? 'text-rose-400'
+                          : isLesson
+                          ? 'text-emerald-400'
+                          : isExam
+                          ? 'text-sky-400'
+                          : isChat
+                          ? 'text-cyan-400'
+                          : 'text-blue-400'
+                      }`}
+                    >
+                      {isError
+                        ? 'Cảnh báo lỗi'
+                        : isLesson
+                        ? 'Bài học mới từ giáo viên'
+                        : isExam
+                        ? 'Đề thi mới từ giáo viên'
+                        : isChat
+                        ? 'Tin nhắn & Nhắc tên'
+                        : isGraded
+                        ? 'Kết quả bài thi'
+                        : 'Thông báo mới'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 shrink-0">Vừa xong</span>
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-white truncate mt-0.5">{toast.title}</h4>
+                  <p
+                    className={`text-[11px] line-clamp-2 mt-0.5 leading-snug ${
+                      isError ? 'text-rose-100 font-medium' : 'text-slate-300'
+                    }`}
+                  >
+                    {toast.message}
+                  </p>
+                  {(toast.actionLabel || isLesson || isExam) && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${
+                          isLesson
+                            ? 'bg-emerald-500 text-white'
+                            : isExam
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white/15 text-white'
+                        }`}
+                      >
+                        {toast.actionLabel || (isLesson ? 'Xem bài học' : 'Làm bài ngay')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dismissFloatingToast(toast.id);
+                  }}
+                  aria-label="Đóng thông báo"
+                  className="text-slate-400 hover:text-white transition-colors p-1 shrink-0"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 

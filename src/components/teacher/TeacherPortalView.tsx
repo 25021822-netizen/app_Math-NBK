@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Exam, Question, ExamPartType, Classroom } from '../../types/math';
+import { Exam, Question, ExamPartType, Classroom, ScoreVisibilityMode, getExamScoreVisibilityLabel } from '../../types/math';
 import { SAMPLE_CLASSROOMS } from '../../data/mockData';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
@@ -60,8 +60,10 @@ interface TeacherPortalViewProps {
     openTime?: string,
     closeTime?: string,
     enableScreenMonitoring?: boolean,
-    maxInfractions?: number
+    maxInfractions?: number,
+    scoreVisibility?: ScoreVisibilityMode
   ) => void;
+  onSaveSingleExam?: (updatedExam: Exam) => void;
 }
 
 export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
@@ -73,6 +75,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   onDeleteExam,
   initialMode,
   onAssignExamToClasses,
+  onSaveSingleExam,
 }) => {
   // Chế độ: 'manual' (Tạo đề thủ công), 'ai_pdf' (AI Bóc Tách PDF), 'crop_studio' (Phòng cắt câu đề thi) hoặc 'manage_exams' (Quản lý kho đề thi)
   const [creationMode, setCreationMode] = useState<'manual' | 'ai_pdf' | 'crop_studio' | 'manage_exams'>(initialMode || 'manual');
@@ -97,6 +100,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [assignCloseTime, setAssignCloseTime] = useState<string>('');
   const [assignScreenMonitoring, setAssignScreenMonitoring] = useState<boolean>(true);
   const [assignMaxInfractions, setAssignMaxInfractions] = useState<number>(3);
+  const [assignScoreVisibility, setAssignScoreVisibility] = useState<ScoreVisibilityMode>('immediate');
   const [isSavingAssignment, setIsSavingAssignment] = useState<boolean>(false);
   const [syncingExamId, setSyncingExamId] = useState<string | null>(null);
 
@@ -130,8 +134,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   }, [classrooms]);
 
-  // 4. Cho phép học sinh xem đáp án & lời giải chi tiết khi làm xong
+  // 4. Cho phép học sinh xem đáp án & lời giải chi tiết khi làm xong + chế độ hiển thị điểm
   const [manualAllowViewAnswers, setManualAllowViewAnswers] = useState<boolean>(true);
+  const [manualScoreVisibility, setManualScoreVisibility] = useState<ScoreVisibilityMode>('immediate');
 
   // 5. Ô kiểm soát màn hình & Chống gian lận khi thi (bắt buộc toàn màn hình, cấm chuyển tab)
   const [manualScreenMonitoring, setManualScreenMonitoring] = useState<boolean>(true);
@@ -206,6 +211,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [aiMaxAttempts, setAiMaxAttempts] = useState<number>(1);
   const [aiScreenMonitoring, setAiScreenMonitoring] = useState<boolean>(true);
   const [aiMaxInfractions, setAiMaxInfractions] = useState<number>(3);
+  const [aiScoreVisibility, setAiScoreVisibility] = useState<ScoreVisibilityMode>('immediate');
 
   useEffect(() => {
     if (aiTargetClassIds.length === 0 && classrooms.length > 0) {
@@ -455,6 +461,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         distributionType: aiDistributionType,
         targetClassIds: aiDistributionType === 'repository' ? undefined : (aiTargetClassIds.length > 0 ? aiTargetClassIds : classrooms.map((c) => c.id)),
         allowViewAnswersAfterSubmit: true,
+        scoreVisibility: aiScoreVisibility,
         enableScreenMonitoring: aiScreenMonitoring,
         maxInfractions: aiMaxInfractions,
       };
@@ -482,6 +489,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     setManualMaxAttempts(aiMaxAttempts);
     setManualScreenMonitoring(aiScreenMonitoring);
     setManualMaxInfractions(aiMaxInfractions);
+    setManualScoreVisibility(aiScoreVisibility);
     setCreationMode('manual');
     setPublishSuccessMessage(`Đã chuyển ${aiParsedExam.questions.length} câu hỏi sang Trình Tạo Đề Thủ Công để chỉnh sửa chi tiết!`);
     setTimeout(() => setPublishSuccessMessage(null), 4000);
@@ -503,6 +511,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       distributionType: aiDistributionType,
       targetClassIds: effectiveTargetIds,
       maxAttempts: aiMaxAttempts > 0 ? aiMaxAttempts : undefined,
+      scoreVisibility: aiScoreVisibility,
       enableScreenMonitoring: aiScreenMonitoring,
       maxInfractions: aiMaxInfractions,
     };
@@ -834,6 +843,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     setAssignCloseTime(exam.closeTime || new Date(Date.now() + 7 * 86400 * 1000).toISOString().slice(0, 16));
     setAssignScreenMonitoring(exam.enableScreenMonitoring !== false);
     setAssignMaxInfractions(exam.maxInfractions || 3);
+    setAssignScoreVisibility(exam.scoreVisibility || 'immediate');
   };
 
   // Xác nhận lưu giao đề thi cho các nhóm lớp
@@ -850,7 +860,8 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           assignHasTimeWindow ? assignOpenTime : undefined,
           assignHasTimeWindow ? assignCloseTime : undefined,
           assignScreenMonitoring,
-          assignMaxInfractions
+          assignMaxInfractions,
+          assignScoreVisibility
         );
       }
       setPublishSuccessMessage(`Đã cập nhật giao đề thi "${examToAssign.title}" cho các nhóm lớp thành công!`);
@@ -929,6 +940,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       distributionType: manualDistributionType,
       targetClassIds: effectiveTargetIds,
       allowViewAnswersAfterSubmit: manualAllowViewAnswers,
+      scoreVisibility: manualScoreVisibility,
       enableScreenMonitoring: manualScreenMonitoring,
       maxInfractions: manualMaxInfractions,
     };
@@ -1286,7 +1298,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               )}
             </div>
 
-            {/* Hàng 4: 4. BẬT/TẮT XEM ĐÁP ÁN KHI LÀM XONG */}
+            {/* Hàng 4: 4. BẬT/TẮT XEM ĐÁP ÁN & CHẾ ĐỘ HIỂN THỊ ĐIỂM KHI LÀM XONG */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
               <label className="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
                 <input
@@ -1301,6 +1313,61 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${manualAllowViewAnswers ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
                 {manualAllowViewAnswers ? 'Đang Bật' : 'Đang Tắt'}
               </span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2.5 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="font-bold text-slate-800 block">Chế độ cho học sinh biết điểm sau khi nộp bài</span>
+                  <span className="text-[11px] text-slate-500">
+                    {manualScoreVisibility === 'immediate'
+                      ? 'Học sinh xem được tổng điểm và điểm từng phần ngay sau khi nộp bài.'
+                      : manualScoreVisibility === 'after_close'
+                      ? 'Điểm sẽ tạm ẩn, chỉ hiển thị sau khi hết giờ đóng đề hoặc giáo viên bấm công bố.'
+                      : 'Ẩn hoàn toàn điểm số với học sinh (chỉ giáo viên xem được trong Bảng Điểm).'}
+                  </span>
+                </div>
+                <span
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-lg self-start sm:self-auto ${
+                    manualScoreVisibility === 'hidden'
+                      ? 'bg-rose-100 text-rose-800'
+                      : manualScoreVisibility === 'after_close'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {getExamScoreVisibilityLabel(manualScoreVisibility)}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    { mode: 'immediate', label: 'Biết điểm ngay (Trước)', desc: 'Hiện ngay sau khi nộp' },
+                    { mode: 'after_close', label: 'Biết điểm sau', desc: 'Sau khi đóng đề / GV mở' },
+                    { mode: 'hidden', label: 'Không cho biết điểm', desc: 'Ẩn hoàn toàn với HS' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    onClick={() => setManualScoreVisibility(opt.mode)}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      manualScoreVisibility === opt.mode
+                        ? opt.mode === 'hidden'
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                          : opt.mode === 'after_close'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                          : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="font-bold text-xs block">{opt.label}</span>
+                    <span className={`text-[10px] block mt-0.5 ${manualScoreVisibility === opt.mode ? 'text-white/90' : 'text-slate-500'}`}>
+                      {opt.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Hàng 5: Ô KIỂM SOÁT MÀN HÌNH & CHỐNG GIAN LẬN */}
@@ -2222,6 +2289,39 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     </div>
                   </div>
                 )}
+
+                {/* Chế độ hiển thị điểm khi học sinh nộp bài */}
+                <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                  <label className="font-bold text-slate-700 block">
+                    Chế độ cho học sinh biết điểm sau khi nộp bài:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {(
+                      [
+                        { mode: 'immediate', label: 'Biết điểm ngay' },
+                        { mode: 'after_close', label: 'Biết điểm sau' },
+                        { mode: 'hidden', label: 'Không cho biết điểm' },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.mode}
+                        type="button"
+                        onClick={() => setAiScoreVisibility(opt.mode)}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          aiScoreVisibility === opt.mode
+                            ? opt.mode === 'hidden'
+                              ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                              : opt.mode === 'after_close'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                              : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Danh sách các câu hỏi xem trước */}
@@ -3062,11 +3162,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                       {/* Thông tin phân phối */}
                       <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap pt-0.5">
                         <span className="font-semibold text-slate-600">Phạm vi giao:</span>
-                        {exam.distributionType === 'repository' ? (
-                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                            Kho đề toàn trường
-                          </span>
-                        ) : exam.targetClassIds && exam.targetClassIds.length > 0 ? (
+                        {exam.targetClassIds && exam.targetClassIds.length > 0 && exam.distributionType !== 'repository' ? (
                           <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
                             Giao cho {exam.targetClassIds.length} lớp (
                             {classrooms
@@ -3075,11 +3171,70 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                               .join(', ')}
                             )
                           </span>
+                        ) : exam.distributionType === 'repository' ? (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
+                            Kho đề toàn trường
+                          </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-200">
                             Tất cả lớp học
                           </span>
                         )}
+                      </div>
+
+                      {/* Nút chuyển nhanh chế độ cho biết điểm (Trước / Sau / Không cho biết) */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1.5">
+                        <span className="text-[11px] font-semibold text-slate-600">Biết điểm khi nộp xong:</span>
+                        {(
+                          [
+                            { mode: 'immediate', label: 'Biết ngay' },
+                            { mode: 'after_close', label: 'Biết sau' },
+                            { mode: 'hidden', label: 'Không cho biết' },
+                          ] as const
+                        ).map((opt) => {
+                          const currentMode = exam.scoreVisibility || 'immediate';
+                          const isActive = currentMode === opt.mode;
+                          return (
+                            <button
+                              key={opt.mode}
+                              type="button"
+                              onClick={() => {
+                                if (currentMode === opt.mode) return;
+                                const updatedExam: Exam = { ...exam, scoreVisibility: opt.mode };
+                                if (onSaveSingleExam) {
+                                  onSaveSingleExam(updatedExam);
+                                } else if (onAssignExamToClasses) {
+                                  onAssignExamToClasses(
+                                    exam.id,
+                                    exam.targetClassIds || [],
+                                    exam.distributionType || 'classroom',
+                                    exam.maxAttempts,
+                                    exam.openTime,
+                                    exam.closeTime,
+                                    exam.enableScreenMonitoring,
+                                    exam.maxInfractions,
+                                    opt.mode
+                                  );
+                                }
+                                setPublishSuccessMessage(
+                                  `Đã chuyển "${exam.title}" sang chế độ: ${getExamScoreVisibilityLabel(opt.mode)}.`
+                                );
+                                setTimeout(() => setPublishSuccessMessage(null), 3500);
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                                isActive
+                                  ? opt.mode === 'hidden'
+                                    ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                                    : opt.mode === 'after_close'
+                                    ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                    : 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -3380,6 +3535,46 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Chế độ cho biết điểm sau khi nộp bài trong Modal Giao Đề */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+              <span className="font-bold text-slate-700 block">
+                Hiển thị điểm khi học sinh làm bài xong:
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { mode: 'immediate', label: 'Biết điểm ngay' },
+                    { mode: 'after_close', label: 'Biết điểm sau' },
+                    { mode: 'hidden', label: 'Không cho biết điểm' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    onClick={() => setAssignScoreVisibility(opt.mode)}
+                    className={`py-2 px-2 rounded-xl border text-[11px] font-bold transition-all cursor-pointer ${
+                      assignScoreVisibility === opt.mode
+                        ? opt.mode === 'hidden'
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                          : opt.mode === 'after_close'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                          : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                {assignScoreVisibility === 'immediate'
+                  ? 'Học sinh xem điểm ngay sau khi nhấn nộp bài.'
+                  : assignScoreVisibility === 'after_close'
+                  ? 'Điểm tạm ẩn cho tới khi hết hạn đóng đề hoặc thầy/cô bấm chuyển sang "Biết ngay".'
+                  : 'Ẩn hoàn toàn điểm số với học sinh (chỉ giáo viên xem được).'}
+              </p>
             </div>
 
             <div className="flex gap-2.5 pt-2">

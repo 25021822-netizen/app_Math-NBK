@@ -7,11 +7,14 @@ export interface PushNotificationItem {
   id: string;
   title: string;
   message: string;
-  type: 'exam_published' | 'exam_graded' | 'chat_message' | 'system' | 'error';
+  type: 'exam_published' | 'lesson_published' | 'exam_graded' | 'chat_message' | 'system' | 'error';
   timestamp: string;
   isRead: boolean;
   targetTab?: string;
+  targetClassId?: string;
+  lessonId?: string;
   examId?: string;
+  actionLabel?: string;
   score?: number;
   isMuted?: boolean;
 }
@@ -152,9 +155,12 @@ export const triggerPushNotification = async (
   title: string,
   options: {
     message: string;
-    type: 'exam_published' | 'exam_graded' | 'chat_message' | 'system' | 'error';
+    type: 'exam_published' | 'lesson_published' | 'exam_graded' | 'chat_message' | 'system' | 'error';
     targetTab?: string;
+    targetClassId?: string;
+    lessonId?: string;
     examId?: string;
+    actionLabel?: string;
     score?: number;
   }
 ): Promise<PushNotificationItem> => {
@@ -168,7 +174,10 @@ export const triggerPushNotification = async (
     timestamp: new Date().toISOString(),
     isRead: false,
     targetTab: options.targetTab,
+    targetClassId: options.targetClassId,
+    lessonId: options.lessonId,
     examId: options.examId,
+    actionLabel: options.actionLabel,
     score: options.score,
     isMuted: !enabled,
   };
@@ -180,7 +189,7 @@ export const triggerPushNotification = async (
         ? 'chat'
         : options.type === 'exam_graded'
         ? 'graded'
-        : options.type === 'exam_published'
+        : options.type === 'exam_published' || options.type === 'lesson_published'
         ? 'published'
         : options.type === 'error'
         ? 'error'

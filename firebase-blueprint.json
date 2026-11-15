@@ -78,7 +78,8 @@
         "title": { "type": "string" },
         "description": { "type": "string" },
         "teacherName": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string" },
+        "publishedAt": { "type": "string" }
       },
       "required": ["id", "classId", "title"]
     },
@@ -109,6 +110,7 @@
         "totalPoints": { "type": "number" },
         "createdBy": { "type": "string" },
         "distributionType": { "type": "string", "enum": ["classes", "repository"] },
+        "scoreVisibility": { "type": "string", "enum": ["immediate", "after_close", "hidden"] },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "title"]
@@ -128,6 +130,7 @@
         "questionsCount": { "type": "number" },
         "createdBy": { "type": "string" },
         "distributionType": { "type": "string", "enum": ["classes", "repository"] },
+        "scoreVisibility": { "type": "string", "enum": ["immediate", "after_close", "hidden"] },
         "status": { "type": "string", "enum": ["published"] },
         "publishedAt": { "type": "string" },
         "updatedAt": { "type": "string" }

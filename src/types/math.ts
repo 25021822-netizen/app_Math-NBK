@@ -126,6 +126,8 @@ export type Question =
   | QuestionPart2TrueFalse 
   | QuestionPart3ShortAnswer;
 
+export type ScoreVisibilityMode = 'immediate' | 'after_close' | 'hidden';
+
 export interface Exam {
   id: string;
   title: string;
@@ -144,8 +146,27 @@ export interface Exam {
   distributionType?: 'classroom' | 'repository' | 'both'; // Giao cho nhóm lớp hoặc đưa vào kho tổng hợp
   targetClassIds?: string[]; // Danh sách nhóm lớp được giao đề
   allowViewAnswersAfterSubmit?: boolean; // Bật/tắt cho phép xem đáp án & lời giải chi tiết khi làm xong
+  scoreVisibility?: ScoreVisibilityMode; // Cho biết điểm ngay ('immediate'), sau khi đóng/công bố ('after_close'), hoặc không cho biết điểm ('hidden')
   enableScreenMonitoring?: boolean; // Bật/tắt ô kiểm soát màn hình: bắt buộc toàn màn hình, cấm chuyển tab, ghi nhật ký rời màn hình
   maxInfractions?: number; // Số lần vi phạm tối đa trước khi tự động nộp bài (mặc định: 3)
+}
+
+export function canStudentViewExamScore(exam?: Exam | null, nowMs: number = Date.now()): boolean {
+  if (!exam) return true;
+  const mode: ScoreVisibilityMode = exam.scoreVisibility || 'immediate';
+  if (mode === 'hidden') return false;
+  if (mode === 'after_close') {
+    if (!exam.closeTime) return false;
+    const closeMs = new Date(exam.closeTime).getTime();
+    return Number.isFinite(closeMs) && nowMs >= closeMs;
+  }
+  return true;
+}
+
+export function getExamScoreVisibilityLabel(mode?: ScoreVisibilityMode): string {
+  if (mode === 'hidden') return 'Không cho biết điểm';
+  if (mode === 'after_close') return 'Biết điểm sau';
+  return 'Biết điểm ngay';
 }
 
 export interface ExamAttempt {
@@ -246,6 +267,7 @@ export interface ClassroomLesson {
   content?: string; // Tương thích ngược
   teacherName: string;
   createdAt: string;
+  publishedAt?: string; // Dấu thời gian ISO đầy đủ khi giáo viên đăng bài
   updatedAt?: string; // Thời gian cập nhật / chỉnh sửa gần nhất
   externalLink?: string; // Gắn link tài liệu trực tuyến (Google Drive, Youtube...)
   pdfAttachment?: {

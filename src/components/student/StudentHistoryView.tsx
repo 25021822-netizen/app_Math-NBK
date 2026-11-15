@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { StudentExamSubmission, Exam, Classroom } from '../../types/math';
+import { StudentExamSubmission, Exam, Classroom, canStudentViewExamScore } from '../../types/math';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
 import {
@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Flame,
   Zap,
+  Lock,
 } from 'lucide-react';
 
 interface StudentHistoryViewProps {
@@ -46,6 +47,17 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
   const [selectedSubmission, setSelectedSubmission] = useState<StudentExamSubmission | null>(null);
   const [showAnswersInHistory, setShowAnswersInHistory] = useState<boolean>(true);
 
+  const examById = useMemo(() => {
+    const map = new Map<string, Exam>();
+    examsList.forEach((e) => map.set(e.id, e));
+    return map;
+  }, [examsList]);
+
+  const canViewSubmissionScore = (sub: StudentExamSubmission): boolean => {
+    const examObj = examById.get(sub.examId);
+    return examObj ? canStudentViewExamScore(examObj) : true;
+  };
+
   // Lọc danh sách bài đã làm của riêng học sinh hiện tại
   const studentSubmissions = useMemo(() => {
     return submissions.filter((s) => s.studentId === currentStudentId);
@@ -54,6 +66,8 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
   // Bộ lọc tìm kiếm và mức điểm
   const filteredSubmissions = useMemo(() => {
     return studentSubmissions.filter((sub) => {
+      const canView = canViewSubmissionScore(sub);
+      if (scoreFilter !== 'all' && !canView) return false;
       if (scoreFilter === 'high' && sub.score < 8.0) return false;
       if (scoreFilter === 'medium' && (sub.score < 5.0 || sub.score >= 8.0)) return false;
       if (scoreFilter === 'low' && sub.score >= 5.0) return false;
@@ -64,35 +78,42 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
       }
       return true;
     }).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-  }, [studentSubmissions, scoreFilter, searchTerm]);
+  }, [studentSubmissions, scoreFilter, searchTerm, examById]);
 
-  // Thống kê cá nhân
+  // Thống kê cá nhân (chỉ tính trên các bài thi được phép xem điểm)
   const stats = useMemo(() => {
     if (studentSubmissions.length === 0) {
-      return { total: 0, avg: 0, max: 0, totalHours: 0, highCount: 0 };
+      return { total: 0, visibleCount: 0, avg: 0, max: 0, totalHours: '0.0', highCount: 0 };
     }
-    const scores = studentSubmissions.map((s) => s.score);
+    const visibleSubs = studentSubmissions.filter((s) => canViewSubmissionScore(s));
+    const scores = visibleSubs.map((s) => s.score);
     const sum = scores.reduce((a, b) => a + b, 0);
-    const avg = sum / scores.length;
-    const max = Math.max(...scores);
+    const avg = scores.length > 0 ? sum / scores.length : 0;
+    const max = scores.length > 0 ? Math.max(...scores) : 0;
     const totalSec = studentSubmissions.reduce((a, b) => a + b.timeSpentSeconds, 0);
     const totalHours = (totalSec / 3600).toFixed(1);
     const highCount = scores.filter((s) => s >= 8.0).length;
 
     return {
-      total: scores.length,
+      total: studentSubmissions.length,
+      visibleCount: scores.length,
       avg: Number(avg.toFixed(2)),
       max: Number(max.toFixed(2)),
       totalHours,
       highCount,
     };
-  }, [studentSubmissions]);
+  }, [studentSubmissions, examById]);
 
   // Đề thi của bài nộp đang xem
   const activeExam = useMemo(() => {
     if (!selectedSubmission) return null;
-    return examsList.find((e) => e.id === selectedSubmission.examId) || null;
-  }, [selectedSubmission, examsList]);
+    return examById.get(selectedSubmission.examId) || null;
+  }, [selectedSubmission, examById]);
+
+  const canViewActiveScore = activeExam ? canStudentViewExamScore(activeExam) : true;
+  const canRevealActiveAnswers = Boolean(
+    activeExam && canViewActiveScore && activeExam.allowViewAnswersAfterSubmit !== false && showAnswersInHistory
+  );
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-8 space-y-8 animate-in fade-in duration-200">
@@ -137,10 +158,10 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
             <TrendingUp size={18} />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-blue-900 font-mono">
-            {stats.avg.toFixed(2)}
+            {stats.visibleCount > 0 ? stats.avg.toFixed(2) : '--'}
           </div>
           <span className="text-[11px] text-blue-700 font-semibold mt-1 block">
-            Thang 10 điểm BGD
+            {stats.visibleCount > 0 ? 'Thang 10 điểm BGD' : 'Chưa có bài công bố điểm'}
           </span>
         </div>
 
@@ -150,10 +171,10 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
             <Award size={18} />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-emerald-900 font-mono">
-            {stats.max.toFixed(2)}
+            {stats.visibleCount > 0 ? stats.max.toFixed(2) : '--'}
           </div>
           <span className="text-[11px] text-emerald-700 font-semibold mt-1 block">
-            {stats.highCount} bài đạt loại Giỏi
+            {stats.visibleCount > 0 ? `${stats.highCount} bài đạt loại Giỏi` : 'Chờ giáo viên mở điểm'}
           </span>
         </div>
 
@@ -213,6 +234,8 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
         <div className="space-y-4">
           {filteredSubmissions.map((sub) => {
             const cls = classrooms.find((c) => c.id === sub.classId);
+            const examObj = examById.get(sub.examId);
+            const canViewScore = canViewSubmissionScore(sub);
             const isExcellent = sub.score >= 8.0;
             const isGood = sub.score >= 6.5 && sub.score < 8.0;
 
@@ -240,15 +263,28 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
 
                   {/* Part scores summary */}
                   <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-                    <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg">
-                      P.I: <strong>{sub.partScores.part1}đ</strong>
-                    </span>
-                    <span className="text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg">
-                      P.II: <strong>{sub.partScores.part2}đ</strong>
-                    </span>
-                    <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">
-                      P.III: <strong>{sub.partScores.part3}đ</strong>
-                    </span>
+                    {canViewScore ? (
+                      <>
+                        <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg">
+                          P.I: <strong>{sub.partScores.part1}đ</strong>
+                        </span>
+                        <span className="text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg">
+                          P.II: <strong>{sub.partScores.part2}đ</strong>
+                        </span>
+                        <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">
+                          P.III: <strong>{sub.partScores.part3}đ</strong>
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-lg font-sans font-bold flex items-center gap-1">
+                        <Lock size={12} />
+                        <span>
+                          {examObj?.scoreVisibility === 'after_close'
+                            ? 'Điểm chi tiết sẽ công bố sau khi đóng đề'
+                            : 'Giáo viên đang ẩn điểm bài thi này'}
+                        </span>
+                      </span>
+                    )}
 
                     {sub.infractionCount > 0 ? (
                       <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg font-sans font-bold flex items-center gap-1">
@@ -268,20 +304,27 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                 <div className="flex items-center gap-4 shrink-0 w-full md:w-auto justify-between md:justify-end pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
                   <div className="text-center md:text-right">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">Kết quả</span>
-                    <span
-                      className={`text-2xl font-black font-mono block ${
-                        isExcellent
-                          ? 'text-emerald-600'
-                          : isGood
-                          ? 'text-blue-600'
-                          : sub.score >= 5.0
-                          ? 'text-amber-600'
-                          : 'text-rose-600'
-                      }`}
-                    >
-                      {sub.score.toFixed(2)}
-                      <span className="text-xs text-slate-400 font-sans font-normal">/10đ</span>
-                    </span>
+                    {canViewScore ? (
+                      <span
+                        className={`text-2xl font-black font-mono block ${
+                          isExcellent
+                            ? 'text-emerald-600'
+                            : isGood
+                            ? 'text-blue-600'
+                            : sub.score >= 5.0
+                            ? 'text-amber-600'
+                            : 'text-rose-600'
+                        }`}
+                      >
+                        {sub.score.toFixed(2)}
+                        <span className="text-xs text-slate-400 font-sans font-normal">/10đ</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-extrabold mt-0.5">
+                        <Lock size={12} />
+                        <span>{examObj?.scoreVisibility === 'after_close' ? 'Chờ công bố' : 'Đã ẩn điểm'}</span>
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -351,7 +394,7 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
               </div>
 
               <div className="flex items-center gap-3">
-                {activeExam && (
+                {activeExam && canViewActiveScore && activeExam.allowViewAnswersAfterSubmit !== false && (
                   <button
                     type="button"
                     onClick={() => setShowAnswersInHistory(!showAnswersInHistory)}
@@ -369,9 +412,16 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
 
                 <div className="text-right">
                   <span className="text-xs text-slate-400 font-semibold block">Điểm số:</span>
-                  <span className="text-2xl font-black font-mono text-blue-600">
-                    {selectedSubmission.score.toFixed(2)} / {activeExam?.totalPoints ?? 10} điểm
-                  </span>
+                  {canViewActiveScore ? (
+                    <span className="text-2xl font-black font-mono text-blue-600">
+                      {selectedSubmission.score.toFixed(2)} / {activeExam?.totalPoints ?? 10} điểm
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-extrabold">
+                      <Lock size={12} />
+                      <span>{activeExam?.scoreVisibility === 'after_close' ? 'Chờ công bố' : 'Đã ẩn điểm'}</span>
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={() => setSelectedSubmission(null)}
@@ -462,7 +512,9 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
                       <div
                         className={`p-2.5 rounded-xl border ${
-                          isQuestionCorrect
+                          !canRevealActiveAnswers
+                            ? 'bg-slate-50 border-slate-200 text-slate-800'
+                            : isQuestionCorrect
                             ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
                             : 'bg-rose-50 border-rose-300 text-rose-900'
                         }`}
@@ -470,19 +522,19 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                         <span className="block text-[10px] font-sans font-bold opacity-75">Bạn đã chọn:</span>
                         <strong>{studentDisplayAns}</strong>
                       </div>
-                      {showAnswersInHistory ? (
+                      {canRevealActiveAnswers ? (
                         <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900">
                           <span className="block text-[10px] font-sans font-bold text-blue-700">Đáp án chính xác:</span>
                           <strong>{correctDisplayAns}</strong>
                         </div>
                       ) : (
-                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 italic flex items-center justify-center">
-                          <span>Đáp án đúng đã được ẩn</span>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 italic flex items-center justify-center font-sans">
+                          <span>{!canViewActiveScore ? 'Đáp án & điểm đang chờ công bố' : 'Đáp án đúng đã được ẩn'}</span>
                         </div>
                       )}
                     </div>
 
-                    {showAnswersInHistory && q.explanation && (
+                    {canRevealActiveAnswers && q.explanation && (
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-[11px] space-y-1">
                         <span className="font-bold text-slate-900 block">Lời giải chi tiết:</span>
                         <p>{q.explanation}</p>

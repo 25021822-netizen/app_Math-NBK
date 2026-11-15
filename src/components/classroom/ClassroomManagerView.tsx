@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention } from '../../types/math';
+import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention, ScoreVisibilityMode, getExamScoreVisibilityLabel } from '../../types/math';
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
@@ -103,6 +103,12 @@ interface ClassroomManagerViewProps {
   currentUserEmail?: string;
   onDeleteChatMessage?: (messageId: string, classId: string) => void;
   onDisbandClassroom?: (classId: string) => void | Promise<void>;
+  externalClassJump?: {
+    classId: string;
+    tab?: 'curriculum' | 'chat';
+    lessonId?: string;
+    nonce: number;
+  } | null;
 }
 
 export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
@@ -131,6 +137,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   currentUserEmail,
   onDeleteChatMessage,
   onDisbandClassroom,
+  externalClassJump,
 }) => {
   // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp
   const isMemberOfClass = (cls: Classroom | undefined | null): boolean => {
@@ -292,6 +299,30 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       prev.includes(chapterTitle) ? prev.filter((c) => c !== chapterTitle) : [...prev, chapterTitle]
     );
   };
+
+  // Điều hướng trực tiếp từ thông báo nổi (mở đúng lớp, đúng tab và mở ngay bài học mới)
+  useEffect(() => {
+    if (!externalClassJump || !externalClassJump.classId) return;
+    const targetCls = visibleClassrooms.find((c) => c.id === externalClassJump.classId);
+    if (targetCls) {
+      setSelectedClassId(targetCls.id);
+    }
+    setActiveRightTab(externalClassJump.tab || 'curriculum');
+    if (externalClassJump.lessonId) {
+      const targetLesson =
+        localLessons.find((l) => l.id === externalClassJump.lessonId) ||
+        classroomLessons.find((l) => l.id === externalClassJump.lessonId);
+      if (targetLesson) {
+        if (targetLesson.chapter) {
+          setExpandedChapters((prev) =>
+            prev.includes(targetLesson.chapter) ? prev : [...prev, targetLesson.chapter]
+          );
+        }
+        setSelectedLessonDetail(targetLesson);
+        setLessonDetailTab('theory');
+      }
+    }
+  }, [externalClassJump?.nonce]);
 
   const handleManualRefreshLessons = async () => {
     setIsRefreshingLessons(true);
@@ -1144,6 +1175,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         content: newLessonTheory.trim() || newLessonDesc.trim(),
         teacherName: currentUserName || 'ThS. Trần Văn Minh',
         createdAt: new Date().toISOString().split('T')[0],
+        publishedAt: new Date().toISOString(),
         exercisesCount:
           newLessonExercisesCount.trim() === ''
             ? 10
@@ -2358,85 +2390,155 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                           const examObj = examsList.find((e) => e.id === examId);
                           if (!examObj) return null;
 
+                          const scoreMode: ScoreVisibilityMode = examObj.scoreVisibility || 'immediate';
+                          const handleChangeExamScoreVisibility = (nextMode: ScoreVisibilityMode) => {
+                            if (scoreMode === nextMode) return;
+                            const updatedExam: Exam = { ...examObj, scoreVisibility: nextMode };
+                            if (onSaveExam) {
+                              onSaveExam(updatedExam);
+                            } else if (onUpdateExamsList) {
+                              onUpdateExamsList(examsList.map((e) => (e.id === updatedExam.id ? updatedExam : e)));
+                              dbSaveExam(updatedExam).catch(console.error);
+                            }
+                            setExamActionSuccess(
+                              `Đã cập nhật chế độ hiển thị điểm cho "${examObj.title}": ${getExamScoreVisibilityLabel(nextMode)}`
+                            );
+                            setTimeout(() => setExamActionSuccess(null), 3500);
+                          };
+
                           return (
                             <div
                               key={examId}
-                              className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                              className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-2.5 text-xs"
                             >
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <h4 className="font-bold text-slate-900">{examObj.title}</h4>
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
-                                    {examObj.totalPoints} điểm
-                                  </span>
-                                  {examObj.maxAttempts && examObj.maxAttempts > 0 && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
-                                      Tối đa {examObj.maxAttempts} lượt
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h4 className="font-bold text-slate-900">{examObj.title}</h4>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                                      {examObj.totalPoints} điểm
                                     </span>
-                                  )}
-                                </div>
-                                <div className="text-slate-400 text-[11px] flex items-center gap-2 flex-wrap">
-                                  <span>{examObj.questions.length} câu hỏi</span>
-                                  <span>·</span>
-                                  <span>{examObj.durationMinutes} phút</span>
-                                  {examObj.closeTime && (
-                                    <>
-                                      <span>·</span>
-                                      <span className="text-rose-600 font-semibold">
-                                        Hạn nộp: {new Date(examObj.closeTime).toLocaleDateString('vi-VN')}
+                                    {examObj.maxAttempts && examObj.maxAttempts > 0 && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                                        Tối đa {examObj.maxAttempts} lượt
                                       </span>
-                                    </>
+                                    )}
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold inline-flex items-center gap-1 ${
+                                        scoreMode === 'immediate'
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : scoreMode === 'after_close'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-rose-100 text-rose-800'
+                                      }`}
+                                    >
+                                      {scoreMode === 'immediate' ? (
+                                        <Eye size={10} />
+                                      ) : scoreMode === 'after_close' ? (
+                                        <Clock size={10} />
+                                      ) : (
+                                        <EyeOff size={10} />
+                                      )}
+                                      <span>{getExamScoreVisibilityLabel(scoreMode)}</span>
+                                    </span>
+                                  </div>
+                                  <div className="text-slate-400 text-[11px] flex items-center gap-2 flex-wrap">
+                                    <span>{examObj.questions.length} câu hỏi</span>
+                                    <span>·</span>
+                                    <span>{examObj.durationMinutes} phút</span>
+                                    {examObj.closeTime && (
+                                      <>
+                                        <span>·</span>
+                                        <span className="text-rose-600 font-semibold">
+                                          Hạn nộp: {new Date(examObj.closeTime).toLocaleDateString('vi-VN')}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 self-end sm:self-auto">
+                                  {userRole === 'student' && onSelectExamToTake && (
+                                    <button
+                                      onClick={() => {
+                                        try {
+                                          if (document.documentElement.requestFullscreen) {
+                                            document.documentElement.requestFullscreen().catch(() => {});
+                                          }
+                                        } catch (e) {}
+                                        onSelectExamToTake(examId);
+                                      }}
+                                      className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shadow-xs whitespace-nowrap"
+                                    >
+                                      Làm Bài Ngay
+                                    </button>
+                                  )}
+                                  {userRole === 'teacher' && (
+                                    <div className="flex items-center gap-1.5">
+                                      {onSelectExamToTake && (
+                                        <button
+                                          onClick={() => onSelectExamToTake(examId)}
+                                          className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[11px] whitespace-nowrap"
+                                        >
+                                          Xem Đề
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => setExamToRemoveFromClass(examObj)}
+                                        className="px-2 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
+                                        title="Gỡ đề thi này khỏi danh sách đề đã giao cho nhóm lớp"
+                                      >
+                                        <X size={12} />
+                                        <span>Gỡ khỏi lớp</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setExamToDeletePermanently(examObj)}
+                                        className="px-2 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
+                                        title="Xóa vĩnh viễn đề thi và toàn bộ dữ liệu bài nộp liên quan"
+                                      >
+                                        <Trash2 size={12} />
+                                        <span>Xóa đề thi</span>
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2 self-end sm:self-auto">
-                                {userRole === 'student' && onSelectExamToTake && (
-                                  <button
-                                    onClick={() => {
-                                      try {
-                                        if (document.documentElement.requestFullscreen) {
-                                          document.documentElement.requestFullscreen().catch(() => {});
-                                        }
-                                      } catch (e) {}
-                                      onSelectExamToTake(examId);
-                                    }}
-                                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shadow-xs whitespace-nowrap"
-                                  >
-                                    Làm Bài Ngay
-                                  </button>
-                                )}
-                                {userRole === 'teacher' && (
-                                  <div className="flex items-center gap-1.5">
-                                    {onSelectExamToTake && (
+                              {userRole === 'teacher' && (
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80">
+                                  <span className="text-[11px] font-bold text-slate-500">
+                                    Chế độ xem điểm của học sinh:
+                                  </span>
+                                  <div className="inline-flex rounded-xl border border-slate-200 bg-white p-0.5 gap-0.5">
+                                    {(
+                                      [
+                                        { mode: 'immediate', label: 'Biết điểm ngay' },
+                                        { mode: 'after_close', label: 'Biết điểm sau' },
+                                        { mode: 'hidden', label: 'Không cho biết' },
+                                      ] as const
+                                    ).map((opt) => (
                                       <button
-                                        onClick={() => onSelectExamToTake(examId)}
-                                        className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[11px] whitespace-nowrap"
+                                        key={opt.mode}
+                                        type="button"
+                                        onClick={() => handleChangeExamScoreVisibility(opt.mode)}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
+                                          scoreMode === opt.mode
+                                            ? opt.mode === 'immediate'
+                                              ? 'bg-emerald-600 text-white'
+                                              : opt.mode === 'after_close'
+                                              ? 'bg-amber-600 text-white'
+                                              : 'bg-rose-600 text-white'
+                                            : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
                                       >
-                                        Xem Đề
+                                        {opt.label}
                                       </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => setExamToRemoveFromClass(examObj)}
-                                      className="px-2 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
-                                      title="Gỡ đề thi này khỏi danh sách đề đã giao cho nhóm lớp"
-                                    >
-                                      <X size={12} />
-                                      <span>Gỡ khỏi lớp</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setExamToDeletePermanently(examObj)}
-                                      className="px-2 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
-                                      title="Xóa vĩnh viễn đề thi và toàn bộ dữ liệu bài nộp liên quan"
-                                    >
-                                      <Trash2 size={12} />
-                                      <span>Xóa đề thi</span>
-                                    </button>
+                                    ))}
                                   </div>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })

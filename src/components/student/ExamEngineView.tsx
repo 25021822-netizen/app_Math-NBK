@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Exam, Question, CheatLog, StudentExamSubmission } from '../../types/math';
+import { Exam, Question, CheatLog, StudentExamSubmission, canStudentViewExamScore } from '../../types/math';
 import { gradePart2TrueFalse, validatePart3ShortAnswerFormat, isAnswerEquivalent } from '../../lib/scoringEngine';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
@@ -218,6 +218,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   const isOpenStarted = !exam.openTime || new Date(exam.openTime) <= currentTime;
   const isCloseTimePassed = exam.closeTime ? new Date(exam.closeTime) < currentTime : false;
   const isExamTimeActive = isOpenStarted && !isCloseTimePassed;
+  const canViewScore = canStudentViewExamScore(exam, currentTime.getTime());
 
   // Cập nhật khi chọn đề thi khác HOẶC khi đề thi hiện tại được đồng bộ bản mới (ví dụ cập nhật link ảnh đám mây)
   useEffect(() => {
@@ -774,73 +775,111 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               )}
             </div>
 
-            {/* Total Score Badge - Tính toán hoàn toàn dựa trên tổng điểm của bài */}
-            <div className="text-center bg-blue-50 border border-blue-200 px-6 py-3 rounded-2xl">
-              <span className="text-xs font-bold text-blue-600 block uppercase tracking-wider">Tổng Điểm Đạt Được</span>
-              <span className="text-3xl font-black text-blue-900 font-mono tabular-nums">
-                {scoreReport.totalScore} / {scoreReport.examTotalPoints} điểm
-              </span>
-            </div>
+            {/* Total Score Badge - Chỉ hiển thị khi giáo viên cho phép xem điểm */}
+            {canViewScore ? (
+              <div className="text-center bg-blue-50 border border-blue-200 px-6 py-3 rounded-2xl">
+                <span className="text-xs font-bold text-blue-600 block uppercase tracking-wider">Tổng Điểm Đạt Được</span>
+                <span className="text-3xl font-black text-blue-900 font-mono tabular-nums">
+                  {scoreReport.totalScore} / {scoreReport.examTotalPoints} điểm
+                </span>
+              </div>
+            ) : (
+              <div className="text-center bg-amber-50 border border-amber-200 px-6 py-3 rounded-2xl">
+                <span className="text-xs font-bold text-amber-700 block uppercase tracking-wider flex items-center justify-center gap-1">
+                  <Lock size={13} />
+                  <span>{exam.scoreVisibility === 'after_close' ? 'Chờ Công Bố Điểm' : 'Đã Ẩn Điểm Số'}</span>
+                </span>
+                <span className="text-sm font-extrabold text-amber-900 block mt-1">
+                  {exam.scoreVisibility === 'after_close'
+                    ? 'Xem điểm sau khi kết thúc đợt thi'
+                    : 'Giáo viên không công khai điểm'}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Part Scores Breakdown (CHỈ 3 PHẦN THI TRẮC NGHIỆM CHUẨN BGD) */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-            <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200">
-              <span className="text-xs font-bold text-blue-700 block">Phần I: Trắc Nghiệm 4 Lựa Chọn</span>
-              <span className="text-xl font-black text-blue-900 font-mono mt-0.5 block">
-                {scoreReport.part1Score} / {scoreReport.part1Max} điểm
-              </span>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200">
-              <span className="text-xs font-bold text-purple-700 block">Phần II: Đúng / Sai 4 Ý</span>
-              <span className="text-xl font-black text-purple-900 font-mono mt-0.5 block">
-                {scoreReport.part2Score} / {scoreReport.part2Max} điểm
-              </span>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200">
-              <span className="text-xs font-bold text-amber-700 block">Phần III: Trả Lời Ngắn</span>
-              <span className="text-xl font-black text-amber-900 font-mono mt-0.5 block">
-                {scoreReport.part3Score} / {scoreReport.part3Max} điểm
-              </span>
-            </div>
-          </div>
-
-          {/* Toggle Bật/Tắt Xem Đáp Án & Lời Giải Chi Tiết */}
-          {exam.allowViewAnswersAfterSubmit !== false ? (
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shrink-0">
-                  <Eye size={18} />
-                </div>
-                <div>
-                  <span className="text-xs font-extrabold text-blue-900 block">
-                    Chế Độ Xem Đáp Án & Lời Giải Chi Tiết
+          {canViewScore ? (
+            <>
+              {/* Part Scores Breakdown (CHỈ 3 PHẦN THI TRẮC NGHIỆM CHUẨN BGD) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200">
+                  <span className="text-xs font-bold text-blue-700 block">Phần I: Trắc Nghiệm 4 Lựa Chọn</span>
+                  <span className="text-xl font-black text-blue-900 font-mono mt-0.5 block">
+                    {scoreReport.part1Score} / {scoreReport.part1Max} điểm
                   </span>
-                  <span className="text-[11px] text-blue-700">
-                    {showDetailedAnswers
-                      ? 'Đang bật: Hiển thị phương án đúng, tô màu kết quả và bài giải từng câu'
-                      : 'Đang tắt: Đang ẩn đáp án đúng để học sinh có thể tự suy ngẫm giải lại'}
+                </div>
+                <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200">
+                  <span className="text-xs font-bold text-purple-700 block">Phần II: Đúng / Sai 4 Ý</span>
+                  <span className="text-xl font-black text-purple-900 font-mono mt-0.5 block">
+                    {scoreReport.part2Score} / {scoreReport.part2Max} điểm
+                  </span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200">
+                  <span className="text-xs font-bold text-amber-700 block">Phần III: Trả Lời Ngắn</span>
+                  <span className="text-xl font-black text-amber-900 font-mono mt-0.5 block">
+                    {scoreReport.part3Score} / {scoreReport.part3Max} điểm
                   </span>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowDetailedAnswers(!showDetailedAnswers)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs whitespace-nowrap ${
-                  showDetailedAnswers
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
-                }`}
-              >
-                {showDetailedAnswers ? <EyeOff size={14} /> : <Eye size={14} />}
-                <span>{showDetailedAnswers ? 'Tắt Xem Đáp Án' : 'Bật Xem Đáp Án'}</span>
-              </button>
-            </div>
+              {/* Toggle Bật/Tắt Xem Đáp Án & Lời Giải Chi Tiết */}
+              {exam.allowViewAnswersAfterSubmit !== false ? (
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shrink-0">
+                      <Eye size={18} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-extrabold text-blue-900 block">
+                        Chế Độ Xem Đáp Án & Lời Giải Chi Tiết
+                      </span>
+                      <span className="text-[11px] text-blue-700">
+                        {showDetailedAnswers
+                          ? 'Đang bật: Hiển thị phương án đúng, tô màu kết quả và bài giải từng câu'
+                          : 'Đang tắt: Đang ẩn đáp án đúng để học sinh có thể tự suy ngẫm giải lại'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailedAnswers(!showDetailedAnswers)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs whitespace-nowrap ${
+                      showDetailedAnswers
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                    }`}
+                  >
+                    {showDetailedAnswers ? <EyeOff size={14} /> : <Eye size={14} />}
+                    <span>{showDetailedAnswers ? 'Tắt Xem Đáp Án' : 'Bật Xem Đáp Án'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+                  <Lock size={16} className="text-amber-600 shrink-0" />
+                  <span>Thầy cô đã tắt tính năng xem đáp án cho đề thi này để bảo mật phòng thi.</span>
+                </div>
+              )}
+            </>
           ) : (
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
-              <Lock size={16} className="text-amber-600 shrink-0" />
-              <span>Thầy cô đã tắt tính năng xem đáp án cho đề thi này để bảo mật phòng thi.</span>
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <Lock size={18} />
+              </div>
+              <div className="space-y-1">
+                <p className="font-extrabold text-sm text-amber-950">
+                  {exam.scoreVisibility === 'after_close'
+                    ? 'Bài thi đã được ghi nhận — Điểm sẽ được công bố sau'
+                    : 'Bài thi đã được ghi nhận — Điểm số đang được ẩn'}
+                </p>
+                <p className="text-amber-800 leading-relaxed">
+                  {exam.scoreVisibility === 'after_close'
+                    ? exam.closeTime
+                      ? `Giáo viên thiết lập chỉ hiển thị điểm số và đáp án sau khi đóng đề lúc ${formatDateTime(exam.closeTime)} (hoặc khi giáo viên mở công bố điểm).`
+                      : 'Giáo viên thiết lập hiển thị điểm sau khi kết thúc kỳ kiểm tra. Khi thầy cô mở điểm, bạn có thể xem lại ngay trong mục Bài đã làm.'
+                    : 'Giáo viên đã chọn chế độ không công khai điểm số và đáp án cho bài thi này. Kết quả bài làm của bạn vẫn được lưu an toàn trên hệ thống.'}
+                </p>
+              </div>
             </div>
           )}
 
@@ -958,7 +997,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                           </button>
                         )}
                         <span className="text-xs font-mono font-bold text-slate-400">({q.points}đ)</span>
-                        {isSubmitted && result && (
+                        {isSubmitted && canViewScore && result && (
                           <span
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
                               result.isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
@@ -1012,7 +1051,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       {q.options.map((opt) => {
                         const isSelected = answers[q.id] === opt.key;
                         const isCorrect = q.correctAnswer === opt.key;
-                        const canViewAnswer = isSubmitted && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers;
+                        const canViewAnswer = isSubmitted && canViewScore && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers;
 
                         let borderClass = 'border-slate-200 hover:border-slate-300';
                         if (isSelected) borderClass = 'border-blue-600 bg-blue-50/60 font-bold';
@@ -1061,7 +1100,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       })}
                     </div>
 
-                    {isSubmitted && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers && q.explanation && (
+                    {isSubmitted && canViewScore && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers && q.explanation && (
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
                         <span className="font-bold text-slate-900 block flex items-center gap-1.5">
                           <BookOpen size={14} className="text-blue-600" />
@@ -1142,7 +1181,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                           </button>
                         )}
                         <span className="text-xs font-mono font-bold text-slate-400">({q.points}đ)</span>
-                        {isSubmitted && result && (
+                        {isSubmitted && canViewScore && result && (
                           <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 text-purple-800">
                             +{result.earned}đ ({result.correctCount}/4 ý)
                           </span>
@@ -1238,7 +1277,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       })}
                     </div>
 
-                    {isSubmitted && q.explanation && (
+                    {isSubmitted && canViewScore && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers && q.explanation && (
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
                         <span className="font-bold text-slate-900 block">Lời giải chi tiết:</span>
                         <div className="leading-relaxed">
@@ -1316,7 +1355,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                           </button>
                         )}
                         <span className="text-xs font-mono font-bold text-slate-400">({q.points}đ)</span>
-                        {isSubmitted && result && (
+                        {isSubmitted && canViewScore && result && (
                           <span
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
                               result.isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
@@ -1381,7 +1420,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       />
                     </div>
 
-                    {isSubmitted && (
+                    {isSubmitted && canViewScore && (exam.allowViewAnswersAfterSubmit !== false) && showDetailedAnswers && (
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
                         <span className="font-bold text-amber-700 block">
                           Đáp án chuẩn: <span className="font-mono">{q.correctAnswer}</span>
@@ -1555,7 +1594,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                       const result = scoreReport?.details[q.id];
 
                       let btnStyle = 'bg-white text-slate-700 border-slate-300 hover:border-blue-400 hover:bg-blue-50';
-                      if (isSubmitted && result) {
+                      if (isSubmitted && canViewScore && result) {
                         const isFull =
                           part === 'part_2_true_false' ? result.correctCount === 4 : Boolean(result.isCorrect);
                         const isPartial =

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Question, Exam, QuestionPart1MCQ, QuestionPart2TrueFalse, QuestionPart3ShortAnswer, Classroom } from '../../types/math';
+import { Question, Exam, QuestionPart1MCQ, QuestionPart2TrueFalse, QuestionPart3ShortAnswer, Classroom, ScoreVisibilityMode } from '../../types/math';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
@@ -75,6 +75,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const [examDuration, setExamDuration] = useState<number>(initialDuration);
   const [enableScreenMonitoring, setEnableScreenMonitoring] = useState<boolean>(true);
   const [maxInfractions, setMaxInfractions] = useState<number>(3);
+  const [scoreVisibility, setScoreVisibility] = useState<ScoreVisibilityMode>('immediate');
   const [distributionType, setDistributionType] = useState<'classroom' | 'repository' | 'both'>('classroom');
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>(() =>
     classrooms && classrooms.length > 0 ? classrooms.map((c) => c.id) : []
@@ -732,6 +733,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       distributionType,
       targetClassIds: finalTargetClassIds,
       allowViewAnswersAfterSubmit: true,
+      scoreVisibility,
       enableScreenMonitoring,
       maxInfractions,
     };
@@ -931,6 +933,37 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
             })}
           </div>
         )}
+
+        {/* Chế độ cho biết điểm sau khi nộp bài */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs pt-2 border-t border-slate-100">
+          <span className="font-bold text-slate-700">Hiển thị điểm khi học sinh nộp bài xong:</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { mode: 'immediate', label: 'Biết điểm ngay' },
+                { mode: 'after_close', label: 'Biết điểm sau' },
+                { mode: 'hidden', label: 'Không cho biết điểm' },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.mode}
+                type="button"
+                onClick={() => setScoreVisibility(opt.mode)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
+                  scoreVisibility === opt.mode
+                    ? opt.mode === 'hidden'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                      : opt.mode === 'after_close'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ========================================================= */}
