@@ -22,59 +22,58 @@ export const SocraticTutorView: React.FC = () => {
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const nextHistory = [...messages, userMessage];
+    setMessages(nextHistory);
     setInputText('');
     setIsTyping(true);
 
     try {
-      // Gọi API Server Proxy Socratic Tutor
       const response = await fetch('/api/gemini/tutor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, userMessage],
+          messages: nextHistory,
           query,
+          mode: 'socratic',
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.reply) {
         const botReply: SocraticMessage = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
           content: data.reply,
           latex: data.latex,
-          graphHint: data.graphHint,
           timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         };
         setMessages((prev) => [...prev, botReply]);
       } else {
-        fallbackBotReply(query);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            isError: true,
+            content: data?.error || 'AI không thể trả lời lúc này. Vui lòng kiểm tra cấu hình khóa API và thử lại.',
+            timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
       }
-    } catch (err) {
-      fallbackBotReply(query);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          isError: true,
+          content: 'Không thể kết nối tới máy chủ AI. Vui lòng kiểm tra kết nối mạng và thử lại.',
+          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
     } finally {
       setIsTyping(false);
     }
-  };
-
-  const fallbackBotReply = (query: string) => {
-    let reply = 'Chính xác! Khi y\' = 3x² - 3 = 0, ta tìm được hai nghiệm x = 1 và x = -1. Tiếp theo, bạn hãy lập bảng xét dấu để xem đạo hàm đổi dấu như thế nào qua từng điểm này nhé?';
-    let latex = 'f\'(x) = 3x^2 - 3 = 0 \\iff x = \\pm 1';
-
-    if (query.includes('đổi dấu') || query.includes('bảng xét dấu')) {
-      reply = 'Tuyệt vời! Qua x = -1, đạo hàm đổi dấu từ (+) sang (-) nên đây là điểm cực đại. Qua x = 1, đạo hàm đổi dấu từ (-) sang (+) nên đây là điểm cực tiểu.';
-      latex = 'x_{CĐ} = -1 \\implies y_{CĐ} = 3; \\quad x_{CT} = 1 \\implies y_{CT} = -1';
-    }
-
-    const botMessage: SocraticMessage = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content: reply,
-      latex,
-      timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prev) => [...prev, botMessage]);
   };
 
   return (
@@ -165,11 +164,15 @@ export const SocraticTutorView: React.FC = () => {
               <div
                 className={`max-w-[85%] sm:max-w-[75%] p-4 rounded-3xl space-y-2 ${
                   isBot
-                    ? 'bg-slate-50 border border-slate-200 text-slate-900 rounded-tl-sm'
+                    ? msg.isError
+                      ? 'bg-rose-50 border border-rose-200 text-rose-900 rounded-tl-sm'
+                      : 'bg-slate-50 border border-slate-200 text-slate-900 rounded-tl-sm'
                     : 'bg-blue-600 text-white rounded-tr-sm shadow-xs'
                 }`}
               >
-                <p className="text-sm leading-relaxed">{msg.content}</p>
+                <div className="text-sm leading-relaxed">
+                  <MathView math={msg.content} />
+                </div>
 
                 {msg.latex && (
                   <div

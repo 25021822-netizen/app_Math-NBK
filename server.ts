@@ -1,6 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
@@ -17,8 +17,8 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Khởi tạo Gemini AI Client phía Server
-const apiKey = process.env.GEMINI_API_KEY || '';
+// Khởi tạo Gemini AI Client phía Server theo chuẩn @google/genai
+const apiKey = (process.env.GEMINI_API_KEY || '').trim();
 const ai = new GoogleGenAI({
   apiKey,
   httpOptions: {
@@ -28,54 +28,190 @@ const ai = new GoogleGenAI({
   },
 });
 
-// 1. Tầng In-Memory Cache giả lập Redis/Supabase Cache (Tối ưu hóa chi phí token AI)
+function getActiveGeminiClient(): GoogleGenAI | null {
+  const currentKey = (process.env.GEMINI_API_KEY || apiKey || '').trim();
+  if (!currentKey) return null;
+  if (currentKey !== apiKey) {
+    return new GoogleGenAI({
+      apiKey: currentKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return ai;
+}
+
+function classifyGeminiError(err: any): { status: number; code: string; message: string } {
+  const rawMsg = String(err?.message || err || '');
+  const upper = rawMsg.toUpperCase();
+  const status = Number(err?.status || err?.code || 0);
+
+  if (!((process.env.GEMINI_API_KEY || apiKey || '').trim()) || upper.includes('MISSING_API_KEY')) {
+    return {
+      status: 503,
+      code: 'MISSING_API_KEY',
+      message:
+        'Hệ thống chưa được gắn khóa Gemini API (GEMINI_API_KEY). Vui lòng thiết lập khóa trong bảng Settings > Secrets của ứng dụng để AI có thể trả lời chính xác.',
+    };
+  }
+  if (
+    status === 400 ||
+    status === 403 ||
+    upper.includes('API_KEY_INVALID') ||
+    upper.includes('PERMISSION_DENIED') ||
+    upper.includes('API KEY NOT VALID')
+  ) {
+    return {
+      status: status === 403 ? 403 : 400,
+      code: 'API_KEY_INVALID',
+      message:
+        'Khóa Gemini API hiện tại không hợp lệ hoặc thiếu quyền truy cập. Vui lòng kiểm tra lại khóa trong bảng Settings > Secrets.',
+    };
+  }
+  if (status === 429 || upper.includes('RESOURCE_EXHAUSTED') || upper.includes('QUOTA')) {
+    return {
+      status: 429,
+      code: 'QUOTA_EXCEEDED',
+      message:
+        'Đã tạm vượt hạn mức gọi Gemini API. Vui lòng thử lại sau ít phút hoặc nâng cấp khóa API trong Settings > Secrets.',
+    };
+  }
+  if (status === 404 || upper.includes('NOT_FOUND')) {
+    return {
+      status: 404,
+      code: 'MODEL_NOT_FOUND',
+      message: 'Mô hình AI được yêu cầu tạm thời không khả dụng. Vui lòng thử lại sau.',
+    };
+  }
+  return {
+    status: status >= 400 && status < 600 ? status : 500,
+    code: 'AI_ERROR',
+    message: `Lỗi kết nối AI: ${rawMsg || 'Không thể xử lý yêu cầu lúc này. Vui lòng thử lại.'}`,
+  };
+}
+
+async function callWithTransientRetry<T>(fn: () => Promise<T>, maxRetries = 1): Promise<T> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const status = Number(err?.status || 0);
+      const isTransient = status === 0 || status >= 500;
+      if (!isTransient || attempt === maxRetries) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 450 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+function buildInlinePartFromDataUrl(dataUrl: string) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  let mimeType = 'image/jpeg';
+  const match = dataUrl.match(/^data:([^;]+);base64,/);
+  if (match && match[1]) {
+    mimeType = match[1];
+  }
+  const cleanBase64 = dataUrl.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+  if (!cleanBase64) return null;
+  return {
+    inlineData: {
+      mimeType,
+      data: cleanBase64,
+    },
+  };
+}
+
+function safeParseObjectJsonWithLatex(rawText: string): any {
+  if (!rawText) return null;
+  let clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  const firstBrace = clean.indexOf('{');
+  const lastBrace = clean.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    clean = clean.slice(firstBrace, lastBrace + 1);
+  }
+  try {
+    return JSON.parse(clean);
+  } catch {
+    // Khắc phục dấu backslash LaTeX chưa escape trong chuỗi JSON (ví dụ \frac, \text, \to)
+    try {
+      let inString = false;
+      let out = '';
+      for (let i = 0; i < clean.length; i++) {
+        const ch = clean[i];
+        if (ch === '"') {
+          let slashes = 0;
+          let k = i - 1;
+          while (k >= 0 && clean[k] === '\\') {
+            slashes++;
+            k--;
+          }
+          if (slashes % 2 === 0) inString = !inString;
+          out += ch;
+        } else if (inString) {
+          if (ch === '\n') out += '\\n';
+          else if (ch === '\r') continue;
+          else if (ch === '\t') out += ' ';
+          else if (ch === '\\') {
+            const next = clean[i + 1] || '';
+            const after = clean[i + 2] || '';
+            if (next === '"' || next === '\\' || next === '/') {
+              out += '\\' + next;
+              i++;
+            } else if (next === 'u' && /^[0-9a-fA-F]{4}/.test(clean.slice(i + 2, i + 6))) {
+              out += '\\u';
+            } else if ((next === 'b' || next === 'f' || next === 'n' || next === 'r' || next === 't') && !/[a-zA-Z]/.test(after)) {
+              out += '\\' + next;
+              i++;
+            } else {
+              out += '\\\\';
+            }
+          } else {
+            out += ch;
+          }
+        } else {
+          out += ch;
+        }
+      }
+      out = out.replace(/,\s*([\]}])/g, '$1');
+      return JSON.parse(out);
+    } catch {
+      return null;
+    }
+  }
+}
+
+// 1. Tầng In-Memory Cache cho các bài toán đã được Gemini AI giải thành công
 const problemSolutionCache = new Map<string, any>();
 
-// Seed cache ban đầu cho một số bài toán phổ biến
-const seedHash = crypto.createHash('sha256').update('tich_phan_tung_phan_x_sinx').digest('hex');
-problemSolutionCache.set(seedHash, {
-  problemText: 'Tính tích phân xác định: I = ∫_0^(π/2) x sin(x) dx',
-  latexFormula: '\\int_{0}^{\\frac{\\pi}{2}} x \\sin(x) \\, dx',
-  topic: 'calculus',
-  difficulty: 'Thông hiểu',
-  stepByStepSolution: [
-    {
-      stepNumber: 1,
-      title: 'Đặt biến tích phân từng phần',
-      description: 'Sử dụng quy tắc ưu tiên Lôgarit - Đa thức - Lượng giác - Mũ.',
-      latex: 'u = x \\implies du = dx; \\quad dv = \\sin(x)dx \\implies v = -\\cos(x)',
-    },
-    {
-      stepNumber: 2,
-      title: 'Áp dụng công thức I = u·v - ∫ v du',
-      description: 'Thay các đại lượng đã tính vào biểu thức tích phân từng phần.',
-      latex: 'I = \\left[ -x \\cos(x) \\right]_0^{\\frac{\\pi}{2}} - \\int_0^{\\frac{\\pi}{2}} (-\\cos(x)) dx',
-    },
-    {
-      stepNumber: 3,
-      title: 'Thế cận và tính tích phân còn lại',
-      description: 'Vì cos(π/2) = 0 và cos(0) = 1 nên hạng tử đầu bằng 0.',
-      latex: 'I = 0 + \\left[ \\sin(x) \\right]_0^{\\frac{\\pi}{2}} = \\sin\\left(\\frac{\\pi}{2}\\right) - \\sin(0) = 1',
-    },
-  ],
-  finalAnswer: 'I = 1',
-  source: 'cache',
-  processingTimeMs: 38,
-});
-
-// API 1: CAMERA SCANNER & AI MATH SOLVER (WITH CACHING & OCR NOISE CLEANING)
+// API 1: CAMERA SCANNER & AI MATH SOLVER (WITH FULL-CONTENT CACHING & OCR NOISE CLEANING)
 app.post('/api/gemini/scan', async (req, res) => {
   const startTime = Date.now();
-  const { problemText, latex, imageBase64 } = req.body;
-  // Làm sạch nhiễu PDF (header/footer, số trang, mã đề, đốm mực) trước khi gửi AI
+  const { problemText, latex, imageBase64 } = req.body || {};
   const cleanedProblem = cleanPdfNoiseAndOcr(problemText || '');
-  const cleanProblemText = cleanedProblem.suggestedPrompt || problemText;
-  const cleanLatex = cleanedProblem.latexFormula || latex;
+  const cleanProblemText = cleanedProblem.suggestedPrompt || problemText || '';
+  const cleanLatex = cleanedProblem.latexFormula || latex || '';
 
-  const normalizedKey = (cleanProblemText || cleanLatex || imageBase64?.slice(0, 50) || 'math_problem').trim().toLowerCase();
-  const hashKey = crypto.createHash('sha256').update(normalizedKey).digest('hex');
+  if (!cleanProblemText.trim() && !cleanLatex.trim() && !imageBase64) {
+    return res.status(400).json({
+      success: false,
+      code: 'EMPTY_INPUT',
+      error: 'Vui lòng nhập đề bài hoặc tải ảnh/PDF bài toán để AI phân tích.',
+    });
+  }
 
-  // Kiểm tra Cache trước
+  // Băm toàn bộ nội dung văn bản + ảnh (tránh trùng lặp prefix Base64)
+  const hashKey = crypto
+    .createHash('sha256')
+    .update(`${cleanProblemText.trim().toLowerCase()}|${cleanLatex.trim().toLowerCase()}|${imageBase64 || ''}`)
+    .digest('hex');
+
   if (problemSolutionCache.has(hashKey)) {
     const cached = problemSolutionCache.get(hashKey);
     return res.json({
@@ -88,361 +224,295 @@ app.post('/api/gemini/scan', async (req, res) => {
     });
   }
 
-  // Nếu không có trong cache, gọi Gemini API
-  try {
-    if (!apiKey) {
-      // Fallback khi chưa cấu hình key
-      const fallbackResult = {
-        problemText: problemText || 'Cho hàm số $y = x^3 - 3x + 1$. Tìm các điểm cực trị của hàm số.',
-        latexFormula: latex || 'y = x^3 - 3x + 1',
-        topic: 'calculus',
-        difficulty: 'Thông hiểu',
-        stepByStepSolution: [
-          {
-            stepNumber: 1,
-            title: 'Lọc ký tự rác OCR và tính đạo hàm f\'(x)',
-            description: 'Khử sạch đốm rác quang học, áp dụng công thức đạo hàm hàm đa thức bậc 3.',
-            latex: 'f\'(x) = 3x^2 - 3',
-          },
-          {
-            stepNumber: 2,
-            title: 'Giải phương trình f\'(x) = 0 tìm điểm cực trị',
-            description: 'Tìm các nghiệm làm đạo hàm bằng 0 và xét sự đổi dấu qua bảng biến thiên.',
-            latex: '3x^2 - 3 = 0 \\iff x^2 = 1 \\iff x = \\pm 1',
-          },
-        ],
-        finalAnswer: 'x = 1 (cực tiểu), x = -1 (cực đại)',
-        source: 'gemini_vision',
-        processingTimeMs: Date.now() - startTime,
-      };
-      problemSolutionCache.set(hashKey, fallbackResult);
-      return res.json({ success: true, result: fallbackResult });
-    }
-
-    const systemPrompt = `Bạn là chuyên gia giải toán THPT Việt Nam và bóc tách OCR chính xác cao.
-Nhiệm vụ của bạn:
-1. Đọc hình ảnh bài toán hoặc văn bản đề bài: "${problemText || latex || ''}".
-2. LỌC BỎ TOÀN BỘ KÝ TỰ RÁC QUANG HỌC (NOISE): loại bỏ đốm mực, dấu gạch sổ lẻ, tiêu đề trang scan, số báo danh, mã đề rác.
-3. CHUYỂN ĐỔI TOÀN BỘ CÔNG THỨC TOÁN THÀNH ĐỊNH DẠNG LATEX CHUẨN: bọc trong $...$ hoặc $$...$$ (ví dụ: $y = f(x)$, $\\int_0^1 x dx$, $\\frac{a}{b}$, $\\vec{AB}$, $\\parallel$, $\\perp$).
-4. Giải bài toán từng bước chi tiết và đưa ra đáp số cuối cùng chuẩn xác.
-
-Trả về định dạng JSON hợp lệ chứa:
-{
-  "problemText": "đề bài toán đã được lọc sạch noise và định dạng KaTeX chuẩn",
-  "latexFormula": "công thức LaTeX chính của bài toán",
-  "topic": "calculus | algebra | geometry_spatial | trigonometry",
-  "difficulty": "Nhận biết | Thông hiểu | Vận dụng | Vận dụng cao",
-  "stepByStepSolution": [
-    {
-      "stepNumber": 1,
-      "title": "Tên bước",
-      "description": "Giải thích chi tiết",
-      "latex": "công thức LaTeX của bước"
-    }
-  ],
-  "finalAnswer": "đáp số cuối cùng ngắn gọn"
-}
-Không viết chữ nào ngoài chuỗi JSON hợp lệ.`;
-
-    let contentsPayload: any;
-    if (imageBase64) {
-      let mime = 'image/jpeg';
-      let cleanBase64 = imageBase64;
-      if (imageBase64.startsWith('data:application/pdf;base64,')) {
-        mime = 'application/pdf';
-        cleanBase64 = imageBase64.replace(/^data:application\/pdf;base64,/, '');
-      } else if (imageBase64.startsWith('data:image/png;base64,')) {
-        mime = 'image/png';
-        cleanBase64 = imageBase64.replace(/^data:image\/png;base64,/, '');
-      } else {
-        cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '');
-      }
-      contentsPayload = {
-        parts: [
-          {
-            inlineData: {
-              mimeType: mime,
-              data: cleanBase64,
-            },
-          },
-          {
-            text: systemPrompt,
-          },
-        ],
-      };
-    } else {
-      contentsPayload = systemPrompt;
-    }
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: contentsPayload,
-      config: {
-        responseMimeType: 'application/json',
-      },
+  const client = getActiveGeminiClient();
+  if (!client) {
+    const errInfo = classifyGeminiError(new Error('MISSING_API_KEY'));
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
     });
+  }
 
-    const parsed = JSON.parse(response.text || '{}');
+  try {
+    const systemInstruction = `Bạn là chuyên gia giải Toán THPT Việt Nam (lớp 10, 11, 12) và bóc tách OCR chính xác cao.
+Nhiệm vụ của bạn:
+1. Đọc kỹ toàn bộ hình ảnh/tài liệu PDF hoặc văn bản đề bài do người dùng cung cấp.
+2. Lọc bỏ các ký tự rác OCR (số trang, watermark, mã đề lẻ), giữ nguyên vẹn mọi giả thiết, số liệu, hàm số, điều kiện.
+3. Chuyển đổi toàn bộ công thức toán sang định dạng LaTeX chuẩn KaTeX (bọc bằng $...$).
+4. Tự giải và KIỂM TRA LẠI toàn bộ phép tính, đạo hàm, dấu, nghiệm, điều kiện xác định trước khi kết luận đáp số cuối cùng. Tuyệt đối không đoán mò.`;
+
+    const userPrompt = `Hãy bóc tách đề bài (nếu có ảnh/PDF) và giải chi tiết từng bước thật chính xác cho bài toán sau:
+${cleanProblemText ? `Nội dung đề bài: ${cleanProblemText}` : ''}
+${cleanLatex ? `Công thức gợi ý: ${cleanLatex}` : ''}`;
+
+    const parts: any[] = [];
+    if (imageBase64) {
+      const mediaPart = buildInlinePartFromDataUrl(imageBase64);
+      if (mediaPart) parts.push(mediaPart);
+    }
+    parts.push({ text: userPrompt.trim() });
+
+    const response = await callWithTransientRetry(() =>
+      client.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: { parts },
+        config: {
+          systemInstruction,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              problemText: { type: Type.STRING },
+              latexFormula: { type: Type.STRING },
+              topic: { type: Type.STRING },
+              difficulty: { type: Type.STRING },
+              stepByStepSolution: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    stepNumber: { type: Type.INTEGER },
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    latex: { type: Type.STRING },
+                  },
+                  required: ['stepNumber', 'title', 'description', 'latex'],
+                },
+              },
+              finalAnswer: { type: Type.STRING },
+            },
+            required: ['problemText', 'latexFormula', 'topic', 'difficulty', 'stepByStepSolution', 'finalAnswer'],
+          },
+        },
+      })
+    );
+
+    const parsed = safeParseObjectJsonWithLatex(response.text || '');
+    if (!parsed || !Array.isArray(parsed.stepByStepSolution) || parsed.stepByStepSolution.length === 0) {
+      throw new Error('Phản hồi từ AI không đúng định dạng bài giải.');
+    }
+
+    const validTopics = ['calculus', 'algebra', 'geometry_spatial', 'trigonometry'];
+    const validDiffs = ['Nhận biết', 'Thông hiểu', 'Vận dụng', 'Vận dụng cao'];
     const result = {
-      ...parsed,
-      source: 'gemini_vision',
+      problemText: parsed.problemText || cleanProblemText || 'Bài toán đã quét',
+      latexFormula: parsed.latexFormula || cleanLatex || '',
+      topic: validTopics.includes(parsed.topic) ? parsed.topic : 'calculus',
+      difficulty: validDiffs.includes(parsed.difficulty) ? parsed.difficulty : 'Thông hiểu',
+      stepByStepSolution: parsed.stepByStepSolution,
+      finalAnswer: parsed.finalAnswer || '',
+      source: 'gemini_vision' as const,
       processingTimeMs: Date.now() - startTime,
     };
 
-    // Lưu vào Cache cho các lần gọi tiếp theo
     problemSolutionCache.set(hashKey, result);
-
-    res.json({ success: true, result });
+    return res.json({ success: true, result });
   } catch (error: any) {
-    console.warn('[Gemini Scan] Model call error, returning calculated solution:', error?.message);
-    res.json({
-      success: true,
-      result: {
-        problemText: problemText || 'Bài toán',
-        latexFormula: latex || '\\int x dx',
-        topic: 'calculus',
-        difficulty: 'Thông hiểu',
-        stepByStepSolution: [
-          {
-            stepNumber: 1,
-            title: 'Phân tích phương pháp giải',
-            description: 'Áp dụng công thức giải tích cơ bản.',
-            latex: 'I = \\frac{x^2}{2} + C',
-          },
-        ],
-        finalAnswer: 'I = x^2/2 + C',
-        source: 'cache',
-        processingTimeMs: Date.now() - startTime,
-      },
+    const errInfo = classifyGeminiError(error);
+    console.warn('[Gemini Scan] Error:', errInfo.code, error?.message);
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
     });
   }
 });
 
-// Hàm tạo câu trả lời gợi mở Socratic thông minh khi dịch vụ AI ngoại tuyến hoặc chưa kích hoạt khóa
-function getLikiSocraticResponse(query: string, conversationContext: string, useSearchGrounding?: boolean) {
-  const lower = (query || '').toLowerCase();
-
-  if (useSearchGrounding) {
-    if (lower.includes('cấu trúc') || lower.includes('đề thi') || lower.includes('2025') || lower.includes('tốt nghiệp') || lower.includes('bộ') || lower.includes('bgd')) {
-      return {
-        reply: `Theo phương án thi tốt nghiệp THPT từ năm 2025 của Bộ Giáo dục & Đào tạo, đề thi môn Toán có thời gian làm bài 90 phút với cấu trúc 3 phần rõ rệt:
-1. **Phần I (3.0 điểm):** Gồm 12 câu trắc nghiệm 4 lựa chọn (A, B, C, D), mỗi câu 0.25 điểm.
-2. **Phần II (4.0 điểm):** Gồm 4 câu hỏi trắc nghiệm Đúng/Sai. Mỗi câu có 4 ý a, b, c, d với thang điểm lũy tiến (đúng 1 ý được 0.1đ, đúng 2 ý được 0.25đ, đúng 3 ý được 0.5đ, đúng cả 4 ý được 1.0đ).
-3. **Phần III (3.0 điểm):** Gồm 6 câu hỏi trả lời ngắn, mỗi câu 0.5 điểm, yêu cầu điền đáp số chính xác.
-
-Học sinh cần đặc biệt chú ý rèn luyện kỹ năng giải các câu hỏi Đúng/Sai và Trả lời ngắn vì đây là phần phân hóa học sinh rất cao!`,
-        groundingChunks: [
-          {
-            web: {
-              uri: 'https://moet.gov.vn',
-              title: 'Cổng thông tin điện tử Bộ Giáo dục và Đào tạo - Cấu trúc định dạng đề thi tốt nghiệp THPT',
-            },
-          },
-          {
-            web: {
-              uri: 'https://thuvienphapluat.vn/chinh-sach-phap-luat-moi/vn/thoi-su-phap-luat/chinh-sach-moi/58189/phuong-an-thi-tot-nghiep-thpt-tu-nam-2025',
-              title: 'Quyết định ban hành cấu trúc định dạng đề thi tốt nghiệp THPT từ năm 2025 - Bộ GD&ĐT',
-            },
-          },
-          {
-            web: {
-              uri: 'https://vietnamnet.vn/giao-duc/tuyen-sinh',
-              title: 'Thông tin tuyển sinh và định dạng đề thi Toán THPT chuẩn Bộ GD&ĐT',
-            },
-          },
-        ],
-        searchQueries: ['cấu trúc đề thi tốt nghiệp thpt 2025 môn toán bộ gd&đt', 'phương án thi tốt nghiệp 2025'],
-        source: 'googleSearch',
-      };
-    }
-
-    return {
-      reply: `Dữ liệu tra cứu thực tế cho câu hỏi của bạn: Trong chương trình GDPT 2018 môn Toán, kiến thức được tích hợp theo hướng ứng dụng thực tế (STEM, tối ưu chi phí, mô hình hóa tốc độ tăng trưởng và bài toán kinh tế vi mô). Bạn có muốn Liki cùng bạn giải chi tiết bài toán ứng dụng này theo từng bước không?`,
-      groundingChunks: [
-        {
-          web: {
-            uri: 'https://moet.gov.vn',
-            title: 'Chương trình Giáo dục phổ thông 2018 - Môn Toán (Bộ GD&ĐT)',
-          },
-        },
-      ],
-      searchQueries: [query],
-      source: 'googleSearch',
-    };
-  }
-
-  // Phân tích câu hỏi toán học theo chủ đề để dẫn dắt Socratic
-  if (lower.includes('cực trị') || lower.includes('đơn điệu') || lower.includes('đồng biến') || lower.includes('nghịch biến') || lower.includes('đạo hàm')) {
-    return {
-      reply: 'Để tìm cực trị hoặc xét tính đơn điệu của hàm số, trước hết bạn cần tìm tập xác định và tính đạo hàm f\'(x). Bạn đã tính ra f\'(x) bằng bao nhiêu rồi?',
-      latex: "f'(x) = 0 \\implies x_1 = ?, \\quad x_2 = ?",
-      graphHint: {
-        equation: 'x^3 - 3*x + 1',
-        label: 'Đồ thị minh họa hàm số bậc ba có 2 cực trị',
-      },
-    };
-  }
-
-  if (lower.includes('thể tích') || lower.includes('chóp') || lower.includes('lăng trụ') || lower.includes('nón') || lower.includes('trụ') || lower.includes('không gian') || lower.includes('oxyz')) {
-    return {
-      reply: 'Trong hình học không gian, mấu chốt để tính thể tích hoặc khoảng cách là xác định chính xác chân đường cao của khối hình. Với bài toán này, đáy là hình gì và đường cao hạ từ đỉnh nào vậy bạn?',
-      latex: 'V = \\frac{1}{3} B \\cdot h \\quad \\text{hoặc} \\quad V = B \\cdot h',
-      graphHint: {
-        equation: 'z = x^2 + y^2',
-        label: 'Mô hình 3D Paraboloid trong không gian',
-      },
-    };
-  }
-
-  if (lower.includes('tích phân') || lower.includes('nguyên hàm')) {
-    return {
-      reply: 'Để tính tích phân này, bạn thử quan sát xem có thể biến đổi vi phân, đặt ẩn phụ u = g(x) hay dùng phương pháp tích phân từng phần (nhất lô, nhì đa, tam lượng, tứ mũ) không nhé?',
-      latex: '\\int u \\, dv = u \\cdot v - \\int v \\, du',
-    };
-  }
-
-  if (lower.includes('tiệm cận')) {
-    return {
-      reply: 'Đường tiệm cận đứng là nghiệm của mẫu số khiến phân thức tiến ra vô cực, còn tiệm cận ngang là giới hạn của hàm số khi x tiến ra ±∞. Bạn hãy tính lim f(x) khi x -> ±∞ xem ra bao nhiêu?',
-      latex: '\\lim_{x \\to \\pm\\infty} f(x) = y_0 \\implies y = y_0',
-    };
-  }
-
-  return {
-    reply: 'Chào bạn, mình là Liki! Để cùng giải quyết câu hỏi này, bạn có thể cho Liki biết điều kiện ban đầu hoặc bước biến đổi đầu tiên mà bạn đang nghĩ tới không?',
-    latex: "f(x) = ax^3 + bx^2 + cx + d",
-  };
-}
-
-// API 2: LIKI AI MATH TUTOR & SEARCH GROUNDING
+// API 2: LIKI AI MATH TUTOR & SEARCH GROUNDING (MULTI-TURN + HIGH REASONING + MULTIMODAL)
 app.post('/api/gemini/tutor', async (req, res) => {
-  const { messages, query, useSearchGrounding } = req.body;
+  const { messages = [], query = '', useSearchGrounding = false, mode = 'solve', imageBase64 } = req.body || {};
+
+  if (!String(query).trim() && !imageBase64) {
+    return res.status(400).json({
+      success: false,
+      code: 'EMPTY_QUERY',
+      error: 'Vui lòng nhập câu hỏi hoặc đính kèm ảnh bài tập để gửi tới AI.',
+    });
+  }
+
+  const client = getActiveGeminiClient();
+  if (!client) {
+    const errInfo = classifyGeminiError(new Error('MISSING_API_KEY'));
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
+    });
+  }
 
   try {
-    const conversationContext = (messages || [])
-      .slice(-6)
-      .map((m: any) => `${m.role === 'user' ? 'Học sinh' : 'Liki'}: ${m.content}`)
-      .join('\n');
+    const isSocraticMode = mode === 'socratic';
+
+    const systemInstruction = isSocraticMode
+      ? `Bạn là Liki - Gia sư Toán học THPT Việt Nam thông minh (hệ thống Math&NBK).
+Phong cách trả lời:
+1. Đọc kỹ chính xác đề bài, phương trình, hình ảnh và câu hỏi của người học. KHÔNG trả lời chung chung hay rập khuôn.
+2. Nếu người học vừa đưa lời giải hoặc bước làm: kiểm tra chi tiết từng phép biến đổi, chỉ rõ chỗ đúng hoặc chỗ sai cụ thể.
+3. Hướng dẫn từng bước rõ ràng theo phương pháp gợi mở: giải thích bản chất bước hiện tại và gợi ý bước tiếp theo để người học tự tư duy tiếp.
+4. Bọc mọi công thức toán bằng $...$ (inline) hoặc $$...$$ (block) theo chuẩn KaTeX. Trình bày mạch lạc, tự nhiên bằng tiếng Việt.`
+      : `Bạn là Liki - Trợ lý & Gia sư AI thông minh chuyên sâu của hệ thống Toán Học LIKI (Math&NBK).
+Nguyên tắc bắt buộc để trả lời chính xác nhất:
+1. Trả lời TRỰC TIẾP, ĐẦY ĐỦ và CHÍNH XÁC mọi câu hỏi của người dùng (Toán THPT lớp 10-11-12, đề thi THPT, Vật lý/Hóa/STEM, hoặc câu hỏi kiến thức/hướng dẫn bất kỳ).
+2. Với bài toán hoặc bài tập trắc nghiệm/tự luận:
+   - Phân tích rõ giả thiết và điều kiện xác định (nếu có).
+   - Trình bày lời giải TỪNG BƯỚC chi tiết, giải thích tại sao làm như vậy.
+   - Tự kiểm tra lại toàn bộ phép tính, dấu, đạo hàm, nguyên hàm, nghiệm trước khi viết kết luận.
+   - Chốt đáp số / đáp án cuối cùng thật rõ ràng.
+3. Bọc toàn bộ công thức toán học trong $...$ (trong dòng) hoặc $$...$$ (công thức riêng dòng) theo chuẩn KaTeX.
+4. Nếu người dùng gửi ảnh bài tập, hãy đọc kỹ toàn bộ đề bài và hình vẽ trong ảnh rồi giải chi tiết.
+5. KHÔNG né tránh câu hỏi, KHÔNG trả lời cộc lốc hay rập khuôn.`;
+
+    // Xây dựng lịch sử hội thoại đa lượt chuẩn Gemini API (tối đa 16 lượt gần nhất)
+    const historyTurns: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
+    const recentMessages = Array.isArray(messages) ? messages.slice(-16) : [];
+
+    // Tránh lặp lại tin nhắn cuối nếu frontend đã đẩy query vào messages
+    const historyWithoutDuplicateLast =
+      recentMessages.length > 0 &&
+      recentMessages[recentMessages.length - 1]?.role === 'user' &&
+      String(recentMessages[recentMessages.length - 1]?.content || '').trim() === String(query).trim()
+        ? recentMessages.slice(0, -1)
+        : recentMessages;
+
+    for (const m of historyWithoutDuplicateLast) {
+      if (!m || m.isError) continue;
+      const role: 'user' | 'model' = m.role === 'assistant' || m.role === 'model' ? 'model' : 'user';
+      const parts: any[] = [];
+      if (role === 'user' && m.imageUrl && typeof m.imageUrl === 'string' && m.imageUrl.startsWith('data:image/')) {
+        const imgPart = buildInlinePartFromDataUrl(m.imageUrl);
+        if (imgPart) parts.push(imgPart);
+      }
+      const textContent = [m.content, m.latex ? `\nCông thức: $$${m.latex}$$` : ''].filter(Boolean).join('');
+      if (textContent.trim()) {
+        parts.push({ text: textContent });
+      }
+      if (parts.length > 0) {
+        // Đảm bảo lượt luôn xen kẽ hoặc gộp phần nếu cùng role
+        if (historyTurns.length > 0 && historyTurns[historyTurns.length - 1].role === role) {
+          historyTurns[historyTurns.length - 1].parts.push(...parts);
+        } else {
+          historyTurns.push({ role, parts });
+        }
+      }
+    }
+
+    const currentParts: any[] = [];
+    if (imageBase64) {
+      const imgPart = buildInlinePartFromDataUrl(imageBase64);
+      if (imgPart) currentParts.push(imgPart);
+    }
+    currentParts.push({
+      text: String(query).trim() || 'Hãy đọc ảnh đính kèm và giải thích / giải bài toán này thật chi tiết giúp mình.',
+    });
+
+    if (historyTurns.length > 0 && historyTurns[historyTurns.length - 1].role === 'user') {
+      historyTurns[historyTurns.length - 1].parts.push(...currentParts);
+    } else {
+      historyTurns.push({ role: 'user', parts: currentParts });
+    }
+
+    // Đảm bảo hội thoại luôn bắt đầu bằng lượt 'user'
+    while (historyTurns.length > 0 && historyTurns[0].role !== 'user') {
+      historyTurns.shift();
+    }
+
+    const config: any = {
+      systemInstruction,
+      thinkingConfig: {
+        thinkingLevel: ThinkingLevel.HIGH,
+      },
+    };
 
     if (useSearchGrounding) {
-      try {
-        const prompt = `Bạn là Liki - Trợ lý & Gia sư Toán THPT thông minh của hệ thống Math&NBK.
-Bạn xưng là "Liki" và gọi người dùng là "bạn".
-Học sinh cần tra cứu thông tin thực tế / đề thi / dạng toán / tuyển sinh:
-Lịch sử: ${conversationContext}
-Câu hỏi: "${query}"
-
-Hãy cung cấp câu trả lời chính xác, cập nhật dựa trên thông tin tìm kiếm được, kèm theo gợi mở tư duy toán học và công thức LaTeX nếu cần.`;
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-4-hydrogen',
-          contents: prompt,
-          config: {
-            tools: [{ googleSearch: {} }],
-          },
-        });
-
-        const text = response.text || '';
-        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        const searchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries || [];
-
-        if (text) {
-          return res.json({
-            reply: text,
-            groundingChunks,
-            searchQueries,
-            source: 'googleSearch',
-          });
-        }
-      } catch (searchErr: any) {
-        console.warn('[Liki Tutor] Search Grounding API call failed, using pedagogical grounded fallback:', searchErr?.status || searchErr?.message);
-        return res.json(getLikiSocraticResponse(query, conversationContext, true));
-      }
+      config.tools = [{ googleSearch: {} }];
     }
 
-    try {
-      const prompt = `Bạn là Liki, trợ lý và gia sư Toán THPT Việt Nam thông minh (dành cho học sinh lớp 10, 11, 12 thuộc hệ thống Math&NBK).
-Bạn xưng là "Liki" và gọi người học là "bạn".
-Nguyên tắc của Liki:
-1. KHÔNG BAO GIỜ giải bài toán hộ hay đưa đáp án cuối cùng ngay lập tức.
-2. Luôn đặt câu hỏi dẫn dắt, giải thích bản chất kiến thức và đồng hành từng bước.
-3. Nếu cần biểu diễn công thức toán, hãy đính kèm trường "latex".
-4. Nếu bài toán liên quan đến đồ thị hàm số (hàm bậc 3, phân thức, parabol), đính kèm "graphHint".
-
-Lịch sử trò chuyện:
-${conversationContext}
-Học sinh vừa hỏi: "${query}"
-
-Trả về định dạng JSON:
-{
-  "reply": "câu trả lời của Liki dẫn dắt ngắn gọn, thân thiện (dưới 3 câu)",
-  "latex": "công thức toán gợi ý (tùy chọn)",
-  "graphHint": { "equation": "hàm số gợi ý (tùy chọn)", "label": "nhãn đồ thị" }
-}`;
-
-      const response = await ai.models.generateContent({
+    const response = await callWithTransientRetry(() =>
+      client.models.generateContent({
         model: 'gemini-4-hydrogen',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+        contents: historyTurns,
+        config,
+      })
+    );
 
-      const parsed = JSON.parse(response.text || '{}');
-      if (parsed.reply) {
-        return res.json(parsed);
-      }
-    } catch (genErr: any) {
-      console.warn('[Liki Tutor] Model call failed, using intelligent Socratic fallback:', genErr?.status || genErr?.message);
-      return res.json(getLikiSocraticResponse(query, conversationContext, false));
+    const replyText = (response.text || '').trim();
+    if (!replyText) {
+      throw new Error('Mô hình AI không trả về nội dung.');
     }
 
-    return res.json(getLikiSocraticResponse(query, conversationContext, false));
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const searchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries || [];
+
+    return res.json({
+      success: true,
+      reply: replyText,
+      groundingChunks,
+      searchQueries,
+      source: useSearchGrounding ? 'googleSearch' : 'gemini',
+    });
   } catch (error: any) {
-    console.warn('[Liki Tutor] Request handling fallback:', error?.message);
-    res.json(getLikiSocraticResponse(query || '', '', useSearchGrounding));
+    const errInfo = classifyGeminiError(error);
+    console.warn('[Liki Tutor] Error:', errInfo.code, error?.message);
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
+    });
   }
 });
 
 // API 2.5: GOOGLE SEARCH GROUNDING DÀNH RIÊNG CHO TOÁN & ĐỀ THI BGD
 app.post('/api/gemini/search-grounding', async (req, res) => {
-  const { query } = req.body;
+  const { query } = req.body || {};
+  if (!String(query || '').trim()) {
+    return res.status(400).json({ success: false, code: 'EMPTY_QUERY', error: 'Vui lòng nhập từ khóa tra cứu.' });
+  }
+
+  const client = getActiveGeminiClient();
+  if (!client) {
+    const errInfo = classifyGeminiError(new Error('MISSING_API_KEY'));
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
+    });
+  }
 
   try {
-    const prompt = `Bạn là Liki - Trợ lý Toán học THPT Math&NBK. 
-Học sinh hoặc giáo viên đang tra cứu thông tin: "${query}".
-Hãy tra cứu Google Search để cập nhật thông tin chuẩn xác nhất về:
-- Đề thi tốt nghiệp THPT chuẩn Bộ GD&ĐT 2025/2026
-- Phương pháp giải toán mới, bài toán thực tế STEM
-- Cấu trúc 3 phần đề thi Bộ GD&ĐT
-Trình bày rõ ràng, súc tích, chuyên nghiệp.`;
+    const prompt = `Bạn là Liki - Trợ lý Toán học THPT Math&NBK.
+Người dùng đang tra cứu thông tin: "${query}".
+Hãy sử dụng Google Search để trả lời chính xác, cập nhật, súc tích và dẫn nguồn rõ ràng (bọc công thức toán bằng $...$ nếu có).`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
+    const response = await callWithTransientRetry(() =>
+      client.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          tools: [{ googleSearch: {} }],
+        },
+      })
+    );
 
-    const text = response.text || '';
+    const text = (response.text || '').trim();
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const searchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries || [];
 
-    res.json({
+    return res.json({
       success: true,
       text,
       groundingChunks,
       searchQueries,
     });
   } catch (error: any) {
-    console.warn('[Search Grounding] Grounded fallback activated:', error?.status || error?.message);
-    const fallback = getLikiSocraticResponse(query, '', true);
-    res.json({
-      success: true,
-      text: fallback.reply,
-      groundingChunks: fallback.groundingChunks || [],
-      searchQueries: fallback.searchQueries || [query],
+    const errInfo = classifyGeminiError(error);
+    console.warn('[Search Grounding] Error:', errInfo.code, error?.message);
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
     });
   }
 });
@@ -1102,7 +1172,8 @@ app.post('/api/gemini/parse-pdf', async (req, res) => {
     const cleanedContent = cleanPdfNoiseAndOcr(rawContent).cleanedText || rawContent;
 
     // Nếu không có API Key, chuyển sang sử dụng bộ bóc tách thông minh Regex/LaTeX nội bộ
-    if (!apiKey) {
+    const activeClient = getActiveGeminiClient();
+    if (!activeClient) {
       console.warn('[Gemini PDF Parser] Không có API Key, sử dụng bộ giải mã LaTeX/PDF thông minh');
       const fallbackExam = parseExamFromLatexOrText(cleanedContent, grade, durationMinutes, examTitle);
       return res.json({ success: true, parsedExam: fallbackExam, source: 'latex_parser', textExtracted: Boolean(extractedPdfText) });
@@ -1208,7 +1279,7 @@ Trả về DUY NHẤT chuỗi JSON hợp lệ, không có văn bản giải thí
       contentsPayload = `${systemPrompt}\n\nNỘI DUNG ĐỀ THI / MÃ NGUỒN LATEX CỦA GIÁO VIÊN:\n${rawContent}`;
     }
 
-    const response = await ai.models.generateContent({
+    const response = await activeClient.models.generateContent({
       model: 'gemini-4-hydrogen',
       contents: contentsPayload,
       config: {

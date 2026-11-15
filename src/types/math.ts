@@ -185,6 +185,8 @@ export interface SocraticMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   latex?: string;
+  imageUrl?: string;
+  isError?: boolean;
   graphHint?: {
     equation: string;
     rangeX?: [number, number];

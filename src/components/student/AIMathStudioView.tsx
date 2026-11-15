@@ -103,9 +103,13 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
   // ==========================================
   const [messages, setMessages] = useState<SocraticMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [hintsRemaining, setHintsRemaining] = useState(2);
+  const [hintsRemaining, setHintsRemaining] = useState(3);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [useSearchGrounding, setUseSearchGrounding] = useState<boolean>(false);
+  const [tutorMode, setTutorMode] = useState<'solve' | 'socratic'>('solve');
+  const [tutorAttachedImage, setTutorAttachedImage] = useState<string | null>(null);
+  const tutorFileInputRef = useRef<HTMLInputElement>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   // Xử lý nạp tệp ảnh chụp, tệp PDF hoặc tài liệu toán học có xác thực định dạng trước khi quét
   const handleIncomingFile = async (file: File) => {
@@ -219,6 +223,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
 
     setIsScanning(true);
     setCreatedExamNotice(null);
+    setScanError(null);
 
     // 1. Xác định nội dung đề bài thô cần phân tích
     const rawInput = customProblemText.trim() || SAMPLE_SCAN_RESULTS[selectedPresetIndex % SAMPLE_SCAN_RESULTS.length].problemText;
@@ -251,37 +256,26 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.result) {
-          const finalResult: ScanResult = {
-            ...data.result,
-            problemText: cleanedOutput.suggestedPrompt || data.result.problemText,
-            latexFormula: data.result.latexFormula || cleanedOutput.latexFormula,
-          };
-          setScanResult(finalResult);
-          setIsScanning(false);
-          onIncrementScan();
-          return;
-        }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.result) {
+        const finalResult: ScanResult = {
+          ...data.result,
+          problemText: data.result.problemText || cleanedOutput.suggestedPrompt,
+          latexFormula: data.result.latexFormula || cleanedOutput.latexFormula,
+        };
+        setScanResult(finalResult);
+        setIsScanning(false);
+        onIncrementScan();
+        return;
       }
-    } catch (err) {
-      console.warn('Lỗi gọi API /api/gemini/scan, kích hoạt bộ giải toán cục bộ thông minh:', err);
-    }
 
-    // 4. Fallback thông minh cục bộ khi ngoại tuyến hoặc chưa có API Key
-    setTimeout(() => {
-      const preset = SAMPLE_SCAN_RESULTS[selectedPresetIndex % SAMPLE_SCAN_RESULTS.length];
-      const fallbackResult: ScanResult = {
-        ...preset,
-        problemText: cleanedOutput.suggestedPrompt || preset.problemText,
-        latexFormula: cleanedOutput.latexFormula || preset.latexFormula,
-        processingTimeMs: 42,
-      };
-      setScanResult(fallbackResult);
+      setScanError(data?.error || 'Không thể phân tích bài toán lúc này. Vui lòng kiểm tra kết nối và thử lại.');
+    } catch (err: any) {
+      console.warn('Lỗi gọi API /api/gemini/scan:', err);
+      setScanError('Không thể kết nối tới máy chủ AI. Vui lòng thử lại sau.');
+    } finally {
       setIsScanning(false);
-      onIncrementScan();
-    }, 800);
+    }
   };
 
   // Tạo đề thi tự động từ bài toán đã quét và lọc sạch noise
@@ -390,22 +384,40 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
     setActiveStudioTab('tutor');
   };
 
-  // Gửi tin nhắn cho Gia sư Liki
-  const handleSendTutorMessage = async (customText?: string) => {
-    const textToSend = customText !== undefined ? customText : inputText;
-    if (!textToSend.trim()) return;
+  // Đọc ảnh đính kèm cho khung chat Hỏi Đáp Liki
+  const handleTutorImageFile = (file: File) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setTutorAttachedImage(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
-    const queryText = textToSend.trim();
+  // Gửi tin nhắn cho Gia sư Liki
+  const handleSendTutorMessage = async (customText?: string, overrideMode?: 'solve' | 'socratic') => {
+    const textToSend = customText !== undefined ? customText : inputText;
+    const attachedImg = customText !== undefined ? null : tutorAttachedImage;
+    if (!textToSend.trim() && !attachedImg) return;
+
+    const queryText = textToSend.trim() || 'Hãy đọc đề bài trong ảnh đính kèm và giải chi tiết giúp mình.';
     const userMsg: SocraticMessage = {
       id: `usr_${Date.now()}`,
       role: 'user',
       content: queryText,
+      imageUrl: attachedImg || undefined,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
-    setInputText('');
+    if (customText === undefined) {
+      setInputText('');
+      setTutorAttachedImage(null);
+      if (tutorFileInputRef.current) tutorFileInputRef.current.value = '';
+    }
     setIsAiThinking(true);
 
     try {
@@ -416,17 +428,18 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
           messages: newHistory,
           query: queryText,
           useSearchGrounding,
+          mode: overrideMode || tutorMode,
+          imageBase64: attachedImg || undefined,
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.reply) {
         const aiMsg: SocraticMessage = {
           id: `ai_${Date.now()}`,
           role: 'assistant',
-          content: data.reply || 'Liki đã ghi nhận câu trả lời. Bạn hãy thử bước tiếp theo nhé!',
+          content: data.reply,
           latex: data.latex,
-          graphHint: data.graphHint,
           groundingChunks: data.groundingChunks,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
@@ -434,47 +447,45 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
         setIsAiThinking(false);
         return;
       }
-    } catch (err) {
-      console.warn('Lỗi kết nối Liki Tutor API:', err);
-    }
 
-    // Fallback nếu ngoại tuyến
-    setTimeout(() => {
-      let aiResponseText = 'Liki ghi nhận suy luận của bạn. Thử biến đổi hoặc thay giá trị vào phương trình để kiểm tra các điểm nghiệm xem sao nhé!';
-      let latexHint = "f'(x) = 0";
-
-      const aiMsg: SocraticMessage = {
-        id: `ai_${Date.now()}`,
+      const errorMsg: SocraticMessage = {
+        id: `err_${Date.now()}`,
         role: 'assistant',
-        content: aiResponseText,
-        latex: latexHint,
+        isError: true,
+        content: data?.error || 'AI không thể trả lời lúc này. Vui lòng kiểm tra cấu hình khóa API và thử lại.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-
-      setMessages((prev) => [...prev, aiMsg]);
+      setMessages((prev) => [...prev, errorMsg]);
+    } catch (err) {
+      console.warn('Lỗi kết nối Liki Tutor API:', err);
+      const errorMsg: SocraticMessage = {
+        id: `err_${Date.now()}`,
+        role: 'assistant',
+        isError: true,
+        content: 'Không thể kết nối tới máy chủ AI. Vui lòng kiểm tra mạng và thử gửi lại câu hỏi.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
       setIsAiThinking(false);
-    }, 600);
+    }
   };
 
-  // Yêu cầu gợi ý thông minh từ Gia sư
-  const handleRequestHint = () => {
-    if (hintsRemaining <= 0) return;
+  // Yêu cầu gợi ý thông minh theo đúng ngữ cảnh bài toán hiện tại
+  const handleRequestHint = async () => {
+    if (hintsRemaining <= 0 || messages.length === 0 || isAiThinking) return;
     setHintsRemaining((prev) => prev - 1);
-
-    const hintMsg: SocraticMessage = {
-      id: `hint_${Date.now()}`,
-      role: 'assistant',
-      content: `💡 Gợi ý cấp độ ${3 - hintsRemaining}: Hãy lập bảng xét dấu cho biểu thức đạo hàm $f'(x)$. Khi đi qua nghiệm bội lẻ, đạo hàm sẽ đổi dấu từ dương sang âm (cực đại) hoặc từ âm sang dương (cực tiểu).`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, hintMsg]);
+    await handleSendTutorMessage(
+      'Hãy cho mình một gợi ý trọng tâm về hướng giải tiếp theo cho bài toán đang trao đổi (chỉ gợi ý phương pháp và công thức mấu chốt).',
+      'socratic'
+    );
   };
 
   // Xóa lịch sử cuộc trò chuyện
   const handleClearChat = () => {
     setMessages([]);
-    setHintsRemaining(2);
+    setHintsRemaining(3);
+    setTutorAttachedImage(null);
   };
 
   // Nếu người dùng yêu cầu chuyển sang phòng riêng biệt để cắt các câu vào đề
@@ -596,13 +607,40 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                   </div>
                   <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Sẵn sàng giải đáp · Không giải bài hộ · Gợi mở từng bước
+                    {tutorMode === 'solve'
+                      ? 'Suy luận chuyên sâu · Giải chi tiết & trả lời trực tiếp'
+                      : 'Chế độ Gia sư · Dẫn dắt & kiểm tra từng bước'}
                   </span>
                 </div>
               </div>
 
               {/* Action tools inside Liki chat header */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setTutorMode('solve')}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      tutorMode === 'solve'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Giải chi tiết
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTutorMode('socratic')}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      tutorMode === 'socratic'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Gợi mở từng bước
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => setActiveStudioTab('three_3d')}
@@ -626,7 +664,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                 <button
                   type="button"
                   onClick={handleRequestHint}
-                  disabled={hintsRemaining <= 0 || messages.length === 0}
+                  disabled={hintsRemaining <= 0 || messages.length === 0 || isAiThinking}
                   className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 transition-colors cursor-pointer"
                 >
                   <Lightbulb size={14} className="text-amber-600" />
@@ -753,14 +791,26 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                           className={`p-4 rounded-2xl leading-relaxed ${
                             isUser
                               ? 'bg-blue-600 text-white rounded-tr-xs'
+                              : m.isError
+                              ? 'bg-rose-50 text-rose-900 border border-rose-200 rounded-tl-xs'
                               : 'bg-slate-100 text-slate-900 rounded-tl-xs'
                           }`}
                         >
-                          <p className="whitespace-pre-wrap">{m.content}</p>
+                          {m.imageUrl && (
+                            <img
+                              src={m.imageUrl}
+                              alt="Ảnh bài toán đính kèm"
+                              className="max-h-52 w-auto rounded-xl border border-white/20 mb-2 object-contain bg-white"
+                            />
+                          )}
+
+                          <div className="text-xs sm:text-[13px] leading-relaxed break-words">
+                            <MathView math={m.content} />
+                          </div>
 
                           {m.latex && (
                             <div className="mt-2 pt-2 border-t border-black/10 overflow-x-auto">
-                              <MathView latex={m.latex} />
+                              <MathView math={m.latex} block />
                             </div>
                           )}
 
@@ -804,13 +854,13 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                   <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center">
                     <Bot size={16} />
                   </div>
-                  <span>{useSearchGrounding ? 'Liki đang tra cứu Google Search và phân tích...' : 'Liki đang suy nghĩ câu hỏi gợi mở tiếp theo...'}</span>
+                  <span>{useSearchGrounding ? 'Liki đang tra cứu Google Search và phân tích chi tiết...' : 'Liki đang suy luận và giải chi tiết câu hỏi của bạn...'}</span>
                 </div>
               )}
             </div>
 
             {/* Search Grounding Toggle */}
-            <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+            <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
               <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 hover:text-blue-600">
                 <input
                   type="checkbox"
@@ -820,24 +870,87 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                 />
                 <span className="flex items-center gap-1.5">
                   <Globe size={14} className={useSearchGrounding ? 'text-blue-600 animate-pulse' : 'text-slate-400'} />
-                  <span>Tra cứu Google Search thực tế (Đề thi & Tuyển sinh BGD mới nhất)</span>
+                  <span>Tra cứu Google Search thực tế (Đề thi & Tuyển sinh mới nhất)</span>
                 </span>
               </label>
-              <span className="text-[10px] font-mono text-slate-400">gemini-4-hydrogen</span>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+                Suy luận cao
+              </span>
             </div>
 
+            {tutorAttachedImage && (
+              <div className="p-2.5 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <img
+                    src={tutorAttachedImage}
+                    alt="Ảnh câu hỏi chuẩn bị gửi"
+                    className="w-12 h-12 rounded-xl object-cover border border-blue-300 bg-white shrink-0"
+                  />
+                  <div className="text-xs text-blue-900 font-semibold truncate">
+                    Đã đính kèm ảnh bài toán · Liki sẽ đọc ảnh và giải chi tiết
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTutorAttachedImage(null);
+                    if (tutorFileInputRef.current) tutorFileInputRef.current.value = '';
+                  }}
+                  className="p-1.5 rounded-lg bg-white text-slate-500 hover:text-rose-600 border border-slate-200 cursor-pointer shrink-0"
+                  title="Bỏ ảnh đính kèm"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             {/* Input Form gửi tin nhắn */}
-            <form onSubmit={(e) => { e.preventDefault(); handleSendTutorMessage(); }} className="pt-2 border-t border-slate-100 flex gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); handleSendTutorMessage(); }} className="pt-2 border-t border-slate-100 flex gap-2 items-center">
+              <input
+                ref={tutorFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleTutorImageFile(e.target.files[0]);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => tutorFileInputRef.current?.click()}
+                title="Đính kèm ảnh chụp đề bài (hoặc Ctrl+V để dán ảnh trực tiếp)"
+                className="h-11 w-11 rounded-xl border border-slate-300 hover:border-blue-500 hover:bg-blue-50 text-slate-600 hover:text-blue-700 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+              >
+                <ImageIcon size={17} />
+              </button>
               <input
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder={useSearchGrounding ? 'Hỏi Liki về dạng đề thi, thông tin tuyển sinh hoặc toán thực tế...' : 'Nhập câu hỏi hoặc câu trả lời gửi đến Liki...'}
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.startsWith('image/')) {
+                      const file = items[i].getAsFile();
+                      if (file) {
+                        e.preventDefault();
+                        handleTutorImageFile(file);
+                        break;
+                      }
+                    }
+                  }
+                }}
+                placeholder={
+                  useSearchGrounding
+                    ? 'Hỏi về dạng đề thi, thông tin tuyển sinh hoặc dán (Ctrl+V) ảnh bài tập...'
+                    : 'Nhập bài toán, câu hỏi bất kỳ hoặc dán (Ctrl+V) ảnh đề bài...'
+                }
                 className="flex-1 h-11 px-4 rounded-xl border border-slate-300 text-xs focus:border-blue-600 focus:outline-none"
               />
               <button
                 type="submit"
-                disabled={!inputText.trim()}
+                disabled={(!inputText.trim() && !tutorAttachedImage) || isAiThinking}
                 className="px-5 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
               >
                 <Send size={15} />
@@ -1312,6 +1425,12 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
 
           {/* Cột phải: Kết quả bóc tách lời giải & Tạo đề thi (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
+            {scanError && (
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-semibold flex items-start gap-2.5 shadow-xs">
+                <AlertTriangle size={17} className="text-rose-600 shrink-0 mt-0.5" />
+                <span>{scanError}</span>
+              </div>
+            )}
             {scanResult ? (
               <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs animate-in fade-in">
                 {createdExamNotice && (

@@ -19,34 +19,37 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
   const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
-  const handleScanProblem = async (problemData?: typeof SAMPLE_OCR_PROBLEMS[0], customPrompt?: string) => {
+  const handleScanProblem = async (
+    problemData?: typeof SAMPLE_OCR_PROBLEMS[0],
+    customPrompt?: string,
+    imageBase64Override?: string
+  ) => {
     setScanError(null);
     setIsProcessing(true);
     onIncrementScan();
 
     const targetProblem = problemData || selectedSample;
+    const imgToSend = imageBase64Override ?? uploadedImagePreview ?? undefined;
 
     try {
-      // Gọi API Server Proxy với cơ chế Caching
       const response = await fetch('/api/gemini/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          problemText: customPrompt || targetProblem.solution.problemText,
-          latex: targetProblem.latex,
+          problemText: customPrompt || (imgToSend ? '' : targetProblem.solution.problemText),
+          latex: imgToSend ? undefined : targetProblem.latex,
+          imageBase64: imgToSend,
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.result) {
         setActiveSolution(data.result);
       } else {
-        // Fallback sử dụng dữ liệu mẫu nếu API server chưa nạp key hoặc môi trường offline
-        setActiveSolution(targetProblem.solution);
+        setScanError(data?.error || 'Không thể phân tích bài toán lúc này. Vui lòng thử lại.');
       }
-    } catch (err) {
-      // Fallback tự động
-      setActiveSolution(targetProblem.solution);
+    } catch {
+      setScanError('Không thể kết nối tới máy chủ AI. Vui lòng thử lại sau.');
     } finally {
       setIsProcessing(false);
     }
@@ -62,9 +65,9 @@ export const CameraScannerView: React.FC<CameraScannerViewProps> = ({
       }
       const reader = new FileReader();
       reader.onload = () => {
-        setUploadedImagePreview(reader.result as string);
-        // Tự động phân tích bài toán
-        handleScanProblem(SAMPLE_OCR_PROBLEMS[1], 'Bài toán hình học từ ảnh tải lên');
+        const dataUrl = reader.result as string;
+        setUploadedImagePreview(dataUrl);
+        handleScanProblem(undefined, 'Hãy đọc ảnh bài toán này và giải chi tiết từng bước.', dataUrl);
       };
       reader.readAsDataURL(file);
     }

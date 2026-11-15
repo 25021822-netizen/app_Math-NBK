@@ -249,8 +249,10 @@ export function renderMixedMathAndText(rawInput: string, defaultBlock: boolean =
     }
     // D. Văn bản tiếng Việt thông thường
     else {
-      // Escape HTML và bảo lưu các ký tự xuống dòng
-      const safeText = escapeHtml(part).replace(/\r?\n/g, '<br />');
+      // Escape HTML, hỗ trợ **in đậm** an toàn và bảo lưu các ký tự xuống dòng
+      const safeText = escapeHtml(part)
+        .replace(/\*\*([^*]+?)\*\*/g, '<strong class="font-bold">$1</strong>')
+        .replace(/\r?\n/g, '<br />');
       resultHtml += safeText;
     }
   }
