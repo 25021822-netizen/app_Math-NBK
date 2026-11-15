@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, Classroom, StudentExamSubmission } from '../../types/math';
 import {
   User,
@@ -20,7 +20,6 @@ import {
   Camera,
   Share2,
   Lock,
-  Upload,
   Key,
   Eye,
   EyeOff,
@@ -69,13 +68,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   );
 
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
-
-  // ==========================================
-  // STATE TẢI ẢNH TỪ MÁY & ĐỔI MẬT KHẨU
-  // ==========================================
-  const avatarFileInputRef = useRef<HTMLInputElement>(null);
-  const [avatarUploadSuccess, setAvatarUploadSuccess] = useState<string | null>(null);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   // Đổi mật khẩu
   const [currentPasswordDisplay, setCurrentPasswordDisplay] = useState(userProfile.password || 'AnNguyen@2025');
@@ -136,29 +128,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     setTimeout(() => setSaveSuccessMessage(null), 3000);
   };
 
-  // 1. Tải ảnh từ máy tính / thiết bị làm ảnh đại diện
-  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    setAvatarError(null);
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setAvatarError('Dung lượng ảnh vượt quá 10MB. Vui lòng chọn ảnh nhỏ hơn!');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          const dataUrl = event.target.result as string;
-          setAvatarUrl(dataUrl);
-          setAvatarUploadSuccess('Đã tải ảnh từ máy thành công! Nhấn "Lưu Thay Đổi Hồ Sơ" để lưu lại.');
-          setTimeout(() => setAvatarUploadSuccess(null), 4000);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // 2. Tự đổi mật khẩu cá nhân (Đồng bộ trực tiếp lên tài khoản Admin)
+  // Tự đổi mật khẩu cá nhân (Đồng bộ trực tiếp lên tài khoản Admin)
   const handleChangePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);
@@ -346,72 +316,33 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           <span className="text-xs text-slate-400">Cập nhật hồ sơ phục vụ thi cử & nhóm lớp</span>
         </div>
 
-        {/* Avatar Picker & Tải ảnh từ máy làm ảnh đại diện */}
-        <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <label className="text-xs font-bold text-slate-800 block">
-                Ảnh Đại Diện Tài Khoản (Avatar)
-              </label>
-              <span className="text-[11px] text-slate-500">
-                Tải ảnh trực tiếp từ máy tính/điện thoại hoặc chọn mẫu avatar có sẵn
-              </span>
-            </div>
-
-            {/* Nút bấm tải ảnh từ thiết bị */}
-            <div>
-              <input
-                type="file"
-                ref={avatarFileInputRef}
-                accept="image/*"
-                onChange={handleAvatarFileUpload}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => avatarFileInputRef.current?.click()}
-                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <Upload size={15} />
-                <span>Tải ảnh từ máy làm ảnh đại diện</span>
-              </button>
-            </div>
+        {/* Chọn Avatar mẫu có sẵn */}
+        <div className="space-y-2.5 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div>
+            <label className="text-xs font-bold text-slate-800 block">
+              Ảnh Đại Diện Tài Khoản (Avatar)
+            </label>
+            <span className="text-[11px] text-slate-500">
+              Chọn mẫu ảnh đại diện có sẵn
+            </span>
           </div>
 
-          {avatarError && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-              <AlertTriangle size={16} />
-              <span>{avatarError}</span>
-            </div>
-          )}
-
-          {avatarUploadSuccess && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-              <CheckCircle2 size={16} />
-              <span>{avatarUploadSuccess}</span>
-            </div>
-          )}
-
-          {/* Preset Avatars & Current Avatar Indicator */}
-          <div className="pt-2 border-t border-slate-200/60">
-            <span className="text-[11px] font-bold text-slate-600 block mb-2">Hoặc chọn nhanh từ kho Avatar có sẵn:</span>
-            <div className="flex flex-wrap items-center gap-2.5">
-              {PRESET_AVATARS.map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setAvatarUrl(p)}
-                  className={`w-11 h-11 rounded-2xl p-0.5 border-2 transition-all ${
-                    avatarUrl === p
-                      ? 'border-blue-600 scale-105 shadow-xs ring-2 ring-blue-200'
-                      : 'border-slate-200 hover:border-slate-400 opacity-80 hover:opacity-100'
-                  }`}
-                  title="Chọn avatar mẫu này"
-                >
-                  <img src={p} alt="Preset avatar" className="w-full h-full object-cover rounded-xl bg-slate-100" />
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-2.5 pt-1">
+            {PRESET_AVATARS.map((p, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setAvatarUrl(p)}
+                className={`w-11 h-11 rounded-2xl p-0.5 border-2 transition-all cursor-pointer ${
+                  avatarUrl === p
+                    ? 'border-blue-600 scale-105 shadow-xs ring-2 ring-blue-200'
+                    : 'border-slate-200 hover:border-slate-400 opacity-80 hover:opacity-100'
+                }`}
+                title="Chọn avatar mẫu này"
+              >
+                <img src={p} alt="Preset avatar" className="w-full h-full object-cover rounded-xl bg-slate-100" />
+              </button>
+            ))}
           </div>
         </div>
 
