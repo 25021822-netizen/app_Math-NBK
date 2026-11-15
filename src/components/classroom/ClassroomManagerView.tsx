@@ -2062,11 +2062,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
             {userRole === 'teacher' ? 'Quản Lý Nhóm Lớp & Học Sinh' : 'Nhóm Lớp & Bài Tập Giao Về'}
           </h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-xl">
-            {userRole === 'teacher'
-              ? 'Tạo nhóm lớp, cấp mã vào lớp, trao đổi thảo luận chat trực tiếp kèm gửi ảnh và tag tên học sinh.'
-              : 'Tham gia lớp của thầy cô, chat trao đổi học tập cùng bạn bè, gửi ảnh bài toán và làm đề thi được giao.'}
-          </p>
         </div>
 
         {/* Action button based on role */}
@@ -2713,15 +2708,11 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       type="button"
                       onClick={handleManualRefreshLessons}
                       className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-                      title="Tải lại danh sách bài học mới nhất từ máy chủ"
+                      title="Tải lại danh sách bài học"
                     >
                       <RefreshCw size={13} className={isRefreshingLessons ? 'animate-spin text-blue-600' : 'text-slate-500'} />
                       <span>{isRefreshingLessons ? 'Đang tải...' : 'Làm mới'}</span>
                     </button>
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 shadow-2xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span>Đồng bộ Real-Time</span>
-                    </span>
                     <span className="px-2.5 py-1 rounded-xl bg-white text-blue-700 font-bold border border-blue-200 shadow-2xs">
                       {Object.keys(groupedLessons).length} Chương
                     </span>
@@ -2965,10 +2956,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                 <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 text-xs flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-slate-800">Thảo Luận {currentClass.name}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span>Đồng bộ tức thời đa máy (&lt;100ms)</span>
-                    </span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* Cần gạt ON/OFF thông báo ngay tại Header Chat */}
@@ -3527,26 +3514,13 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 self-start sm:self-auto text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 text-[11px] font-bold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>Phụ trách lớp</span>
-                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
                   <div>
-                    <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                      <span>Danh Sách Học Sinh ({enrolledStudents.length} học sinh)</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span>Đồng bộ Real-Time</span>
-                      </span>
+                    <h3 className="font-extrabold text-sm text-slate-900">
+                      Danh Sách Học Sinh ({enrolledStudents.length} học sinh)
                     </h3>
-                    <p className="text-xs text-slate-500">
-                      {userRole === 'teacher'
-                        ? 'Giáo viên có quyền thêm hoặc xóa học sinh ra khỏi nhóm lớp'
-                        : 'Danh sách các bạn học cùng lớp (cập nhật trực tiếp khi có bạn mới vào)'}
-                    </p>
                   </div>
                 </div>
 
@@ -4381,9 +4355,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                         + Tạo chương mới
                       </button>
                     </div>
-                  ) : (
-                    <span className="text-[10px] text-blue-600 font-semibold">Gợi ý chương GDPT</span>
-                  )}
+                  ) : null}
                 </div>
 
                 {existingClassChapters.length > 0 && chapterInputMode === 'existing' ? (
@@ -4400,9 +4372,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                         </option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-slate-500">
-                      Bài học mới sẽ được thêm trực tiếp vào chương đang chọn ở trên.
-                    </p>
                   </div>
                 ) : (
                   <input

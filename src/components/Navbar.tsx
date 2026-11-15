@@ -654,8 +654,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span className="font-extrabold text-sm text-slate-900 leading-tight">
                       {userName}
                     </span>
-                    <span className="text-[11px] text-blue-700 font-semibold mt-0.5 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[11px] text-blue-700 font-semibold mt-0.5">
                       {userRole === 'student' ? 'Học Sinh THPT' : userRole === 'teacher' ? 'Giáo Viên THPT' : 'Quản Trị Viên'}
                     </span>
                   </div>

@@ -893,7 +893,7 @@ export const FunctionGrapher: React.FC<FunctionGrapherProps> = ({
         />
 
         <div className="mt-2 text-center text-[11px] text-slate-500">
-          💡 <strong>Gợi ý:</strong> Rê chuột lên đường cong để soi tọa độ. Đường đứt đoạn màu đỏ là <strong>TCĐ</strong>, màu ngọc là <strong>TCN</strong>, màu tím là <strong>TCX</strong>.
+          Tiệm cận: <strong className="text-rose-600">TCĐ</strong> (đỏ) · <strong className="text-teal-600">TCN</strong> (ngọc) · <strong className="text-purple-600">TCX</strong> (tím)
         </div>
       </div>
 

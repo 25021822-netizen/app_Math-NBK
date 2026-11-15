@@ -7,7 +7,6 @@ import {
   Clock,
   ShieldAlert,
   AlertTriangle,
-  Save,
   CheckCircle2,
   XCircle,
   Award,
@@ -82,7 +81,6 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
   const [scoreReport, setScoreReport] = useState<any | null>(null);
-  const [lastAutoSaved, setLastAutoSaved] = useState<string>('');
   // Bật / tắt xem đáp án chi tiết khi nộp bài xong
   const [showDetailedAnswers, setShowDetailedAnswers] = useState<boolean>(true);
   // Danh sách ID các câu hỏi được đánh dấu xem lại
@@ -254,7 +252,6 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         const parsedDraft = JSON.parse(draft);
         setAnswers(parsedDraft);
         answersRef.current = parsedDraft;
-        setLastAutoSaved('Đã khôi phục bản nháp trước đó');
       }
       const flagsRaw = localStorage.getItem(`math_flags_${studentId}_${exam.id}`);
       if (flagsRaw && !isMaxAttemptsReached && isExamTimeActive) {
@@ -296,7 +293,6 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     const saveTimer = setInterval(() => {
       if (Object.keys(answersRef.current).length > 0) {
         localStorage.setItem(`math_draft_${studentId}_${exam.id}`, JSON.stringify(answersRef.current));
-        setLastAutoSaved(`Đã lưu nháp lúc ${new Date().toLocaleTimeString('vi-VN')}`);
       }
     }, 10000);
 
@@ -747,16 +743,6 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         </div>
       )}
 
-      {/* Auto-Save Draft Status Pill */}
-      {lastAutoSaved && !isSubmitted && isExamTimeActive && !isMaxAttemptsReached && (
-        <div className="flex items-center text-xs text-slate-500 px-4">
-          <span className="flex items-center gap-1.5">
-            <Save size={13} className="text-emerald-600" />
-            <span>{lastAutoSaved}</span>
-          </span>
-        </div>
-      )}
-
       {/* Score Report (When Submitted) */}
       {isSubmitted && scoreReport && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in zoom-in-95 duration-200">
@@ -770,7 +756,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                 <p className="text-xs text-red-600 font-bold mt-1">{scoreReport.disqualifyReason}</p>
               ) : (
                 <p className="text-xs text-emerald-600 font-bold mt-1">
-                  Đã nộp bài hợp lệ · Tuân thủ quy chế thi trực tuyến THPT 2025
+                  Đã nộp bài hợp lệ
                 </p>
               )}
             </div>

@@ -182,7 +182,7 @@ export default function App() {
     {
       id: 'notif_welcome',
       title: 'Chào mừng bạn đến với Toán Học LIKI',
-      message: 'Hệ thống học Toán THPT thông minh GDPT 2018 tích hợp AI và phòng thi chuẩn Bộ GD&ĐT.',
+      message: 'Nền tảng học tập và luyện thi Toán THPT trực tuyến.',
       type: 'system',
       timestamp: new Date().toISOString(),
       isRead: false,
@@ -1967,14 +1967,10 @@ export default function App() {
 
       {/* Footer */}
       {currentTab !== 'exam' && (
-        <footer className="bg-white border-t border-slate-200 py-6 px-4 text-center text-xs text-slate-500">
+        <footer className="bg-white border-t border-slate-200 py-5 px-4 text-center text-xs text-slate-500">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p>© 2026 Math&NBK Platform. Hệ thống Giáo dục Toán học THPT Chuẩn Quốc Gia.</p>
-            <div className="flex items-center gap-4 text-slate-400">
-              <span>Phiên bản 2.6 (GDPT 2018)</span>
-              <span>·</span>
-              <span>Học & Thi Trắc Nghiệm Thông Minh</span>
-            </div>
+            <p>© 2026 Toán Học LIKI</p>
+            <span className="text-slate-400">Học &amp; Thi Toán THPT Trực Tuyến</span>
           </div>
         </footer>
       )}

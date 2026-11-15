@@ -250,10 +250,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-blue-200 bg-white/5 border border-white/10 px-3.5 py-1.5 rounded-full backdrop-blur-md">
-          <Sparkles size={14} className="text-cyan-400" />
-          <span>Phiên bản Chuẩn GDPT 2025</span>
-        </div>
       </header>
 
       {/* Main Center Content */}
@@ -261,10 +257,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
         <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           {/* Left Column: Platform Highlights & Introduction */}
           <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-400/20 text-cyan-300 text-xs font-bold tracking-wide">
-              <Sparkles size={14} />
-              <span>Chuyển Đổi Số Giáo Dục Toán Học</span>
-            </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
               Đăng nhập để luyện thi, giải toán và học cùng{' '}
@@ -497,7 +489,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     </div>
 
                     <p className="text-[10px] text-slate-400 italic">
-                      * Theo quy chế bảo mật GDPT 2018: Tài khoản Quản trị viên chỉ do Ban Giám Hiệu cấp phát.
+                      * Tài khoản Quản trị viên chỉ do Quản trị hệ thống cấp phát.
                     </p>
                   </div>
 
@@ -814,7 +806,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                 <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1">
                   <div className="font-bold flex items-center gap-1.5 text-amber-300">
                     <AlertCircle size={15} />
-                    <span>Quy định bảo mật GDPT 2018:</span>
+                    <span>Lưu ý bảo mật:</span>
                   </div>
                   <p className="text-[11px] text-slate-300">
                     Người dùng không có quyền tự kích hoạt hay tự tạo Admin. Quản Trị Viên (Admin) sẽ đối chiếu thông tin và phê duyệt tài khoản. Bạn sẽ có thể đăng nhập ngay sau khi được Admin duyệt!

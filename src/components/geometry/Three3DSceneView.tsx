@@ -546,15 +546,6 @@ export const Three3DSceneView: React.FC<Three3DSceneViewProps> = ({ onExportSnap
       >
         <canvas ref={canvasRef} className="w-full h-full block" />
 
-        {/* Viewport Overlay Badge */}
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 px-3.5 py-1.5 rounded-full shadow-lg">
-          <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
-          <span className="text-xs font-bold text-white tracking-wide">Three.js WebGL 3D Studio</span>
-          <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-mono px-2 py-0.5 rounded-full border border-cyan-500/30">
-            60 FPS · PBR
-          </span>
-        </div>
-
         {/* Quick Toolbar (Top-Right) */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/80 p-1.5 rounded-2xl shadow-lg">
           <button

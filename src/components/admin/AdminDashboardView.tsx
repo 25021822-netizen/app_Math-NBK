@@ -481,7 +481,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   Phân Quyền Tuyệt Đối: Chỉ Admin Mới Được Cấp Tài Khoản
                 </h4>
                 <p className="text-[11px] text-slate-600 mt-0.5">
-                  Theo quy định an toàn bảo mật GDPT 2018, học sinh và giáo viên không thể tự tạo tài khoản. Chỉ Quản Trị Viên (Admin) mới có quyền tạo và cấp phát mã định danh (User ID) cho Giáo viên và Học sinh.
+                  Chỉ Quản Trị Viên (Admin) mới có quyền tạo và cấp phát tài khoản cho Giáo viên và Học sinh.
                 </p>
               </div>
             </div>
@@ -939,12 +939,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 124,580 <span className="text-xs font-medium text-slate-400">tk</span>
               </span>
               <span className="text-[11px] text-blue-600 font-semibold mt-1 block">
-                Mô hình: Gemini 3.8 Flash
+                Xử lý AI hệ thống
               </span>
             </div>
 
             <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs">
-              <span className="text-xs font-bold text-slate-500 block">Tỷ Lệ Trúng Cache (Redis)</span>
+              <span className="text-xs font-bold text-slate-500 block">Tỷ Lệ Dùng Lại Bộ Nhớ Đệm</span>
               <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block">
                 68.4%
               </span>
@@ -1224,9 +1224,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     onChange={(e) => setNewUserGrade(Number(e.target.value) as any)}
                     className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs bg-white focus:border-blue-600 focus:outline-none"
                   >
-                    <option value={12}>Lớp 12 (Ôn thi Tốt nghiệp THPT)</option>
-                    <option value={11}>Lớp 11 (GDPT 2018)</option>
-                    <option value={10}>Lớp 10 (GDPT 2018)</option>
+                    <option value={12}>Lớp 12</option>
+                    <option value={11}>Lớp 11</option>
+                    <option value={10}>Lớp 10</option>
                   </select>
                 </div>
               )}

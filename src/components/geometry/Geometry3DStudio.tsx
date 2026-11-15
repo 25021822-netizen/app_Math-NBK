@@ -1007,9 +1007,6 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
               <Box size={16} className="text-blue-600" />
               <span>Mô Hình Không Gian 3D:</span>
             </span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-              Chuẩn GDPT 2018
-            </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2">

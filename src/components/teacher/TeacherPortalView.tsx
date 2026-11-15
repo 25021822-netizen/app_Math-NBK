@@ -393,10 +393,10 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
     setIsAiScanning(true);
     setAiScanError(null);
-    setAiScanStatusText('Đang nạp dữ liệu đề thi và kết nối mô hình Gemini 4 Hydrogen...');
+    setAiScanStatusText('Đang nạp dữ liệu đề thi và phân tích...');
 
     try {
-      setAiScanStatusText('Đang phân tích cấu trúc 3 phần chuẩn BGD và định dạng công thức KaTeX...');
+      setAiScanStatusText('Đang phân tích cấu trúc 3 phần và định dạng công thức...');
 
       let parsed: any = null;
       let scanSource = '';
@@ -419,7 +419,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           const data = await response.json();
           if (data.success && data.parsedExam && Array.isArray(data.parsedExam.questions) && data.parsedExam.questions.length > 0) {
             parsed = data.parsedExam;
-            scanSource = data.source === 'gemini' ? 'Gemini 4 Hydrogen AI' : 'Bộ Phân Tích Cú Pháp LaTeX';
+            scanSource = data.source === 'gemini' ? 'Trình Phân Tích AI' : 'Bộ Phân Tích Cú Pháp LaTeX';
           }
         }
       } catch (serverErr) {
@@ -434,7 +434,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         const localParsed = parseExamFromLatexOrText(textToFallback, aiGrade, aiDuration, aiExamTitle || aiPdfFile?.fileName);
         if (localParsed && localParsed.questions && localParsed.questions.length > 0) {
           parsed = localParsed;
-          scanSource = 'Bộ Phân Tích Cú Pháp Chuẩn Hóa Nội Bộ';
+          scanSource = 'Bộ Phân Tích Cú Pháp Nội Bộ';
         }
       }
 
@@ -446,7 +446,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
       const createdExam: Exam = {
         id: `exam_ai_${Date.now()}`,
-        title: aiExamTitle.trim() || parsed.metadata?.title || 'Đề Thi Quét AI Chuẩn BGD',
+        title: aiExamTitle.trim() || parsed.metadata?.title || 'Đề Thi Quét AI',
         grade: (parsed.metadata?.grade || aiGrade) as 10 | 11 | 12,
         year: parsed.metadata?.year || new Date().getFullYear(),
         durationMinutes: parsed.metadata?.durationMinutes || aiDuration,
@@ -976,7 +976,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block">
-            Cổng Soạn Đề Thi Giáo Viên Chuẩn Bộ GD&ĐT 2025
+            Cổng Soạn Đề Thi Giáo Viên
           </span>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
             Biên Soạn & Xuất Bản Đề Thi THPT
@@ -1127,7 +1127,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   <option value={15}>15 phút</option>
                   <option value={45}>45 phút</option>
                   <option value={60}>60 phút</option>
-                  <option value={90}>90 phút (Chuẩn BGD)</option>
+                  <option value={90}>90 phút</option>
                   <option value={120}>120 phút</option>
                 </select>
               </div>
@@ -1443,7 +1443,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               <span className="text-2xl font-black text-blue-900 font-mono mt-0.5 block">
                 {partCounts.part1}
               </span>
-              <span className="text-[10px] text-blue-600 font-bold">Chuẩn BGD</span>
+              <span className="text-[10px] text-blue-600 font-bold">4 phương án</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-center shadow-xs">
@@ -1940,12 +1940,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     placeholder={`% Dán mã nguồn LaTeX đề thi của bạn vào đây. Ví dụ:\n\\section*{PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn}\n\\begin{ex}\nCâu 1. Cho hàm số $y = f(x)$ đồng biến trên khoảng nào?\n\\choice\n{\\True $(-\\infty; 1)$}\n{$(1; 3)$}\n{$(3; +\\infty)$}\n{$(0; 2)$}\n\\end{ex}`}
                     className="w-full p-4 rounded-2xl border border-slate-300 font-mono text-xs text-slate-800 bg-slate-900/5 focus:bg-white focus:border-blue-600 focus:outline-none leading-relaxed transition-all"
                   />
-                  <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
-                    <span>
-                      💡 Hệ thống tự động nhận diện các môi trường: <code>\begin&#123;ex&#125;</code>, <code>\choice</code>, <code>\choiceTF</code>, <code>Câu 1...</code>, và công thức Toán <code>$...$</code>.
-                    </span>
-                    <span className="font-mono text-slate-400">{aiLatexText.length} ký tự</span>
-                  </div>
                 </div>
               </div>
             )}
@@ -2059,7 +2053,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               <div className="p-5 rounded-2xl bg-blue-50/80 border border-blue-200 text-blue-900 text-xs space-y-2 animate-pulse">
                 <div className="font-bold flex items-center gap-2">
                   <Loader2 size={16} className="animate-spin text-blue-600" />
-                  <span>Đang xử lý đề thi bằng mô hình Gemini 4 Hydrogen...</span>
+                  <span>Đang phân tích nội dung đề thi...</span>
                 </div>
                 <p className="text-slate-600 text-[11px]">{aiScanStatusText}</p>
               </div>
@@ -3141,11 +3135,6 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                         {exam.maxAttempts && exam.maxAttempts > 0 && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">
                             Tối đa {exam.maxAttempts} lượt thi
-                          </span>
-                        )}
-                        {needsImageSync && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                            Ảnh chưa đồng bộ đa thiết bị
                           </span>
                         )}
                       </div>

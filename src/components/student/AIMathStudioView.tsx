@@ -599,17 +599,11 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                   <Bot size={24} />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-base text-slate-900">Trợ Lý & Gia Sư Toán Liki</h3>
-                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black border border-blue-200">
-                      AI Trực Tuyến
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <h3 className="font-extrabold text-base text-slate-900">Trợ Lý & Gia Sư Toán Liki</h3>
+                  <span className="text-[11px] text-slate-500 font-semibold">
                     {tutorMode === 'solve'
-                      ? 'Suy luận chuyên sâu · Giải chi tiết & trả lời trực tiếp'
-                      : 'Chế độ Gia sư · Dẫn dắt & kiểm tra từng bước'}
+                      ? 'Giải chi tiết & trả lời trực tiếp'
+                      : 'Chế độ Gia sư · Dẫn dắt từng bước'}
                   </span>
                 </div>
               </div>
@@ -869,13 +863,10 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                   className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
                 <span className="flex items-center gap-1.5">
-                  <Globe size={14} className={useSearchGrounding ? 'text-blue-600 animate-pulse' : 'text-slate-400'} />
+                  <Globe size={14} className={useSearchGrounding ? 'text-blue-600' : 'text-slate-400'} />
                   <span>Tra cứu Google Search thực tế (Đề thi & Tuyển sinh mới nhất)</span>
                 </span>
               </label>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
-                Suy luận cao
-              </span>
             </div>
 
             {tutorAttachedImage && (
@@ -967,10 +958,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                 <Sparkles size={14} />
                 <span>Không Gian Toán Học Liki</span>
               </div>
-              <h4 className="font-extrabold text-base text-white">Cần hình ảnh hoặc mô hình 3D?</h4>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Liki tích hợp sẵn phòng chiếu hình học 3D Three.js và xưởng vẽ hình vector toán học.
-              </p>
+              <h4 className="font-extrabold text-base text-white">Công cụ hỗ trợ học Toán</h4>
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
                   type="button"
@@ -1001,18 +989,9 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
         <div className="space-y-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-black uppercase tracking-wider text-cyan-600 bg-cyan-50 px-2.5 py-0.5 rounded-full border border-cyan-200">
-                  Tính Năng Tích Hợp Liki · Three.js
-                </span>
-                <span className="text-xs text-slate-400 font-mono">60 FPS · Studio PBR Lighting</span>
-              </div>
-              <h2 className="text-xl font-black text-slate-900 mt-1">
-                Không Gian 3D (Three.js 3D Studio)
+              <h2 className="text-xl font-black text-slate-900">
+                Không Gian 3D
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Mô phỏng 3D đa diện chuẩn PBR: Khối chóp S.ABCD, khối nón, khối trụ tròn xoay, thiết diện cắt và mặt cong giải tích Oxyz.
-              </p>
             </div>
 
             <button
@@ -1036,18 +1015,9 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
         <div className="space-y-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-black uppercase tracking-wider text-pink-600 bg-pink-50 px-2.5 py-0.5 rounded-full border border-pink-200">
-                  Tính Năng Tích Hợp Liki · Image Studio
-                </span>
-                <span className="text-xs text-slate-400 font-mono">Vector Math Engine & Visual Generator</span>
-              </div>
-              <h2 className="text-xl font-black text-slate-900 mt-1">
-                Xưởng Tạo Ảnh Toán Học Liki
+              <h2 className="text-xl font-black text-slate-900">
+                Xưởng Tạo Ảnh Toán Học
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Nhập câu lệnh để Liki tự động vẽ sơ đồ toán học, khối hình nón/trụ/chóp, thiết diện không gian hoặc đồ thị hàm số.
-              </p>
             </div>
 
             <button

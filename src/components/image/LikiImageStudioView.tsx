@@ -106,7 +106,7 @@ export const LikiImageStudioView: React.FC<LikiImageStudioViewProps> = ({ onInse
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || data.message || 'Không thể tạo hình ảnh với mô hình Gemini Nano Banana 2.1.');
+        throw new Error(data.error || data.message || 'Không thể tạo hình ảnh.');
       }
 
       setGeneratedImage(data.imageUrl);
@@ -310,7 +310,7 @@ export const LikiImageStudioView: React.FC<LikiImageStudioViewProps> = ({ onInse
               {isLoading ? (
                 <>
                   <RefreshCw size={16} className="animate-spin" />
-                  <span>Đang khởi tạo với Gemini Nano Banana 2.1...</span>
+                  <span>Đang tạo hình ảnh...</span>
                 </>
               ) : (
                 <>
@@ -372,7 +372,7 @@ export const LikiImageStudioView: React.FC<LikiImageStudioViewProps> = ({ onInse
                     </div>
                     <h4 className="text-sm font-black text-slate-300">Chưa có hình ảnh nào được tạo</h4>
                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                      Chọn mẫu gợi ý bên trái hoặc gõ yêu cầu của bạn, sau đó nhấn "Tạo Hình Ảnh Mới" để trải nghiệm công nghệ tạo ảnh Toán học với Gemini Nano Banana 2.1.
+                      Chọn mẫu gợi ý bên trái hoặc nhập mô tả hình ảnh cần tạo.
                     </p>
                   </div>
                 )}
