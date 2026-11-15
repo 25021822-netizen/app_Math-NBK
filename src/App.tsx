@@ -38,6 +38,8 @@ import {
   dbUpdateUser,
   dbSaveClassrooms,
   dbSaveSubmission,
+  dbDeleteSubmission,
+  dbDeleteSubmissionsBatch,
   dbSaveCheatLog,
   dbSaveLessons,
   dbSaveLesson,
@@ -1477,6 +1479,20 @@ export default function App() {
     }
   };
 
+  // Giáo viên xóa 1 hoặc nhiều bài nộp của học sinh trong Tổng Hợp Điểm Thi
+  const handleDeleteSubmission = async (submissionId: string) => {
+    if (!submissionId) return;
+    setSubmissions((prev) => prev.filter((s) => s.id !== submissionId));
+    await dbDeleteSubmission(submissionId);
+  };
+
+  const handleDeleteMultipleSubmissions = async (submissionIds: string[]) => {
+    if (!submissionIds || submissionIds.length === 0) return;
+    const idSet = new Set(submissionIds);
+    setSubmissions((prev) => prev.filter((s) => !idSet.has(s.id)));
+    await dbDeleteSubmissionsBatch(submissionIds);
+  };
+
   // Nội dung màn hình theo tab hiện tại và vai trò người dùng
   const renderCurrentView = () => {
     // 1. Hồ Sơ Người Dùng (Học sinh, Giáo viên, Quản trị)
@@ -1560,6 +1576,7 @@ export default function App() {
             classrooms={visibleClassrooms}
             submissions={submissions}
             examsList={examsList}
+            userRole={userProfile.role}
             onSelectClassroom={() => {
               setCurrentTab('classroom');
             }}
@@ -1568,6 +1585,8 @@ export default function App() {
               setCurrentTab('exam');
             }}
             onDeleteExam={handleDeleteExam}
+            onDeleteSubmission={handleDeleteSubmission}
+            onDeleteMultipleSubmissions={handleDeleteMultipleSubmissions}
           />
         );
       }

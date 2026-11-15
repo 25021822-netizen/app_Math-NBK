@@ -235,7 +235,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             'Phần I (MCQ 3đ)',
             'Phần II (Đ/S 4đ)',
             'Phần III (Ngắn 3đ)',
-            'Thời Gian (phút)',
+            'Thời Gian Làm (phút)',
+            'Thời Gian Nộp Bài',
             'Vi Phạm Tab',
             'Xếp Loại',
           ],
@@ -244,6 +245,15 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         submissions.forEach((sub, idx) => {
           const rank =
             sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
+          const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour12: false,
+          });
           wsData.push([
             idx + 1,
             sub.studentId,
@@ -255,6 +265,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             Number(sub.partScores.part2.toFixed(2)),
             Number(sub.partScores.part3.toFixed(2)),
             Math.round(sub.timeSpentSeconds / 60),
+            submittedStr,
             sub.infractionCount,
             rank,
           ]);
@@ -262,9 +273,9 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
 
         // Chân trang chữ ký
         wsData.push(['']);
-        wsData.push(['', '', '', '', '', '', '', '', `Ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`]);
-        wsData.push(['', 'BAN GIÁM HIỆU', '', '', '', '', '', '', 'GIÁO VIÊN BỘ MÔN']);
-        wsData.push(['', '(Ký và đóng dấu)', '', '', '', '', '', '', '(Ký và ghi rõ họ tên)']);
+        wsData.push(['', '', '', '', '', '', '', '', '', `Ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`]);
+        wsData.push(['', 'BAN GIÁM HIỆU', '', '', '', '', '', '', '', 'GIÁO VIÊN BỘ MÔN']);
+        wsData.push(['', '(Ký và đóng dấu)', '', '', '', '', '', '', '', '(Ký và ghi rõ họ tên)']);
 
         const ws = XLSX.utils.aoa_to_sheet(wsData);
 
@@ -279,7 +290,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           { wch: 16 }, // Phần I
           { wch: 16 }, // Phần II
           { wch: 16 }, // Phần III
-          { wch: 16 }, // Thời gian
+          { wch: 18 }, // Thời gian làm
+          { wch: 22 }, // Thời gian nộp
           { wch: 14 }, // Vi phạm
           { wch: 14 }, // Xếp loại
         ];
@@ -443,6 +455,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Phần I (MCQ)', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Phần II (Đ/S)', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Phần III (Ngắn)', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Thời Gian Nộp', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Xếp Loại', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
             ],
           }),
@@ -451,6 +464,14 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         submissions.forEach((sub, idx) => {
           const rank =
             sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
+          const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour12: false,
+          });
           studentTableRows.push(
             new TableRow({
               children: [
@@ -461,6 +482,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part1.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part2.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part3.toFixed(2)}đ`)], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(submittedStr)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(rank)], borders: borderConfig }),
               ],
             })
@@ -1251,6 +1273,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                         <th className="py-2 px-2 border-r border-slate-300 text-center text-[11px]">P.I (MCQ)</th>
                         <th className="py-2 px-2 border-r border-slate-300 text-center text-[11px]">P.II (Đ/S)</th>
                         <th className="py-2 px-2 border-r border-slate-300 text-center text-[11px]">P.III (Ngắn)</th>
+                        <th className="py-2 px-2.5 border-r border-slate-300 text-center text-[11px]">Thời Gian Nộp</th>
                         <th className="py-2 px-2.5 border-r border-slate-300 text-center text-[11px]">Giám Sát</th>
                         <th className="py-2 px-2.5 text-center text-[11px]">Xếp Loại</th>
                       </tr>
@@ -1265,6 +1288,14 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                             : sub.score >= 5.0
                             ? 'Trung bình'
                             : 'Yếu';
+                        const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour12: false,
+                        });
                         return (
                           <tr
                             key={sub.id}
@@ -1293,6 +1324,9 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                             </td>
                             <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-[11px]">
                               {sub.partScores.part3.toFixed(2)}
+                            </td>
+                            <td className="py-1.5 px-2.5 border-r border-slate-300 text-center font-mono text-[10px] text-slate-600 whitespace-nowrap">
+                              {submittedStr}
                             </td>
                             <td className="py-1.5 px-2.5 border-r border-slate-300 text-center text-[10px]">
                               {sub.infractionCount > 0 ? (

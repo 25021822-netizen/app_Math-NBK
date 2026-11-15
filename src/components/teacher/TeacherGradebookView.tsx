@@ -3,28 +3,25 @@ import { Classroom, StudentExamSubmission, Exam, UserRole } from '../../types/ma
 import { SAMPLE_STUDENTS } from '../../data/mockData';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
+import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import {
   Award,
   Users,
   Search,
-  Filter,
   BarChart3,
   TrendingUp,
   Download,
   Eye,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
   GraduationCap,
   Calendar,
   Clock,
-  ChevronRight,
   ShieldAlert,
   ArrowUpDown,
-  BookOpen,
   X,
   FileText,
-  Printer,
+  Trash2,
 } from 'lucide-react';
 import { GradebookPdfReportModal } from './GradebookPdfReportModal';
 
@@ -32,18 +29,49 @@ interface TeacherGradebookViewProps {
   classrooms: Classroom[];
   submissions: StudentExamSubmission[];
   examsList: Exam[];
+  userRole?: UserRole;
   onSelectClassroom?: (classId: string) => void;
   onPreviewExam?: (examId: string) => void;
   onDeleteExam?: (examId: string) => void;
+  onDeleteSubmission?: (submissionId: string) => Promise<void> | void;
+  onDeleteMultipleSubmissions?: (submissionIds: string[]) => Promise<void> | void;
 }
+
+const formatSubmissionDateTime = (iso: string) => {
+  const dateObj = new Date(iso);
+  if (Number.isNaN(dateObj.getTime())) {
+    return { time: '--:--:--', date: 'Không rõ', full: 'Không rõ' };
+  }
+  const time = dateObj.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const date = dateObj.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  return { time, date, full: `${time} - ${date}` };
+};
+
+const formatDurationSpent = (seconds: number) => {
+  const safeSec = Math.max(0, Math.round(seconds || 0));
+  const mins = Math.floor(safeSec / 60);
+  const secs = safeSec % 60;
+  if (mins === 0) return `${secs} giây`;
+  if (secs === 0) return `${mins} phút`;
+  return `${mins} phút ${secs} giây`;
+};
 
 export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
   classrooms,
   submissions,
   examsList,
-  onSelectClassroom,
-  onPreviewExam,
-  onDeleteExam,
+  userRole = 'teacher',
+  onDeleteSubmission,
+  onDeleteMultipleSubmissions,
 }) => {
   // Bộ lọc
   const [selectedClassId, setSelectedClassId] = useState<string>('all');
@@ -62,6 +90,13 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
   // Modal xuất báo cáo PDF (Cả lớp hoặc từng học sinh)
   const [showPdfExportModal, setShowPdfExportModal] = useState<boolean>(false);
   const [pdfPreselectedStudent, setPdfPreselectedStudent] = useState<StudentExamSubmission | null>(null);
+
+  // Quyền xóa bài nộp của học sinh (Giáo viên / Quản trị viên)
+  const canDeleteSubmissions = (userRole === 'teacher' || userRole === 'admin') && Boolean(onDeleteSubmission);
+  const [submissionToDelete, setSubmissionToDelete] = useState<StudentExamSubmission | null>(null);
+  const [selectedSubIds, setSelectedSubIds] = useState<Set<string>>(() => new Set());
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState<boolean>(false);
+  const [isDeletingSubmission, setIsDeletingSubmission] = useState<boolean>(false);
 
   // Lọc danh sách bài nộp theo bộ lọc
   const filteredSubmissions = useMemo(() => {
@@ -152,12 +187,12 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
 
   // Xuất bảng điểm CSV (In-browser download)
   const handleExportCSV = () => {
-    const headers = 'Hạng,Họ và tên,Email,Lớp,Đề thi,Điểm tổng,Phần 1,Phần 2,Phần 3,Thời gian làm (phút),Vi phạm,Ngày nộp\n';
+    const headers = 'Hạng,Họ và tên,Email,Lớp,Đề thi,Điểm tổng,Phần 1,Phần 2,Phần 3,Thời gian làm bài,Thời gian nộp bài,Vi phạm\n';
     const rows = filteredSubmissions.map((sub, idx) => {
       const cls = classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa';
-      const minutes = Math.round(sub.timeSpentSeconds / 60);
-      const date = new Date(sub.submittedAt).toLocaleDateString('vi-VN');
-      return `${idx + 1},"${sub.studentName}","${sub.studentEmail}","${cls}","${sub.examTitle}",${sub.score},${sub.partScores.part1},${sub.partScores.part2},${sub.partScores.part3},${minutes},${sub.infractionCount},"${date}"`;
+      const durationText = formatDurationSpent(sub.timeSpentSeconds);
+      const submittedText = formatSubmissionDateTime(sub.submittedAt).full;
+      return `${idx + 1},"${sub.studentName}","${sub.studentEmail}","${cls}","${sub.examTitle}",${sub.score},${sub.partScores.part1},${sub.partScores.part2},${sub.partScores.part3},"${durationText}","${submittedText}",${sub.infractionCount}`;
     }).join('\n');
 
     const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -172,6 +207,82 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
 
     setExportNotice('Đã xuất file bảng điểm CSV thành công!');
     setTimeout(() => setExportNotice(null), 4000);
+  };
+
+  // Xử lý chọn / bỏ chọn bài nộp để xóa hàng loạt
+  const selectedVisibleIds = useMemo(() => {
+    return filteredSubmissions.filter((s) => selectedSubIds.has(s.id)).map((s) => s.id);
+  }, [filteredSubmissions, selectedSubIds]);
+
+  const isAllFilteredSelected =
+    filteredSubmissions.length > 0 && selectedVisibleIds.length === filteredSubmissions.length;
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedSubIds((prev) => {
+      const next = new Set(prev);
+      if (isAllFilteredSelected) {
+        filteredSubmissions.forEach((s) => next.delete(s.id));
+      } else {
+        filteredSubmissions.forEach((s) => next.add(s.id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectSubmission = (subId: string) => {
+    setSelectedSubIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(subId)) next.delete(subId);
+      else next.add(subId);
+      return next;
+    });
+  };
+
+  const handleConfirmDeleteSingleSubmission = async () => {
+    if (!submissionToDelete || !onDeleteSubmission) return;
+    setIsDeletingSubmission(true);
+    try {
+      const targetId = submissionToDelete.id;
+      const targetName = submissionToDelete.studentName;
+      await onDeleteSubmission(targetId);
+      setSelectedSubIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
+      if (viewingSubmission?.id === targetId) {
+        setViewingSubmission(null);
+      }
+      setSubmissionToDelete(null);
+      setExportNotice(`Đã xóa bài nộp của học sinh "${targetName}".`);
+      setTimeout(() => setExportNotice(null), 4000);
+    } finally {
+      setIsDeletingSubmission(false);
+    }
+  };
+
+  const handleConfirmDeleteBulkSubmissions = async () => {
+    if (selectedVisibleIds.length === 0) return;
+    setIsDeletingSubmission(true);
+    try {
+      const count = selectedVisibleIds.length;
+      if (onDeleteMultipleSubmissions) {
+        await onDeleteMultipleSubmissions(selectedVisibleIds);
+      } else if (onDeleteSubmission) {
+        for (const id of selectedVisibleIds) {
+          await onDeleteSubmission(id);
+        }
+      }
+      if (viewingSubmission && selectedVisibleIds.includes(viewingSubmission.id)) {
+        setViewingSubmission(null);
+      }
+      setSelectedSubIds(new Set());
+      setShowBulkDeleteModal(false);
+      setExportNotice(`Đã xóa ${count} bài nộp đã chọn.`);
+      setTimeout(() => setExportNotice(null), 4000);
+    } finally {
+      setIsDeletingSubmission(false);
+    }
   };
 
   return (
@@ -245,7 +356,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             {analytics.average.toFixed(2)}
           </div>
           <span className="text-[11px] text-blue-700 font-semibold mt-1 block">
-            Thang điểm 10 chuẩn BGD
+            Thang điểm 10
           </span>
         </div>
 
@@ -442,12 +553,22 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
 
       {/* Gradebook Table */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <Award size={18} className="text-blue-600" />
             <h3 className="font-extrabold text-base text-slate-900">
-              Danh Sách Điểm Chi Tiết ({filteredSubmissions.length} học sinh)
+              Danh Sách Điểm Chi Tiết ({filteredSubmissions.length} bài nộp)
             </h3>
+            {canDeleteSubmissions && selectedVisibleIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>Xóa đã chọn ({selectedVisibleIds.length})</span>
+              </button>
+            )}
           </div>
 
           {/* Sắp xếp */}
@@ -458,7 +579,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                 if (sortField === 'score') setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
                 else { setSortField('score'); setSortOrder('desc'); }
               }}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1 transition-colors ${
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1 transition-colors cursor-pointer ${
                 sortField === 'score' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 text-slate-600'
               }`}
             >
@@ -470,12 +591,12 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                 if (sortField === 'date') setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
                 else { setSortField('date'); setSortOrder('desc'); }
               }}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1 transition-colors ${
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1 transition-colors cursor-pointer ${
                 sortField === 'date' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 text-slate-600'
               }`}
             >
-              <Calendar size={13} />
-              <span>Ngày nộp {sortField === 'date' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}</span>
+              <Clock size={13} />
+              <span>Thời gian nộp {sortField === 'date' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}</span>
             </button>
           </div>
         </div>
@@ -486,24 +607,54 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600">
+                  {canDeleteSubmissions && (
+                    <th className="py-3.5 pl-4 pr-2 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllFilteredSelected}
+                        onChange={toggleSelectAllFiltered}
+                        title="Chọn tất cả bài nộp đang hiển thị"
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </th>
+                  )}
                   <th className="py-3.5 px-4 w-12 text-center">Hạng</th>
                   <th className="py-3.5 px-4">Học Sinh</th>
                   <th className="py-3.5 px-4">Lớp Học</th>
                   <th className="py-3.5 px-4">Đề Thi Đã Làm</th>
+                  <th className="py-3.5 px-4">Thời Gian Nộp</th>
                   <th className="py-3.5 px-4 text-center">Điểm Tổng</th>
                   <th className="py-3.5 px-4 text-center hidden md:table-cell">P.I (MCQ)</th>
                   <th className="py-3.5 px-4 text-center hidden md:table-cell">P.II (Đ/S)</th>
                   <th className="py-3.5 px-4 text-center hidden md:table-cell">P.III (Ngắn)</th>
                   <th className="py-3.5 px-4 text-center">Giám Sát</th>
-                  <th className="py-3.5 px-4 text-right">Chi Tiết</th>
+                  <th className="py-3.5 px-4 text-right">Thao Tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredSubmissions.map((sub, idx) => {
                   const cls = classrooms.find((c) => c.id === sub.classId);
                   const isTop3 = idx < 3 && sortField === 'score' && sortOrder === 'desc';
+                  const submittedFormatted = formatSubmissionDateTime(sub.submittedAt);
+                  const isChecked = selectedSubIds.has(sub.id);
                   return (
-                    <tr key={sub.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr
+                      key={sub.id}
+                      className={`transition-colors ${
+                        isChecked ? 'bg-rose-50/50 hover:bg-rose-50/80' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      {canDeleteSubmissions && (
+                        <td className="py-3.5 pl-4 pr-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSelectSubmission(sub.id)}
+                            title={`Chọn bài nộp của ${sub.studentName}`}
+                            className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       {/* Rank */}
                       <td className="py-3.5 px-4 text-center font-black">
                         {isTop3 ? (
@@ -546,7 +697,18 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                       <td className="py-3.5 px-4 max-w-[200px]">
                         <span className="font-semibold text-slate-800 line-clamp-1">{sub.examTitle}</span>
                         <span className="text-[10px] text-slate-400">
-                          {new Date(sub.submittedAt).toLocaleDateString('vi-VN')} · {Math.round(sub.timeSpentSeconds / 60)} phút
+                          Thời lượng làm: {formatDurationSpent(sub.timeSpentSeconds)}
+                        </span>
+                      </td>
+
+                      {/* Submission Timestamp */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 font-mono font-bold text-slate-800 text-[11px]">
+                          <Clock size={12} className="text-blue-600 shrink-0" />
+                          <span>{submittedFormatted.time}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 block mt-0.5 pl-4.5">
+                          {submittedFormatted.date}
                         </span>
                       </td>
 
@@ -597,7 +759,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                         )}
                       </td>
 
-                      {/* View & PDF Actions */}
+                      {/* View, PDF & Delete Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -607,17 +769,28 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                               setShowPdfExportModal(true);
                             }}
                             title="Xuất phiếu điểm PDF / Excel / Word cho học sinh này"
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition-colors"
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition-colors cursor-pointer"
                           >
                             <FileText size={14} />
                           </button>
                           <button
+                            type="button"
                             onClick={() => setViewingSubmission(sub)}
-                            className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs inline-flex items-center gap-1 transition-colors"
+                            className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs inline-flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <Eye size={13} />
                             <span>Xem Bài</span>
                           </button>
+                          {canDeleteSubmissions && (
+                            <button
+                              type="button"
+                              onClick={() => setSubmissionToDelete(sub)}
+                              title={`Xóa bài nộp của ${sub.studentName}`}
+                              className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/80 transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -703,18 +876,25 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             {/* Anti-cheat and Time Spent Notes */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2">
+                <Calendar size={15} className="text-blue-600" />
+                <span>
+                  Thời gian nộp bài:{' '}
+                  <strong className="font-mono text-slate-900">
+                    {formatSubmissionDateTime(viewingSubmission.submittedAt).full}
+                  </strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
                 <Clock size={15} className="text-slate-500" />
-                <span>Thời gian làm bài: <strong>{Math.round(viewingSubmission.timeSpentSeconds / 60)} phút</strong></span>
+                <span>
+                  Thời gian làm bài: <strong>{formatDurationSpent(viewingSubmission.timeSpentSeconds)}</strong>
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <ShieldAlert size={15} className={viewingSubmission.infractionCount > 0 ? 'text-rose-500' : 'text-emerald-500'} />
                 <span>
-                  Sự kiện giám sát: <strong>{viewingSubmission.infractionCount} lần cảnh báo rời tab</strong>
+                  Giám sát: <strong>{viewingSubmission.infractionCount} lần cảnh báo rời tab</strong>
                 </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar size={15} className="text-slate-500" />
-                <span>Nộp lúc: <strong>{new Date(viewingSubmission.submittedAt).toLocaleString('vi-VN')}</strong></span>
               </div>
             </div>
 
@@ -818,15 +998,25 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                   setPdfPreselectedStudent(viewingSubmission);
                   setShowPdfExportModal(true);
                 }}
-                className="w-full sm:flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
+                className="w-full sm:flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
               >
                 <FileText size={16} />
                 <span>Xuất Phiếu Điểm (PDF / Word / Excel)</span>
               </button>
+              {canDeleteSubmissions && (
+                <button
+                  type="button"
+                  onClick={() => setSubmissionToDelete(viewingSubmission)}
+                  className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Trash2 size={15} />
+                  <span>Xóa Bài Nộp</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setViewingSubmission(null)}
-                className="w-full sm:flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                className="w-full sm:flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
               >
                 Đóng Cửa Sổ Chi Tiết
               </button>
@@ -834,6 +1024,56 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: XÁC NHẬN XÓA 1 BÀI NỘP CỦA HỌC SINH                               */}
+      {/* ========================================================================= */}
+      <DeleteConfirmationModal
+        isOpen={Boolean(submissionToDelete)}
+        itemType="custom"
+        title="Xóa Bài Thi Đã Nộp Của Học Sinh"
+        itemName={
+          submissionToDelete
+            ? `${submissionToDelete.studentName} — ${submissionToDelete.examTitle}`
+            : ''
+        }
+        itemSubtitle={
+          submissionToDelete
+            ? `Điểm: ${submissionToDelete.score.toFixed(2)}/10 · Nộp lúc: ${formatSubmissionDateTime(submissionToDelete.submittedAt).full}`
+            : undefined
+        }
+        impactDetails={[
+          'Bài làm, đáp án chi tiết và kết quả điểm của lượt nộp này sẽ bị xóa khỏi bảng tổng hợp điểm thi',
+          'Học sinh sẽ không còn thấy lượt nộp này trong lịch sử làm bài (và có thể làm lại nếu đề giới hạn số lượt)',
+          'Dữ liệu bị xóa đồng bộ trên toàn bộ thiết bị và không thể khôi phục',
+        ]}
+        isDeleting={isDeletingSubmission}
+        onConfirm={handleConfirmDeleteSingleSubmission}
+        onCancel={() => {
+          if (!isDeletingSubmission) setSubmissionToDelete(null);
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL: XÁC NHẬN XÓA NHIỀU BÀI NỘP ĐÃ CHỌN                                */}
+      {/* ========================================================================= */}
+      <DeleteConfirmationModal
+        isOpen={showBulkDeleteModal}
+        itemType="custom"
+        title={`Xóa ${selectedVisibleIds.length} Bài Nộp Đã Chọn`}
+        itemName={`${selectedVisibleIds.length} bài làm của học sinh trong danh sách`}
+        itemSubtitle="Các bài được đánh dấu tích chọn trong bảng tổng hợp điểm"
+        impactDetails={[
+          `Toàn bộ ${selectedVisibleIds.length} bài nộp đã chọn sẽ bị xóa khỏi bảng điểm và thống kê`,
+          'Lịch sử làm bài tương ứng trên thiết bị học sinh cũng được cập nhật theo',
+          'Thao tác này có hiệu lực đồng bộ trên hệ thống và không thể hoàn tác',
+        ]}
+        isDeleting={isDeletingSubmission}
+        onConfirm={handleConfirmDeleteBulkSubmissions}
+        onCancel={() => {
+          if (!isDeletingSubmission) setShowBulkDeleteModal(false);
+        }}
+      />
 
       {/* ========================================================================= */}
       {/* MODAL: XUẤT BÁO CÁO KẾT QUẢ / PHIẾU ĐIỂM DẠNG PDF                         */}

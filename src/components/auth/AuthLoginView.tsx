@@ -450,15 +450,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     </p>
                   </div>
 
-                  {/* Lựa chọn vai trò: Chỉ Học sinh hoặc Giáo viên (TUYỆT ĐỐI KHÔNG CÓ ADMIN) */}
+                  {/* Lựa chọn vai trò: Học sinh hoặc Giáo viên */}
                   <div className="space-y-1.5 p-3 rounded-2xl bg-white/5 border border-white/10">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300">Vai trò đăng ký *</label>
-                      <span className="text-[10px] text-amber-300 font-bold flex items-center gap-1">
-                        <ShieldCheck size={12} />
-                        <span>Không có quyền tạo Admin</span>
-                      </span>
-                    </div>
+                    <label className="text-[11px] font-bold text-slate-300 block">Vai trò đăng ký *</label>
 
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
@@ -487,10 +481,6 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                         <span>Giáo Viên</span>
                       </button>
                     </div>
-
-                    <p className="text-[10px] text-slate-400 italic">
-                      * Tài khoản Quản trị viên chỉ do Quản trị hệ thống cấp phát.
-                    </p>
                   </div>
 
                   {regError && (
@@ -809,7 +799,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     <span>Lưu ý bảo mật:</span>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    Người dùng không có quyền tự kích hoạt hay tự tạo Admin. Quản Trị Viên (Admin) sẽ đối chiếu thông tin và phê duyệt tài khoản. Bạn sẽ có thể đăng nhập ngay sau khi được Admin duyệt!
+                    Quản Trị Viên sẽ đối chiếu thông tin và phê duyệt tài khoản. Bạn sẽ có thể đăng nhập ngay sau khi được duyệt.
                   </p>
                 </div>
 

@@ -50,7 +50,12 @@
       "properties": {
         "id": { "type": "string" },
         "examId": { "type": "string" },
+        "examTitle": { "type": "string" },
         "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "classId": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "timeSpentSeconds": { "type": "number" },
         "score": { "type": "number" }
       },
       "required": ["id", "examId", "studentId"]

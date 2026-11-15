@@ -604,18 +604,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
 
-            {/* Logout Button (Desktop) */}
-            {onLogout && (
-              <button
-                onClick={onLogout}
-                title="Đăng xuất khỏi tài khoản"
-                className="hidden md:flex p-2 rounded-xl text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 transition-all shadow-xs items-center gap-1 text-xs font-bold cursor-pointer"
-              >
-                <LogOut size={16} />
-                <span className="hidden xl:inline">Đăng Xuất</span>
-              </button>
-            )}
-
             {/* ========================================================= */}
             {/* MOBILE HAMBURGER BUTTON (HIỂN THỊ RÕ RÀNG TRÊN ĐIỆN THOẠI) */}
             {/* ========================================================= */}

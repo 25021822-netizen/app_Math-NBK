@@ -1341,6 +1341,7 @@ interface ServerDatabase {
   classroomMessages: Record<string, any[]>;
   exams: any[];
   deletedExamIds?: string[];
+  deletedSubmissionIds?: string[];
   adminSettings?: {
     autoApproval?: {
       enabled: boolean;
@@ -1394,6 +1395,7 @@ function getCleanInitialDb(): ServerDatabase {
     classroomMessages: {},
     exams: [],
     deletedExamIds: [],
+    deletedSubmissionIds: [],
     adminSettings: {
       autoApproval: {
         enabled: true,
@@ -1720,10 +1722,38 @@ app.post('/api/db/submissions', (req, res) => {
   const { submission } = req.body;
   if (submission) {
     serverDb.submissions = [submission, ...serverDb.submissions.filter((s) => s.id !== submission.id)];
+    serverDb.deletedSubmissionIds = (serverDb.deletedSubmissionIds || []).filter((id) => id !== submission.id);
     serverDb.version = (serverDb.version || 1) + 1;
     saveDatabase(serverDb);
   }
   res.json({ success: true, version: serverDb.version });
+});
+
+// 8b. Giáo viên xóa 1 hoặc nhiều bài nộp của học sinh
+app.post('/api/db/submissions/delete', (req, res) => {
+  const { submissionId, submissionIds } = req.body || {};
+  const idsToDelete = new Set<string>();
+  if (typeof submissionId === 'string' && submissionId.trim()) {
+    idsToDelete.add(submissionId.trim());
+  }
+  if (Array.isArray(submissionIds)) {
+    submissionIds.forEach((id: unknown) => {
+      if (typeof id === 'string' && id.trim()) {
+        idsToDelete.add(id.trim());
+      }
+    });
+  }
+
+  if (idsToDelete.size > 0) {
+    serverDb.submissions = (serverDb.submissions || []).filter((s: any) => !idsToDelete.has(s.id));
+    const delSet = new Set(serverDb.deletedSubmissionIds || []);
+    idsToDelete.forEach((id) => delSet.add(id));
+    serverDb.deletedSubmissionIds = Array.from(delSet).slice(-1000);
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+
+  res.json({ success: true, deletedCount: idsToDelete.size, version: serverDb.version });
 });
 
 // 9. Lưu nhật ký vi phạm quy chế thi

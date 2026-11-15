@@ -65,6 +65,25 @@ const backfilledExamIds = new Set<string>();
 const migratedImageExamIds = new Set<string>();
 const deletedLessonIdsSet = new Set<string>();
 const deletedMessageIdsSet = new Set<string>();
+const DELETED_SUBMISSIONS_STORAGE_KEY = 'math_liki_deleted_submission_ids';
+const deletedSubmissionIdsSet: Set<string> = (() => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(DELETED_SUBMISSIONS_STORAGE_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed.filter((id) => typeof id === 'string'));
+    }
+  } catch {}
+  return new Set<string>();
+})();
+function persistDeletedSubmissionIds() {
+  try {
+    if (typeof window !== 'undefined') {
+      const arr = Array.from(deletedSubmissionIdsSet).slice(-1000);
+      localStorage.setItem(DELETED_SUBMISSIONS_STORAGE_KEY, JSON.stringify(arr));
+    }
+  } catch {}
+}
 let lastClassroomSaveAt = 0;
 let activeAccumulatorRef: DatabaseState | null = null;
 let activeDispatchRef: (() => void) | null = null;
@@ -183,6 +202,7 @@ export interface DatabaseState {
   classroomMessages: Record<string, ClassroomChatMessage[]>;
   exams: Exam[];
   deletedExamIds?: string[];
+  deletedSubmissionIds?: string[];
 }
 
 export const DEFAULT_ADMIN_PROFILE: UserProfile = {
@@ -638,6 +658,9 @@ export async function dbDisbandClassroom(classId: string): Promise<boolean> {
  * Lưu kết quả bài làm thi của học sinh
  */
 export async function dbSaveSubmission(submission: StudentExamSubmission): Promise<boolean> {
+  if (submission.id && deletedSubmissionIdsSet.delete(submission.id)) {
+    persistDeletedSubmissionIds();
+  }
   const cleanSub = cleanForFirestore(submission);
   try {
     await setDoc(doc(db, 'submissions', submission.id), cleanSub, { merge: true });
@@ -653,6 +676,54 @@ export async function dbSaveSubmission(submission: StudentExamSubmission): Promi
     console.warn('Lỗi dbSaveSubmission Firestore:', err);
     return false;
   }
+}
+
+/**
+ * Giáo viên xóa 1 bài thi đã nộp của học sinh khỏi Firestore & Server
+ */
+export async function dbDeleteSubmission(submissionId: string): Promise<boolean> {
+  if (!submissionId) return false;
+  return dbDeleteSubmissionsBatch([submissionId]);
+}
+
+/**
+ * Giáo viên xóa 1 hoặc nhiều bài thi đã nộp của học sinh khỏi Firestore & Server
+ */
+export async function dbDeleteSubmissionsBatch(submissionIds: string[]): Promise<boolean> {
+  const uniqueIds = Array.from(new Set(submissionIds.filter((id) => typeof id === 'string' && id.trim())));
+  if (uniqueIds.length === 0) return false;
+
+  const idSet = new Set(uniqueIds);
+  uniqueIds.forEach((id) => deletedSubmissionIdsSet.add(id));
+  persistDeletedSubmissionIds();
+
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.submissions = activeAccumulatorRef.submissions.filter((s) => !idSet.has(s.id));
+    activeDispatchRef?.();
+  }
+
+  const serverPromise = fetch('/api/db/submissions/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ submissionIds: uniqueIds }),
+  }).catch((err) => {
+    console.warn('Lỗi dbDeleteSubmissionsBatch Server API:', err);
+    return null;
+  });
+
+  const firestorePromise = Promise.allSettled(
+    uniqueIds.map((id) =>
+      deleteDoc(doc(db, 'submissions', id)).catch((err) => {
+        if (err instanceof Error && err.message.toLowerCase().includes('permission')) {
+          handleFirestoreError(err, OperationType.DELETE, `submissions/${id}`);
+        }
+        console.warn(`Lỗi xóa submission ${id} trên Firestore:`, err);
+      })
+    )
+  );
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
@@ -1916,10 +1987,27 @@ export function startDbPolling(
 
   // 3. Lắng nghe Bài nộp thi trên Firestore Real-time
   const unsubSubmissions = onSnapshot(collection(db, 'submissions'), (snapshot) => {
+    let removedUpdated = false;
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        if (!deletedSubmissionIdsSet.has(change.doc.id)) {
+          deletedSubmissionIdsSet.add(change.doc.id);
+          removedUpdated = true;
+        }
+      }
+    });
+    if (removedUpdated) {
+      persistDeletedSubmissionIds();
+    }
+
     const list: StudentExamSubmission[] = [];
     snapshot.forEach((d) => {
-      list.push(d.data() as StudentExamSubmission);
+      const sub = d.data() as StudentExamSubmission;
+      if (sub && sub.id && !deletedSubmissionIdsSet.has(sub.id) && !deletedExamIdsSet.has(sub.examId)) {
+        list.push(sub);
+      }
     });
+    list.sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
     stateAccumulator.submissions = list;
     dispatchUpdate();
   }, (err) => {
@@ -2152,6 +2240,25 @@ export function startDbPolling(
             });
             if (deletedUpdated) {
               persistDeletedExamIds();
+              hasChanges = true;
+            }
+          }
+
+          // Đồng bộ danh sách bài nộp đã bị xóa từ Server
+          if (Array.isArray(json.data.deletedSubmissionIds)) {
+            let deletedSubUpdated = false;
+            json.data.deletedSubmissionIds.forEach((delId: unknown) => {
+              if (typeof delId === 'string' && delId && !deletedSubmissionIdsSet.has(delId)) {
+                deletedSubmissionIdsSet.add(delId);
+                deletedSubUpdated = true;
+              }
+            });
+            if (deletedSubUpdated) {
+              persistDeletedSubmissionIds();
+              const filteredSubs = stateAccumulator.submissions.filter((s) => !deletedSubmissionIdsSet.has(s.id));
+              if (filteredSubs.length !== stateAccumulator.submissions.length) {
+                stateAccumulator.submissions = filteredSubs;
+              }
               hasChanges = true;
             }
           }
