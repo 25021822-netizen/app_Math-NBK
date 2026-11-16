@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention, ScoreVisibilityMode, getExamScoreVisibilityLabel } from '../../types/math';
+import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention } from '../../types/math';
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
@@ -2413,22 +2413,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                           const examObj = examsList.find((e) => e.id === examId);
                           if (!examObj) return null;
 
-                          const scoreMode: ScoreVisibilityMode = examObj.scoreVisibility || 'immediate';
-                          const handleChangeExamScoreVisibility = (nextMode: ScoreVisibilityMode) => {
-                            if (scoreMode === nextMode) return;
-                            const updatedExam: Exam = { ...examObj, scoreVisibility: nextMode };
-                            if (onSaveExam) {
-                              onSaveExam(updatedExam);
-                            } else if (onUpdateExamsList) {
-                              onUpdateExamsList(examsList.map((e) => (e.id === updatedExam.id ? updatedExam : e)));
-                              dbSaveExam(updatedExam).catch(console.error);
-                            }
-                            setExamActionSuccess(
-                              `Đã cập nhật chế độ hiển thị điểm cho "${examObj.title}": ${getExamScoreVisibilityLabel(nextMode)}`
-                            );
-                            setTimeout(() => setExamActionSuccess(null), 3500);
-                          };
-
                           return (
                             <div
                               key={examId}
@@ -2446,24 +2430,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                         Tối đa {examObj.maxAttempts} lượt
                                       </span>
                                     )}
-                                    <span
-                                      className={`px-2 py-0.5 rounded text-[10px] font-bold inline-flex items-center gap-1 ${
-                                        scoreMode === 'immediate'
-                                          ? 'bg-emerald-100 text-emerald-800'
-                                          : scoreMode === 'after_close'
-                                          ? 'bg-amber-100 text-amber-800'
-                                          : 'bg-rose-100 text-rose-800'
-                                      }`}
-                                    >
-                                      {scoreMode === 'immediate' ? (
-                                        <Eye size={10} />
-                                      ) : scoreMode === 'after_close' ? (
-                                        <Clock size={10} />
-                                      ) : (
-                                        <EyeOff size={10} />
-                                      )}
-                                      <span>{getExamScoreVisibilityLabel(scoreMode)}</span>
-                                    </span>
                                   </div>
                                   <div className="text-slate-400 text-[11px] flex items-center gap-2 flex-wrap">
                                     <span>{examObj.questions.length} câu hỏi</span>
@@ -2528,40 +2494,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                   )}
                                 </div>
                               </div>
-
-                              {userRole === 'teacher' && (
-                                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80">
-                                  <span className="text-[11px] font-bold text-slate-500">
-                                    Chế độ xem điểm của học sinh:
-                                  </span>
-                                  <div className="inline-flex rounded-xl border border-slate-200 bg-white p-0.5 gap-0.5">
-                                    {(
-                                      [
-                                        { mode: 'immediate', label: 'Biết điểm ngay' },
-                                        { mode: 'after_close', label: 'Biết điểm sau' },
-                                        { mode: 'hidden', label: 'Không cho biết' },
-                                      ] as const
-                                    ).map((opt) => (
-                                      <button
-                                        key={opt.mode}
-                                        type="button"
-                                        onClick={() => handleChangeExamScoreVisibility(opt.mode)}
-                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
-                                          scoreMode === opt.mode
-                                            ? opt.mode === 'immediate'
-                                              ? 'bg-emerald-600 text-white'
-                                              : opt.mode === 'after_close'
-                                              ? 'bg-amber-600 text-white'
-                                              : 'bg-rose-600 text-white'
-                                            : 'text-slate-600 hover:bg-slate-100'
-                                        }`}
-                                      >
-                                        {opt.label}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
                             </div>
                           );
                         })
