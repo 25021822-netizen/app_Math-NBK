@@ -40,6 +40,8 @@ export interface CropDocumentData {
   fileUrl?: string;
   extractedText?: string;
   isPdf?: boolean;
+  isWord?: boolean;
+  pageImages?: string[];
 }
 
 interface QuestionCropStudioViewProps {
@@ -52,6 +54,8 @@ interface QuestionCropStudioViewProps {
   onPublishExam: (exam: Exam) => Promise<boolean> | void;
   onTransferToManualEditor: (questions: Question[], examMeta: { title: string; grade: 10 | 11 | 12; duration: number }) => void;
   onBackToUpload: () => void;
+  onUploadFile?: (file: File) => void;
+  isUploadingDocument?: boolean;
   currentUserName?: string;
   currentUserId?: string;
   currentUserEmail?: string;
@@ -67,6 +71,8 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   onPublishExam,
   onTransferToManualEditor,
   onBackToUpload,
+  onUploadFile,
+  isUploadingDocument = false,
   currentUserName = 'Giáo viên',
   currentUserId,
   currentUserEmail,
@@ -132,6 +138,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   const pageCanvasRef = useRef<HTMLCanvasElement>(null);
   const imageElementRef = useRef<HTMLImageElement>(null);
   const pdfDocRef = useRef<any>(null);
+  const directUploadInputRef = useRef<HTMLInputElement>(null);
 
   const updateZoom = (updater: number | ((prev: number) => number)) => {
     setZoomLevel((prev) => {
@@ -161,6 +168,52 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     vp.addEventListener('wheel', handleWheel, { passive: false });
     return () => vp.removeEventListener('wheel', handleWheel);
   }, [viewMode, isExpandedView]);
+
+  // Khởi tạo danh sách trang ảnh khi tải tài liệu Word (hoặc tài liệu phân trang bằng ảnh)
+  useEffect(() => {
+    if (!documentData?.pageImages || documentData.pageImages.length === 0) return;
+    pdfDocRef.current = null;
+    setPdfRenderError(null);
+    setViewMode('canvas');
+    setTotalPages(documentData.pageImages.length);
+    setCurrentPage(1);
+    setCropBox(null);
+  }, [documentData?.pageImages, documentData?.fileName]);
+
+  // Vẽ trang ảnh Word hiện tại lên Canvas để khoanh cắt trực tiếp
+  useEffect(() => {
+    if (!documentData?.pageImages || documentData.pageImages.length === 0) return;
+    if (viewMode !== 'canvas') return;
+    const pageSrc = documentData.pageImages[currentPage - 1];
+    if (!pageSrc) return;
+
+    let isMounted = true;
+    setIsRenderingPdf(true);
+    const img = new Image();
+    img.onload = () => {
+      if (!isMounted) return;
+      const canvas = pageCanvasRef.current;
+      if (canvas) {
+        canvas.width = img.naturalWidth || 1588;
+        canvas.height = img.naturalHeight || 2245;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        }
+      }
+      setIsRenderingPdf(false);
+    };
+    img.onerror = () => {
+      if (isMounted) setIsRenderingPdf(false);
+    };
+    img.src = pageSrc;
+
+    return () => {
+      isMounted = false;
+    };
+  }, [documentData?.pageImages, currentPage, viewMode]);
 
   // Khởi tạo tài liệu PDF qua PDF.js khi có documentData
   useEffect(() => {
@@ -228,7 +281,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
 
   // Render trang PDF hiện tại lên Canvas khi trang hoặc tài liệu thay đổi
   useEffect(() => {
-    if (!pdfDocRef.current) return;
+    if (!pdfDocRef.current || documentData?.pageImages?.length) return;
     let isMounted = true;
 
     const renderCurrentPdfPage = async () => {
@@ -262,7 +315,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [currentPage, totalPages, viewMode]);
+  }, [currentPage, totalPages, viewMode, documentData?.pageImages]);
 
   // Tự động chọn câu đầu tiên khi danh sách câu hỏi thay đổi nếu chưa có câu nào active
   useEffect(() => {
@@ -618,7 +671,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               pdfBase64: documentData?.isPdf ? documentData.fileBase64 : undefined,
-              latexText: !documentData?.isPdf ? documentData.extractedText : undefined,
+              wordText: documentData?.isWord ? documentData.extractedText : undefined,
+              wordBase64: documentData?.isWord ? documentData.fileBase64 : undefined,
+              latexText: !documentData?.isPdf && !documentData?.isWord ? documentData.extractedText : undefined,
               grade: examGrade,
               durationMinutes: examDuration,
               examTitle: examTitle,
@@ -788,13 +843,39 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+            {onUploadFile && (
+              <>
+                <input
+                  ref={directUploadInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.doc,.tex,.txt,.latex,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      onUploadFile(e.target.files[0]);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={isUploadingDocument}
+                  onClick={() => directUploadInputRef.current?.click()}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isUploadingDocument ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                  <span>{isUploadingDocument ? 'Đang Nạp File...' : 'Tải File PDF / Word'}</span>
+                </button>
+              </>
+            )}
+
             <button
               type="button"
               onClick={onBackToUpload}
               className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <ArrowLeft size={14} />
-              <span>Đổi Tệp Khác</span>
+              <span>Quay Lại</span>
             </button>
 
             <button
@@ -992,8 +1073,8 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                 </span>
               </div>
 
-              {/* Chuyển trang PDF */}
-              {documentData?.isPdf && totalPages > 1 && (
+              {/* Chuyển trang tài liệu (PDF hoặc Word đã phân trang) */}
+              {(documentData?.isPdf || (documentData?.pageImages && documentData.pageImages.length > 0)) && totalPages > 1 && (
                 <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 p-1 rounded-xl text-xs font-bold text-indigo-950">
                   <button
                     type="button"
@@ -1181,12 +1262,13 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                   }}
                   className="relative cursor-crosshair block mx-auto shadow-2xl rounded-lg overflow-hidden bg-white"
                 >
-                  {documentData?.isPdf && documentData?.fileBase64 ? (
+                  {(documentData?.isPdf && documentData?.fileBase64) ||
+                  (documentData?.pageImages && documentData.pageImages.length > 0) ? (
                     <canvas
                       ref={pageCanvasRef}
                       className="w-full h-auto block pointer-events-none"
                     />
-                  ) : documentData?.fileBase64 && !documentData.isPdf ? (
+                  ) : documentData?.fileBase64 && !documentData.isPdf && !documentData.isWord ? (
                     <img
                       ref={imageElementRef}
                       src={documentData.fileBase64}
@@ -1194,21 +1276,39 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
                       className="w-full h-auto block pointer-events-none"
                     />
                   ) : (
-                    // Khi chưa có file PDF / Hình ảnh tải lên: Hiển thị hướng dẫn kéo thả sạch sẽ, không có câu hỏi mẫu giả
+                    // Khi chưa có file PDF / Word / Hình ảnh tải lên: Hiển thị hướng dẫn kéo thả & nút tải file ngay tại bàn cắt
                     <div className="w-full min-h-[520px] bg-slate-50 text-slate-800 p-8 flex flex-col items-center justify-center text-center space-y-4 border-2 border-dashed border-slate-300 rounded-lg">
                       <div className="w-16 h-16 rounded-3xl bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-inner">
-                        <UploadCloud size={32} />
+                        {isUploadingDocument ? <Loader2 size={32} className="animate-spin" /> : <UploadCloud size={32} />}
                       </div>
-                      <div className="max-w-xs space-y-1">
-                        <h4 className="font-extrabold text-sm text-slate-800">Chưa có tệp đề thi tải lên</h4>
+                      <div className="max-w-sm space-y-1">
+                        <h4 className="font-extrabold text-sm text-slate-800">
+                          {isUploadingDocument ? 'Đang chuyển đổi tài liệu để cắt câu hỏi...' : 'Chưa có tệp đề thi tải lên'}
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Hỗ trợ tệp PDF (.pdf), Word (.docx, .doc), hình ảnh đề thi hoặc mã nguồn LaTeX.
+                        </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={onBackToUpload}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
-                      >
-                        Quay lại chọn tệp đề thi
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap justify-center">
+                        {onUploadFile && (
+                          <button
+                            type="button"
+                            disabled={isUploadingDocument}
+                            onClick={() => directUploadInputRef.current?.click()}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center gap-1.5"
+                          >
+                            <UploadCloud size={15} />
+                            <span>Chọn Tệp PDF / Word Lên Ngay</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={onBackToUpload}
+                          className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold transition-all cursor-pointer"
+                        >
+                          Về trang tải tệp
+                        </button>
+                      </div>
                     </div>
                   )}
 

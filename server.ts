@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { PDFParse } from 'pdf-parse';
+import WordExtractor from 'word-extractor';
 import { parseExamFromLatexOrText } from './src/lib/latexExamParser';
 import { cleanPdfNoiseAndOcr } from './src/lib/ocrNoiseCleaner';
 
@@ -1143,13 +1144,40 @@ function safeParseJsonWithLatex(jsonStr: string): any {
   return null;
 }
 
-// API 3: AI PDF & LATEX EXAM PARSER (3 PHẦN CHUẨN BGD 2025)
+// API: TRÍCH XUẤT VĂN BẢN TỪ FILE WORD (.DOC / .DOCX)
+app.post('/api/word/extract', async (req, res) => {
+  try {
+    const { fileBase64, fileName } = req.body || {};
+    if (!fileBase64 || typeof fileBase64 !== 'string') {
+      return res.status(400).json({ success: false, error: 'Thiếu dữ liệu file Word.' });
+    }
+    const cleanB64 = fileBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+    const buffer = Buffer.from(cleanB64, 'base64');
+    const extractor = new WordExtractor();
+    const doc = await extractor.extract(buffer);
+    const parts = [
+      doc.getHeaders?.({ includeFooters: false }) || '',
+      doc.getBody?.() || '',
+      doc.getFooters?.() || '',
+    ].filter((s) => typeof s === 'string' && s.trim().length > 0);
+    const text = parts.join('\n').trim();
+    return res.json({ success: true, text, fileName: fileName || 'document.docx' });
+  } catch (err: any) {
+    console.warn('[Word Extract] Lỗi trích xuất file Word:', err?.message);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Không thể đọc nội dung tệp Word này.',
+    });
+  }
+});
+
+// API 3: AI PDF, WORD & LATEX EXAM PARSER (3 PHẦN CHUẨN BGD 2025)
 app.post('/api/gemini/parse-pdf', async (req, res) => {
-  const { pdfText, pdfBase64, latexText, grade = 12, durationMinutes = 90, examTitle } = req.body;
-  let extractedPdfText = pdfText || '';
+  const { pdfText, pdfBase64, wordText, wordBase64, latexText, grade = 12, durationMinutes = 90, examTitle } = req.body;
+  let extractedPdfText = pdfText || wordText || '';
 
   try {
-    // 1. Nếu có pdfBase64, làm sạch tiền tố và trích xuất text nhị phân trực tiếp bằng pdf-parse
+    // 1a. Nếu có pdfBase64, làm sạch tiền tố và trích xuất text nhị phân trực tiếp bằng pdf-parse
     let cleanBase64 = '';
     if (pdfBase64) {
       try {
@@ -1167,7 +1195,24 @@ app.post('/api/gemini/parse-pdf', async (req, res) => {
       }
     }
 
-    const rawContent = latexText || extractedPdfText || pdfText || '';
+    // 1b. Nếu có wordBase64 nhưng chưa có wordText, trích xuất text bằng WordExtractor
+    if (!extractedPdfText && wordBase64) {
+      try {
+        const cleanWordB64 = String(wordBase64).replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+        const wordBuffer = Buffer.from(cleanWordB64, 'base64');
+        const extractor = new WordExtractor();
+        const doc = await extractor.extract(wordBuffer);
+        const wordBody = (doc.getBody?.() || '').trim();
+        if (wordBody) {
+          extractedPdfText = wordBody;
+          console.log(`[Word Parser] Đã trích xuất thành công ${extractedPdfText.length} ký tự từ file Word.`);
+        }
+      } catch (wordErr: any) {
+        console.warn('[Word Parser] Lỗi trích xuất text từ Word:', wordErr?.message);
+      }
+    }
+
+    const rawContent = latexText || wordText || extractedPdfText || pdfText || '';
     // Khử sạch header/footer, số trang, watermark PDF trước khi bóc tách cấu trúc đề
     const cleanedContent = cleanPdfNoiseAndOcr(rawContent).cleanedText || rawContent;
 

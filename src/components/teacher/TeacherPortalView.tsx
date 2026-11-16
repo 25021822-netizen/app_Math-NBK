@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
+import { renderPlainTextToPageImages, renderWordDocxToPageImages } from '../../lib/wordExamUtils';
 import { QuestionCropStudioView } from './QuestionCropStudioView';
 import { examNeedsImageCloudSync, persistExamImagesEverywhere } from '../../services/examImageService';
 
@@ -194,9 +195,17 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [showClearAllModal, setShowClearAllModal] = useState<boolean>(false);
   const [showPublishConfirmModal, setShowPublishConfirmModal] = useState<boolean>(false);
 
-  // ================= STATE DÀNH CHO AI PDF & LATEX SCANNER =================
+  // ================= STATE DÀNH CHO AI PDF / WORD & LATEX SCANNER =================
   const [aiInputMethod, setAiInputMethod] = useState<'pdf' | 'latex'>('pdf');
-  const [aiPdfFile, setAiPdfFile] = useState<{ fileName: string; fileSize: string; fileBase64: string } | null>(null);
+  const [aiPdfFile, setAiPdfFile] = useState<{
+    fileName: string;
+    fileSize: string;
+    fileBase64: string;
+    fileType: 'pdf' | 'word' | 'image';
+    extractedText?: string;
+    pageImages?: string[];
+  } | null>(null);
+  const [isConvertingDocument, setIsConvertingDocument] = useState<boolean>(false);
   const [aiLatexText, setAiLatexText] = useState<string>('');
   const [aiExamTitle, setAiExamTitle] = useState<string>('Đề Thi Khảo Sát Toán THPT Chuẩn Bộ GD&ĐT 2025');
   const [aiGrade, setAiGrade] = useState<10 | 11 | 12>(12);
@@ -327,15 +336,20 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     }
   };
 
-  // Xử lý tải file (Hỗ trợ PDF, TEX, TXT, LaTeX)
-  const handleProcessPdfFile = (file: File) => {
+  // Xử lý tải file (Hỗ trợ PDF, Word .docx/.doc, Ảnh đề thi, TEX, TXT, LaTeX)
+  const handleProcessPdfFile = async (file: File) => {
     if (!file) return;
     const lowerName = file.name.toLowerCase();
     const isPdf = lowerName.endsWith('.pdf') || file.type === 'application/pdf';
+    const isDocx =
+      lowerName.endsWith('.docx') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const isLegacyDoc = lowerName.endsWith('.doc') || file.type === 'application/msword';
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(lowerName);
     const isTexOrTxt = lowerName.endsWith('.tex') || lowerName.endsWith('.txt') || lowerName.endsWith('.latex') || file.type.startsWith('text/');
 
-    if (!isPdf && !isTexOrTxt) {
-      setAiScanError('Vui lòng chọn tệp định dạng PDF (.pdf) hoặc mã nguồn LaTeX (.tex, .txt)!');
+    if (!isPdf && !isDocx && !isLegacyDoc && !isImage && !isTexOrTxt) {
+      setAiScanError('Vui lòng chọn tệp định dạng PDF (.pdf), Word (.docx, .doc), ảnh đề thi hoặc mã nguồn LaTeX (.tex, .txt)!');
       return;
     }
 
@@ -363,8 +377,83 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       return;
     }
 
-    // Nếu là file PDF (.pdf)
     const sizeStr = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+
+    // Nếu là file Word (.docx hoặc .doc) -> kết xuất thành từng trang ảnh sắc nét & trích xuất nội dung cho Phòng Cắt Câu
+    if (isDocx || isLegacyDoc) {
+      setIsConvertingDocument(true);
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string) || '');
+          reader.onerror = () => reject(new Error('Không thể đọc tệp Word.'));
+          reader.readAsDataURL(file);
+        });
+
+        const cleanTitle = file.name.replace(/\.(docx|doc)$/i, '').replace(/[-_]/g, ' ');
+        let pageImages: string[] = [];
+        let extractedText = '';
+
+        if (isDocx) {
+          const arrayBuffer = await file.arrayBuffer();
+          const rendered = await renderWordDocxToPageImages(arrayBuffer);
+          pageImages = rendered.pageDataUrls;
+          extractedText = rendered.extractedText;
+        }
+
+        // Bổ sung hoặc xử lý file .doc cũ qua server
+        if (!extractedText || (isLegacyDoc && pageImages.length === 0)) {
+          try {
+            const resp = await fetch('/api/word/extract', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data.success && data.text) {
+                extractedText = extractedText || data.text;
+              }
+            }
+          } catch (extractErr) {
+            console.warn('Không thể trích xuất nội dung Word từ máy chủ:', extractErr);
+          }
+        }
+
+        if (pageImages.length === 0 && extractedText) {
+          pageImages = await renderPlainTextToPageImages(extractedText, cleanTitle);
+        }
+
+        if (pageImages.length === 0) {
+          setAiScanError('Không thể hiển thị nội dung tệp Word này. Nếu là file .doc đời cũ bị khóa định dạng, vui lòng lưu lại dưới dạng .docx hoặc .pdf rồi tải lên.');
+          return;
+        }
+
+        setAiPdfFile({
+          fileName: file.name,
+          fileSize: sizeStr,
+          fileBase64: base64,
+          fileType: 'word',
+          extractedText,
+          pageImages,
+        });
+        setAiInputMethod('pdf');
+        setAiExamTitle(`Đề Thi: ${cleanTitle}`);
+        setCreationMode('crop_studio');
+        setPublishSuccessMessage(
+          `Đã nạp file Word "${file.name}" (${pageImages.length} trang) và chuyển sang Phòng Cắt Câu Đề Thi!`
+        );
+        setTimeout(() => setPublishSuccessMessage(null), 5000);
+      } catch (err: any) {
+        console.error('Lỗi khi nạp tệp Word:', err);
+        setAiScanError(err?.message || 'Có lỗi xảy ra khi xử lý tệp Word. Thầy/Cô vui lòng kiểm tra lại định dạng tệp.');
+      } finally {
+        setIsConvertingDocument(false);
+      }
+      return;
+    }
+
+    // Nếu là file PDF hoặc Ảnh đề thi
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result as string;
@@ -372,9 +461,10 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         fileName: file.name,
         fileSize: sizeStr,
         fileBase64: base64,
+        fileType: isImage ? 'image' : 'pdf',
       });
       setAiInputMethod('pdf');
-      const cleanTitle = file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+      const cleanTitle = file.name.replace(/\.(pdf|png|jpe?g|webp|gif|bmp)$/i, '').replace(/[-_]/g, ' ');
       setAiExamTitle(`Đề Thi: ${cleanTitle}`);
       // Tự động chuyển ngay sang Phòng Cắt Câu Đề Thi để cắt từng câu vào đề
       setCreationMode('crop_studio');
@@ -387,7 +477,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
   // Quét & Bóc tách đề thi bằng AI hoặc Bộ phân tích cú pháp LaTeX
   const handleScanExamWithAi = async () => {
     if (aiInputMethod === 'pdf' && !aiPdfFile) {
-      setAiScanError('Vui lòng chọn hoặc kéo thả tệp PDF đề thi!');
+      setAiScanError('Vui lòng chọn hoặc kéo thả tệp PDF hoặc Word đề thi!');
       return;
     }
     if (aiInputMethod === 'latex' && !aiLatexText.trim()) {
@@ -411,7 +501,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            pdfBase64: aiInputMethod === 'pdf' ? aiPdfFile?.fileBase64 : undefined,
+            pdfBase64: aiInputMethod === 'pdf' && aiPdfFile?.fileType === 'pdf' ? aiPdfFile?.fileBase64 : undefined,
+            wordText: aiInputMethod === 'pdf' && aiPdfFile?.fileType === 'word' ? aiPdfFile?.extractedText : undefined,
+            wordBase64: aiInputMethod === 'pdf' && aiPdfFile?.fileType === 'word' ? aiPdfFile?.fileBase64 : undefined,
             latexText: aiInputMethod === 'latex' ? aiLatexText : undefined,
             grade: aiGrade,
             durationMinutes: aiDuration,
@@ -434,7 +526,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       if (!parsed || !parsed.questions || parsed.questions.length === 0) {
         const textToFallback = aiInputMethod === 'latex'
           ? (aiLatexText || '')
-          : (aiPdfFile?.fileName || 'Đề Thi Toán THPT');
+          : (aiPdfFile?.extractedText || aiPdfFile?.fileName || 'Đề Thi Toán THPT');
         const localParsed = parseExamFromLatexOrText(textToFallback, aiGrade, aiDuration, aiExamTitle || aiPdfFile?.fileName);
         if (localParsed && localParsed.questions && localParsed.questions.length > 0) {
           parsed = localParsed;
@@ -1014,7 +1106,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
             }`}
           >
             <FileUp size={15} />
-            <span>Tải Lên File PDF AI</span>
+            <span>Tải File Đề (PDF/Word)</span>
           </button>
           <button
             onClick={() => setCreationMode('crop_studio')}
@@ -1781,7 +1873,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   }`}
                 >
                   <FileUp size={14} />
-                  <span>File PDF / LaTeX</span>
+                  <span>File PDF / Word / LaTeX</span>
                 </button>
                 <button
                   type="button"
@@ -1796,12 +1888,12 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               </div>
             </div>
 
-            {/* VÙNG NHẬP 1: TẢI FILE PDF HOẶC LATEX (HỖ TRỢ DRAG & DROP & PASTE) */}
+            {/* VÙNG NHẬP 1: TẢI FILE PDF, WORD HOẶC LATEX (HỖ TRỢ DRAG & DROP & PASTE) */}
             {aiInputMethod === 'pdf' && (
               <div className="space-y-3">
                 <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                  <span>Tệp tài liệu đề thi PDF hoặc Mã nguồn LaTeX *</span>
-                  <span className="text-[11px] font-normal text-slate-400">Định dạng .pdf, .tex, .txt (Tối đa 25MB)</span>
+                  <span>Tệp tài liệu đề thi PDF, Word hoặc Mã nguồn LaTeX *</span>
+                  <span className="text-[11px] font-normal text-slate-400">Định dạng .pdf, .docx, .doc, .tex, .txt (Tối đa 25MB)</span>
                 </label>
 
                 {!aiPdfFile ? (
@@ -1821,7 +1913,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                         handleProcessPdfFile(e.dataTransfer.files[0]);
                       }
                     }}
-                    onClick={() => pdfExamInputRef.current?.click()}
+                    onClick={() => !isConvertingDocument && pdfExamInputRef.current?.click()}
                     className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-3 ${
                       isDraggingPdf
                         ? 'border-blue-500 bg-blue-50/70 scale-[0.99]'
@@ -1831,35 +1923,47 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     <input
                       ref={pdfExamInputRef}
                       type="file"
-                      accept=".pdf,.tex,.txt,.latex,text/plain,application/pdf"
+                      accept=".pdf,.docx,.doc,.tex,.txt,.latex,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,image/*"
                       className="hidden"
                       onChange={(e) => {
                         if (e.target.files && e.target.files[0]) {
                           handleProcessPdfFile(e.target.files[0]);
+                          e.target.value = '';
                         }
                       }}
                     />
                     <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-xs">
-                      <FileUp size={28} />
+                      {isConvertingDocument ? <Loader2 size={28} className="animate-spin" /> : <FileUp size={28} />}
                     </div>
                     <div>
                       <h4 className="font-extrabold text-sm text-slate-800">
-                        Kéo thả file PDF hoặc mã nguồn LaTeX (.tex, .txt) vào đây
+                        {isConvertingDocument
+                          ? 'Đang chuyển đổi tài liệu Word sang từng trang cắt câu hỏi...'
+                          : 'Kéo thả file PDF, Word (.docx, .doc) hoặc mã nguồn LaTeX vào đây'}
                       </h4>
                     </div>
                   </div>
                 ) : (
                   <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
-                        PDF
+                      <div
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-xs shrink-0 shadow-xs ${
+                          aiPdfFile.fileType === 'word'
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : aiPdfFile.fileType === 'image'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-rose-100 text-rose-600'
+                        }`}
+                      >
+                        {aiPdfFile.fileType === 'word' ? 'WORD' : aiPdfFile.fileType === 'image' ? 'ẢNH' : 'PDF'}
                       </div>
                       <div className="min-w-0">
                         <div className="font-extrabold text-xs text-slate-900 truncate">
                           {aiPdfFile.fileName}
                         </div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
-                          Dung lượng: {aiPdfFile.fileSize} · Đã nạp thành công
+                          Dung lượng: {aiPdfFile.fileSize}
+                          {aiPdfFile.pageImages && aiPdfFile.pageImages.length > 0 ? ` · ${aiPdfFile.pageImages.length} trang` : ''} · Đã nạp thành công
                         </div>
                       </div>
                     </div>
@@ -1874,10 +1978,11 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                       </button>
                       <button
                         type="button"
+                        disabled={isConvertingDocument}
                         onClick={() => pdfExamInputRef.current?.click()}
-                        className="px-3 py-1.5 rounded-xl border border-blue-300 bg-white hover:bg-blue-50 text-blue-700 text-xs font-bold transition-colors"
+                        className="px-3 py-1.5 rounded-xl border border-blue-300 bg-white hover:bg-blue-50 text-blue-700 text-xs font-bold transition-colors disabled:opacity-50"
                       >
-                        Đổi Tệp Khác
+                        {isConvertingDocument ? 'Đang xử lý...' : 'Đổi Tệp Khác'}
                       </button>
                       <button
                         type="button"
@@ -1886,7 +1991,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                           if (pdfExamInputRef.current) pdfExamInputRef.current.value = '';
                         }}
                         className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-100 transition-colors"
-                        title="Xóa tệp PDF này"
+                        title="Xóa tệp này"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -1894,11 +1999,12 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                     <input
                       ref={pdfExamInputRef}
                       type="file"
-                      accept=".pdf,.tex,.txt,.latex,text/plain,application/pdf"
+                      accept=".pdf,.docx,.doc,.tex,.txt,.latex,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,image/*"
                       className="hidden"
                       onChange={(e) => {
                         if (e.target.files && e.target.files[0]) {
                           handleProcessPdfFile(e.target.files[0]);
+                          e.target.value = '';
                         }
                       }}
                     />
@@ -3060,7 +3166,10 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   fileName: aiPdfFile.fileName,
                   fileSize: aiPdfFile.fileSize,
                   fileBase64: aiPdfFile.fileBase64,
-                  isPdf: true,
+                  extractedText: aiPdfFile.extractedText,
+                  isPdf: aiPdfFile.fileType === 'pdf',
+                  isWord: aiPdfFile.fileType === 'word',
+                  pageImages: aiPdfFile.pageImages,
                 }
               : aiLatexText
               ? {
@@ -3079,6 +3188,8 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           currentUserName={currentUserName}
           currentUserId={currentUserId}
           currentUserEmail={currentUserEmail}
+          onUploadFile={handleProcessPdfFile}
+          isUploadingDocument={isConvertingDocument}
           onPublishExam={async (newExam) => {
             const res = await onPublishExam?.(newExam);
             setPublishSuccessMessage(`Đã xuất bản đề thi "${newExam.title}" và đồng bộ ảnh lên đám mây thành công!`);
