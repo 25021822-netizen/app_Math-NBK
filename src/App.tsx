@@ -228,13 +228,25 @@ export default function App() {
     }
   }, [currentTab, classrooms, isAuthenticated]);
 
-  // Kiểm tra quyền nhìn thấy / là thành viên hợp lệ của nhóm lớp (nhóm cá nhân chỉ thành viên trong nhóm mới thấy)
+  // Kiểm tra quyền nhìn thấy / là thành viên hợp lệ của nhóm lớp
+  // - Giáo viên: CHỈ được nhìn thấy và vào các lớp do chính mình tạo (kể cả lớp công khai của giáo viên khác)
+  // - Học sinh: thấy các lớp công khai để nhập mã tham gia, và các lớp cá nhân mà mình đã là thành viên
+  // - Admin: thấy toàn bộ
   const canUserSeeClassroom = (cls: Classroom | undefined | null, user: UserProfile): boolean => {
     if (!cls) return false;
-    if (cls.visibility !== 'private') return true;
     const lowerId = (user.id || '').toLowerCase().trim();
-    const lowerEmail = (user.email || '').toLowerCase().trim();
     const isOwnerTeacher = Boolean(lowerId && (cls.teacherId || '').toLowerCase().trim() === lowerId);
+
+    if (user.role === 'teacher') {
+      return isOwnerTeacher;
+    }
+
+    if (user.role === 'admin') {
+      return true;
+    }
+
+    if (cls.visibility !== 'private') return true;
+    const lowerEmail = (user.email || '').toLowerCase().trim();
     const isEnrolledStudent = Boolean(
       cls.studentIds &&
       cls.studentIds.some((sId) => {
@@ -242,13 +254,89 @@ export default function App() {
         return (lowerId && lowerS === lowerId) || (lowerEmail && lowerS === lowerEmail);
       })
     );
-    return isOwnerTeacher || isEnrolledStudent;
+    return isEnrolledStudent;
   };
 
   const visibleClassrooms = useMemo(
     () => classrooms.filter((c) => canUserSeeClassroom(c, userProfile)),
     [classrooms, userProfile]
   );
+
+  const teacherOwnedClassIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    if (userProfile.role !== 'teacher') return ids;
+    const lowerId = (userProfile.id || '').toLowerCase().trim();
+    classrooms.forEach((c) => {
+      if (lowerId && (c.teacherId || '').toLowerCase().trim() === lowerId) {
+        ids.add(c.id);
+      }
+    });
+    return ids;
+  }, [classrooms, userProfile.id, userProfile.role]);
+
+  // Kiểm tra quyền giáo viên đối với từng đề thi (chỉ thấy đề do chính mình tạo hoặc thuộc lớp của mình, tuyệt đối không thấy kho đề chung/đề của giáo viên khác)
+  const canTeacherAccessExam = (exam: Exam, user: UserProfile, allClasses: Classroom[]): boolean => {
+    if (!exam || !exam.id) return false;
+    if (user.role !== 'teacher') return true;
+
+    const lowerUserId = (user.id || '').toLowerCase().trim();
+    const lowerUserEmail = (user.email || '').toLowerCase().trim();
+    const lowerUserName = (user.name || '').toLowerCase().trim();
+
+    const ownerId = (exam.teacherId || exam.createdById || '').toLowerCase().trim();
+    const ownerEmail = (exam.createdByEmail || '').toLowerCase().trim();
+
+    if (ownerId) {
+      return Boolean(lowerUserId && ownerId === lowerUserId);
+    }
+    if (ownerEmail) {
+      return Boolean(lowerUserEmail && ownerEmail === lowerUserEmail);
+    }
+
+    // Dữ liệu đề thi cũ chưa có teacherId/createdById: kiểm tra theo lớp của giáo viên hoặc tên người tạo cụ thể
+    const ownedClassIds = new Set(
+      allClasses
+        .filter((c) => lowerUserId && (c.teacherId || '').toLowerCase().trim() === lowerUserId)
+        .map((c) => c.id)
+    );
+    const assignedClassIds = new Set<string>(exam.targetClassIds || []);
+    allClasses.forEach((c) => {
+      if (c.assignedExamIds && c.assignedExamIds.includes(exam.id)) {
+        assignedClassIds.add(c.id);
+      }
+    });
+
+    if (assignedClassIds.size > 0) {
+      return Array.from(assignedClassIds).some((cid) => ownedClassIds.has(cid));
+    }
+
+    const creatorName = (exam.createdBy || '').toLowerCase().trim();
+    const genericNames = new Set(['giáo viên', 'admin', 'máy quét ocr liki', 'tổ bộ môn']);
+    if (creatorName && !genericNames.has(creatorName) && lowerUserName && creatorName === lowerUserName) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const visibleTeacherExams = useMemo(() => {
+    if (userProfile.role !== 'teacher') return examsList;
+    return examsList.filter((ex) => canTeacherAccessExam(ex, userProfile, classrooms));
+  }, [examsList, userProfile, classrooms]);
+
+  const visibleTeacherExamIdSet = useMemo(
+    () => new Set(visibleTeacherExams.map((e) => e.id)),
+    [visibleTeacherExams]
+  );
+
+  const visibleTeacherSubmissions = useMemo(() => {
+    if (userProfile.role !== 'teacher') return submissions;
+    return submissions.filter(
+      (sub) =>
+        (sub.classId && teacherOwnedClassIdSet.has(sub.classId)) ||
+        (sub.examId && visibleTeacherExamIdSet.has(sub.examId))
+    );
+  }, [submissions, userProfile.role, teacherOwnedClassIdSet, visibleTeacherExamIdSet]);
 
   // Tính toán số lượng tin nhắn chưa đọc trong các nhóm lớp mà người dùng tham gia
   const unreadClassroomMessagesCount = useMemo(() => {
@@ -260,19 +348,20 @@ export default function App() {
     const lowerEmail = (userProfile.email || '').toLowerCase().trim();
 
     classrooms.forEach((c) => {
-      const isDirectMember =
-        (lowerUserId && (c.teacherId || '').toLowerCase().trim() === lowerUserId) ||
-        Boolean(
-          c.studentIds &&
-          c.studentIds.some((sId) => {
-            const lowerS = (sId || '').toLowerCase().trim();
-            return (lowerUserId && lowerS === lowerUserId) || (lowerEmail && lowerS === lowerEmail);
-          })
-        );
+      const isOwnerTeacher = Boolean(lowerUserId && (c.teacherId || '').toLowerCase().trim() === lowerUserId);
+      const isEnrolledStudent = Boolean(
+        c.studentIds &&
+        c.studentIds.some((sId) => {
+          const lowerS = (sId || '').toLowerCase().trim();
+          return (lowerUserId && lowerS === lowerUserId) || (lowerEmail && lowerS === lowerEmail);
+        })
+      );
       const isMember =
-        c.visibility === 'private'
-          ? isDirectMember
-          : userProfile.role === 'admin' || userProfile.role === 'teacher' || isDirectMember;
+        userProfile.role === 'teacher'
+          ? isOwnerTeacher
+          : userProfile.role === 'admin'
+          ? true
+          : isEnrolledStudent;
 
       if (isMember) {
         myClassIds.add(c.id);
@@ -785,7 +874,7 @@ export default function App() {
                     const ls = (sid || '').toLowerCase().trim();
                     return ls === lowerCurId || (lowerCurEmail && ls === lowerCurEmail);
                   })
-                : true;
+                : false;
 
               if (isMember) {
                 // Kiểm tra xem có được nhắc tên (@mention hoặc @Cả Lớp / @all / @everyone)
@@ -1211,9 +1300,17 @@ export default function App() {
     const targetExam = examsList.find((e) => e.id === examId);
     if (!targetExam) return;
 
+    const allowedTargetClassIds =
+      userRole === 'teacher'
+        ? targetClassIds.filter((cid) => teacherOwnedClassIdSet.has(cid))
+        : targetClassIds;
+
     const updatedExam: Exam = {
       ...targetExam,
-      targetClassIds,
+      teacherId: targetExam.teacherId || targetExam.createdById || (userRole === 'teacher' ? userProfile.id : undefined),
+      createdById: targetExam.createdById || targetExam.teacherId || (userRole === 'teacher' ? userProfile.id : undefined),
+      createdByEmail: targetExam.createdByEmail || (userRole === 'teacher' ? userProfile.email : undefined),
+      targetClassIds: allowedTargetClassIds,
       distributionType,
       maxAttempts: maxAttempts ?? targetExam.maxAttempts,
       openTime: openTime ?? targetExam.openTime,
@@ -1233,9 +1330,12 @@ export default function App() {
       return next;
     });
 
-    // Đồng bộ assignedExamIds vào từng nhóm lớp
+    // Đồng bộ assignedExamIds vào từng nhóm lớp (giáo viên chỉ được sửa lớp thuộc quyền sở hữu)
     const updatedClassrooms = classrooms.map((cls) => {
-      const shouldHaveExam = targetClassIds.includes(cls.id);
+      if (userRole === 'teacher' && !teacherOwnedClassIdSet.has(cls.id)) {
+        return cls;
+      }
+      const shouldHaveExam = allowedTargetClassIds.includes(cls.id);
       const currentIds = cls.assignedExamIds || [];
       if (shouldHaveExam && !currentIds.includes(examId)) {
         return { ...cls, assignedExamIds: [...currentIds, examId] };
@@ -1254,7 +1354,7 @@ export default function App() {
       await dbSaveExam(updatedExam);
       await dbSaveClassrooms(updatedClassrooms);
       triggerPushNotification('Đã Phân Phối Đề Thi!', {
-        message: `Đã giao đề thi "${updatedExam.title}" cho ${targetClassIds.length} nhóm lớp thành công!`,
+        message: `Đã giao đề thi "${updatedExam.title}" cho ${allowedTargetClassIds.length} nhóm lớp thành công!`,
         type: 'exam_published',
       });
     } catch (err) {
@@ -1342,16 +1442,23 @@ export default function App() {
     clearExamDeletedLocally(newExam.id);
     markExamRecentlySaved(newExam.id);
 
-    // Xác định các nhóm lớp nhận đề thi (Nếu chọn Kho đề thì không ép giao cho tất cả lớp)
+    // Xác định các nhóm lớp nhận đề thi (Nếu chọn Kho đề thì không ép giao cho lớp; giáo viên chỉ giao cho lớp của mình)
     const isRepoOnly = newExam.distributionType === 'repository';
-    const targetClassIds = isRepoOnly
+    const rawTargetClassIds = isRepoOnly
       ? []
       : newExam.targetClassIds && newExam.targetClassIds.length > 0
       ? newExam.targetClassIds
       : visibleClassrooms.map((c) => c.id);
+    const targetClassIds =
+      userRole === 'teacher'
+        ? rawTargetClassIds.filter((cid) => teacherOwnedClassIdSet.has(cid))
+        : rawTargetClassIds;
 
     const examWithTargets: Exam = {
       ...newExam,
+      teacherId: newExam.teacherId || newExam.createdById || userProfile.id,
+      createdById: newExam.createdById || newExam.teacherId || userProfile.id,
+      createdByEmail: newExam.createdByEmail || userProfile.email || undefined,
       targetClassIds: targetClassIds.length > 0 ? targetClassIds : undefined,
     };
 
@@ -1394,7 +1501,7 @@ export default function App() {
 
     // Kích hoạt thông báo đẩy theo đúng phạm vi phân phối
     const notifMsg = isRepoOnly
-      ? `Đã lưu thành công đề thi "${newExam.title}" vào Kho Đề Thi (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Bạn có thể giao cho lớp bất kỳ lúc nào!`
+      ? `Đã lưu thành công đề thi "${newExam.title}" vào Kho Đề Cá Nhân (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Bạn có thể giao cho lớp bất kỳ lúc nào!`
       : `Thầy cô vừa đăng tải đề thi mới "${newExam.title}" (${newExam.durationMinutes} phút - ${newExam.questions.length} câu). Nhấn để vào phòng luyện thi ngay!`;
 
     triggerPushNotification(`Đề thi mới: ${newExam.title}`, {
@@ -1501,7 +1608,7 @@ export default function App() {
         <UserProfileView
           userProfile={userProfile}
           onUpdateProfile={handleUpdateProfile}
-          classrooms={classrooms}
+          classrooms={visibleClassrooms}
           submissions={submissions}
           onNavigateToClassroom={() => setCurrentTab('classroom')}
           onLogout={handleLogout}
@@ -1544,8 +1651,7 @@ export default function App() {
             currentUserEmail={userProfile.email}
             classrooms={classrooms}
             onUpdateClassrooms={handleUpdateClassrooms}
-            examsList={examsList}
-            onUpdateExamsList={handleUpdateExamsList}
+            examsList={visibleTeacherExams}
             onSaveExam={handleSaveSingleExam}
             onSelectExamToTake={(examId) => {
               setActiveExamId(examId);
@@ -1574,8 +1680,8 @@ export default function App() {
         return (
           <TeacherGradebookView
             classrooms={visibleClassrooms}
-            submissions={submissions}
-            examsList={examsList}
+            submissions={visibleTeacherSubmissions}
+            examsList={visibleTeacherExams}
             userRole={userProfile.role}
             onSelectClassroom={() => {
               setCurrentTab('classroom');
@@ -1595,10 +1701,10 @@ export default function App() {
         return (
           <ExamEngineView
             onRecordCheatLog={handleRecordCheatLog}
-            examsList={examsList}
+            examsList={visibleTeacherExams}
             activeExamId={activeExamId}
             onSelectExamId={setActiveExamId}
-            submissions={submissions}
+            submissions={visibleTeacherSubmissions}
             onExitExam={() => setCurrentTab('classroom')}
           />
         );
@@ -1659,7 +1765,9 @@ export default function App() {
             classrooms={visibleClassrooms}
             onPublishExam={handlePublishExam}
             currentUserName={userProfile.name}
-            examsList={examsList}
+            currentUserId={userProfile.id}
+            currentUserEmail={userProfile.email}
+            examsList={visibleTeacherExams}
             onDeleteExam={handleDeleteExam}
             onAssignExamToClasses={handleAssignExamToClasses}
             onSaveSingleExam={handleSaveSingleExam}
@@ -1678,7 +1786,9 @@ export default function App() {
           classrooms={visibleClassrooms}
           onPublishExam={handlePublishExam}
           currentUserName={userProfile.name}
-          examsList={examsList}
+          currentUserId={userProfile.id}
+          currentUserEmail={userProfile.email}
+          examsList={visibleTeacherExams}
           onDeleteExam={handleDeleteExam}
           onAssignExamToClasses={handleAssignExamToClasses}
           onSaveSingleExam={handleSaveSingleExam}

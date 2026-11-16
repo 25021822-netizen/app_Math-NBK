@@ -53,6 +53,8 @@ interface QuestionCropStudioViewProps {
   onTransferToManualEditor: (questions: Question[], examMeta: { title: string; grade: 10 | 11 | 12; duration: number }) => void;
   onBackToUpload: () => void;
   currentUserName?: string;
+  currentUserId?: string;
+  currentUserEmail?: string;
 }
 
 export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
@@ -66,6 +68,8 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
   onTransferToManualEditor,
   onBackToUpload,
   currentUserName = 'Giáo viên',
+  currentUserId,
+  currentUserEmail,
 }) => {
   // Metadata của đề thi đang cắt
   const [examTitle, setExamTitle] = useState(
@@ -728,6 +732,9 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
       totalPoints: Number(totalPoints.toFixed(2)),
       status: 'approved',
       createdBy: currentUserName || 'Giáo viên',
+      teacherId: currentUserId || undefined,
+      createdById: currentUserId || undefined,
+      createdByEmail: currentUserEmail || undefined,
       createdAt: new Date().toISOString(),
       questions,
       distributionType,

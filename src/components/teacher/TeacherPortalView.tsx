@@ -49,6 +49,8 @@ interface TeacherPortalViewProps {
   onPreviewExam?: (exam: Exam) => void;
   classrooms?: Classroom[];
   currentUserName?: string;
+  currentUserId?: string;
+  currentUserEmail?: string;
   examsList?: Exam[];
   onDeleteExam?: (examId: string) => void;
   initialMode?: 'manual' | 'ai_pdf' | 'crop_studio' | 'manage_exams';
@@ -71,6 +73,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   onPreviewExam,
   classrooms = SAMPLE_CLASSROOMS,
   currentUserName = '',
+  currentUserId,
+  currentUserEmail,
   examsList = [],
   onDeleteExam,
   initialMode,
@@ -453,6 +457,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         totalPoints: parsed.metadata?.totalPoints || Number(questions.reduce((sum, q) => sum + (q.points || 0), 0).toFixed(2)),
         status: 'approved',
         createdBy: manualCreatedBy || currentUserName || 'Giáo viên',
+        teacherId: currentUserId || undefined,
+        createdById: currentUserId || undefined,
+        createdByEmail: currentUserEmail || undefined,
         createdAt: new Date().toISOString(),
         questions,
         maxAttempts: aiMaxAttempts > 0 ? aiMaxAttempts : undefined,
@@ -508,6 +515,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
     const publishedExam: Exam = {
       ...aiParsedExam,
+      teacherId: aiParsedExam.teacherId || currentUserId || undefined,
+      createdById: aiParsedExam.createdById || currentUserId || undefined,
+      createdByEmail: aiParsedExam.createdByEmail || currentUserEmail || undefined,
       distributionType: aiDistributionType,
       targetClassIds: effectiveTargetIds,
       maxAttempts: aiMaxAttempts > 0 ? aiMaxAttempts : undefined,
@@ -932,6 +942,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       totalPoints: calculatedTotalPoints,
       status: 'approved',
       createdBy: manualCreatedBy,
+      teacherId: currentUserId || undefined,
+      createdById: currentUserId || undefined,
+      createdByEmail: currentUserEmail || undefined,
       createdAt: new Date().toISOString(),
       questions: manualQuestions,
       maxAttempts: manualMaxAttempts > 0 ? manualMaxAttempts : undefined,
@@ -955,8 +968,8 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       manualDistributionType === 'classroom'
         ? `cho ${effectiveTargetIds?.length || 0} nhóm lớp`
         : manualDistributionType === 'repository'
-        ? 'vào Kho đề thi tổng hợp toàn trường'
-        : 'cho các nhóm lớp và Kho đề thi chung';
+        ? 'vào Kho đề cá nhân'
+        : 'cho các nhóm lớp và Kho đề cá nhân';
 
     setPublishSuccessMessage(
       `Đã xuất bản thành công "${manualTitle}" với tổng ${calculatedTotalPoints} điểm (${targetDesc})!`
@@ -1220,7 +1233,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   }`}
                 >
                   <BookOpen size={14} />
-                  <span>Kho Đề Thi Tổng Hợp</span>
+                  <span>Kho Đề Cá Nhân (Chưa Giao Lớp)</span>
                 </button>
 
                 <button
@@ -1233,7 +1246,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                   }`}
                 >
                   <Sparkles size={14} />
-                  <span>Cả Lớp & Kho Tổng Hợp</span>
+                  <span>Cả Lớp & Kho Cá Nhân</span>
                 </button>
               </div>
 
@@ -2985,11 +2998,11 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                         .map((c) => c.name)
                         .join(', ')}`
                     : manualDistributionType === 'repository'
-                    ? 'Kho đề thi tổng hợp toàn trường'
+                    ? 'Kho đề cá nhân (chưa giao lớp)'
                     : `Cả lớp (${classrooms
                         .filter((c) => manualTargetClassIds.includes(c.id))
                         .map((c) => c.name)
-                        .join(', ')}) & Kho tổng hợp`}
+                        .join(', ')}) & Kho cá nhân`}
                 </span>
               </div>
 
@@ -3064,6 +3077,8 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
           initialDuration={aiDuration}
           classrooms={classrooms}
           currentUserName={currentUserName}
+          currentUserId={currentUserId}
+          currentUserEmail={currentUserEmail}
           onPublishExam={async (newExam) => {
             const res = await onPublishExam?.(newExam);
             setPublishSuccessMessage(`Đã xuất bản đề thi "${newExam.title}" và đồng bộ ảnh lên đám mây thành công!`);
@@ -3162,11 +3177,11 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                           </span>
                         ) : exam.distributionType === 'repository' ? (
                           <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                            Kho đề toàn trường
+                            Kho đề riêng (chưa giao lớp)
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-200">
-                            Tất cả lớp học
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                            Chưa gán nhóm lớp
                           </span>
                         )}
                       </div>
@@ -3343,7 +3358,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  Kho đề chung
+                  Kho đề cá nhân
                 </button>
                 <button
                   type="button"

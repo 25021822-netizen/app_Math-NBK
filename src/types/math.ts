@@ -137,6 +137,9 @@ export interface Exam {
   totalPoints: number;
   status: 'draft' | 'approved' | 'archived';
   createdBy: string;
+  teacherId?: string;
+  createdById?: string;
+  createdByEmail?: string;
   createdAt: string;
   questions: Question[];
   // Tính năng mới cho giáo viên

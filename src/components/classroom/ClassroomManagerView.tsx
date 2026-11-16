@@ -154,18 +154,26 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       })
     );
 
+    // Giáo viên chỉ là thành viên của các lớp do chính mình tạo/phụ trách (kể cả lớp công khai của giáo viên khác)
+    if (userRole === 'teacher') {
+      return isOwnerTeacher;
+    }
+
     // Nhóm lớp cá nhân: CHỈ thành viên trong nhóm (giáo viên tạo nhóm hoặc học sinh đã vào nhóm) mới có quyền xem
     if (cls.visibility === 'private') {
       return isOwnerTeacher || isEnrolledStudent;
     }
 
-    if (userRole === 'admin' || userRole === 'teacher') return true;
+    if (userRole === 'admin') return true;
     return isEnrolledStudent;
   };
 
-  // 1b. Kiểm tra quyền nhìn thấy nhóm lớp trong danh sách (nhóm cá nhân chỉ thành viên trong nhóm mới nhìn thấy)
+  // 1b. Kiểm tra quyền nhìn thấy nhóm lớp trong danh sách (giáo viên chỉ thấy lớp mình tạo; học sinh thấy lớp công khai hoặc lớp cá nhân đã vào)
   const canSeeClassroom = (cls: Classroom | undefined | null): boolean => {
     if (!cls) return false;
+    if (userRole === 'teacher') {
+      return isMemberOfClass(cls);
+    }
     if (cls.visibility !== 'private') return true;
     return isMemberOfClass(cls);
   };
@@ -192,8 +200,11 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       return myClasses[0]?.id || '';
     }
     if (userRole === 'teacher') {
-      const myClasses = visibleClassrooms.filter((cls) => cls.teacherId === currentUserId);
-      return myClasses[0]?.id || visibleClassrooms[0]?.id || '';
+      const lowerCurId = (currentUserId || '').toLowerCase().trim();
+      const myClasses = visibleClassrooms.filter(
+        (cls) => lowerCurId && (cls.teacherId || '').toLowerCase().trim() === lowerCurId
+      );
+      return myClasses[0]?.id || '';
     }
     return visibleClassrooms[0]?.id || '';
   });
@@ -226,15 +237,16 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           }
         }
       } else if (userRole === 'teacher') {
-        const myClasses = visibleClassrooms.filter((cls) => cls.teacherId === currentUserId);
+        const lowerCurId = (currentUserId || '').toLowerCase().trim();
+        const myClasses = visibleClassrooms.filter(
+          (cls) => lowerCurId && (cls.teacherId || '').toLowerCase().trim() === lowerCurId
+        );
         if (myClasses.length > 0) {
           if (!selectedClassId || !myClasses.some((c) => c.id === selectedClassId)) {
             setSelectedClassId(myClasses[0].id);
           }
-        } else {
-          if (!selectedClassId || !visibleClassrooms.some((c) => c.id === selectedClassId)) {
-            setSelectedClassId(visibleClassrooms[0].id);
-          }
+        } else if (selectedClassId) {
+          setSelectedClassId('');
         }
       } else {
         if (!selectedClassId || !visibleClassrooms.some((c) => c.id === selectedClassId)) {
@@ -3868,45 +3880,72 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         </div>
       )}
 
-      {/* Màn hình khi học sinh chưa tham gia lớp nào (hoặc chưa chọn lớp) */}
+      {/* Màn hình khi chưa có lớp nào / chưa chọn lớp */}
       {!currentClass && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 shadow-sm text-center max-w-2xl mx-auto space-y-6 animate-in fade-in">
-          <div className="w-20 h-20 mx-auto rounded-3xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
-            <GraduationCap size={40} />
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-              Chào Mừng Bạn Đến Với Không Gian Lớp Học
-            </h2>
-            <p className="text-slate-500 text-sm max-w-md mx-auto">
-              Bạn hiện chưa tham gia nhóm lớp nào. Vui lòng nhập mã lớp do thầy cô cung cấp để vào lớp và bắt đầu học tập.
-            </p>
-          </div>
-
-          <div className="max-w-md mx-auto p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-            <label className="text-xs font-bold text-slate-700 block text-left">
-              Nhập mã tham gia lớp học:
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={joinCodeInput}
-                onChange={(e) => setJoinCodeInput(e.target.value)}
-                placeholder="Ví dụ: NBK-12A1"
-                className="h-11 flex-1 px-4 rounded-xl border border-slate-300 text-sm font-mono font-bold uppercase focus:border-blue-600 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleJoinClassByCode}
-                className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xs transition-colors shrink-0"
-              >
-                Vào Lớp
-              </button>
+        userRole === 'teacher' || userRole === 'admin' ? (
+          <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 shadow-sm text-center max-w-2xl mx-auto space-y-6 animate-in fade-in">
+            <div className="w-20 h-20 mx-auto rounded-3xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
+              <GraduationCap size={40} />
             </div>
 
+            <div className="space-y-2">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+                Chưa Có Nhóm Lớp Nào
+              </h2>
+              <p className="text-slate-500 text-sm max-w-md mx-auto">
+                Bạn chưa tạo nhóm lớp học nào. Hãy tạo lớp học mới để quản lý học sinh, đăng bài giảng và giao đề thi riêng cho lớp của bạn.
+              </p>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowCreateClassModal(true)}
+                className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xs transition-colors inline-flex items-center gap-2 cursor-pointer"
+              >
+                <Plus size={18} />
+                <span>Tạo Lớp Học Mới</span>
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 shadow-sm text-center max-w-2xl mx-auto space-y-6 animate-in fade-in">
+            <div className="w-20 h-20 mx-auto rounded-3xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
+              <GraduationCap size={40} />
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+                Chào Mừng Bạn Đến Với Không Gian Lớp Học
+              </h2>
+              <p className="text-slate-500 text-sm max-w-md mx-auto">
+                Bạn hiện chưa tham gia nhóm lớp nào. Vui lòng nhập mã lớp do thầy cô cung cấp để vào lớp và bắt đầu học tập.
+              </p>
+            </div>
+
+            <div className="max-w-md mx-auto p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+              <label className="text-xs font-bold text-slate-700 block text-left">
+                Nhập mã tham gia lớp học:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={joinCodeInput}
+                  onChange={(e) => setJoinCodeInput(e.target.value)}
+                  placeholder="Ví dụ: NBK-12A1"
+                  className="h-11 flex-1 px-4 rounded-xl border border-slate-300 text-sm font-mono font-bold uppercase focus:border-blue-600 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleJoinClassByCode}
+                  className="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xs transition-colors shrink-0"
+                >
+                  Vào Lớp
+                </button>
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {/* ========================================================================= */}
