@@ -15,10 +15,25 @@ import {
   Cpu,
   Sun,
   Flame,
+  Atom,
+  Volume2,
+  Thermometer,
+  Disc,
+  Orbit,
 } from 'lucide-react';
 import { ExtraPhysicsSimulations, ExtraPhysicsModuleId } from './ExtraPhysicsSimulations';
+import {
+  ModernAndThermalSimulations,
+  ModernThermalModuleId,
+} from './ModernAndThermalSimulations';
 
-type PhysicsModuleId = 'oscillation' | 'projectile' | 'waves' | 'rlc' | ExtraPhysicsModuleId;
+type PhysicsModuleId =
+  | 'oscillation'
+  | 'projectile'
+  | 'waves'
+  | 'rlc'
+  | ExtraPhysicsModuleId
+  | ModernThermalModuleId;
 type OscillationType = 'pendulum' | 'spring';
 type WaveType = 'ripple' | 'young';
 
@@ -1374,7 +1389,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
               Mô Phỏng Vật Lý THPT Trực Quan
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              9 thí nghiệm trọng tâm: Cơ học · Sóng &amp; Quang học · Điện học · Lượng tử · Nhiệt học
+              15 thí nghiệm trọng tâm: Cơ học · Sóng &amp; Âm thanh · Quang học · Nhiệt học · Điện &amp; Hạt nhân
             </p>
           </div>
         </div>
@@ -1384,13 +1399,19 @@ export const PhysicsSimulationLabView: React.FC = () => {
           {[
             { id: 'oscillation' as PhysicsModuleId, label: 'Dao Động Điều Hòa', icon: Activity },
             { id: 'standingWave' as PhysicsModuleId, label: 'Sóng Dừng', icon: Radio },
+            { id: 'soundWave' as PhysicsModuleId, label: 'Sóng Âm Thanh', icon: Volume2 },
             { id: 'projectile' as PhysicsModuleId, label: 'Ném Xiên', icon: ArrowUpRight },
-            { id: 'waves' as PhysicsModuleId, label: 'Giao Thoa & Y-âng', icon: Waves },
+            { id: 'waves' as PhysicsModuleId, label: 'Sóng Nước 2 Nguồn', icon: Waves },
+            { id: 'lightInterference' as PhysicsModuleId, label: 'Giao Thoa Ánh Sáng', icon: Disc },
             { id: 'optics' as PhysicsModuleId, label: 'Thấu Kính Quang Hình', icon: Eye },
             { id: 'dcCircuit' as PhysicsModuleId, label: 'Định Luật Ôm Toàn Mạch', icon: Cpu },
             { id: 'rlc' as PhysicsModuleId, label: 'Mạch RLC Xoay Chiều', icon: Zap },
-            { id: 'photoelectric' as PhysicsModuleId, label: 'Hiệu Ứng Quang Điện', icon: Sun },
             { id: 'idealGas' as PhysicsModuleId, label: 'Khí Lý Tưởng (p-V-T)', icon: Flame },
+            { id: 'thermalLab' as PhysicsModuleId, label: 'Đo c, λ, L (Nhiệt Học)', icon: Thermometer },
+            { id: 'photoelectric' as PhysicsModuleId, label: 'Hiệu Ứng Quang Điện', icon: Sun },
+            { id: 'rutherford' as PhysicsModuleId, label: 'Thí Nghiệm Rutherford', icon: Orbit },
+            { id: 'nuclearFusion' as PhysicsModuleId, label: 'Phản Ứng Nhiệt Hạch', icon: Flame },
+            { id: 'nuclearFission' as PhysicsModuleId, label: 'Phản Ứng Phân Hạch', icon: Atom },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeModule === tab.id;
@@ -1414,11 +1435,18 @@ export const PhysicsSimulationLabView: React.FC = () => {
       </div>
 
       {/* Render New THPT Modules or Core 4 Modules */}
-      {activeModule === 'standingWave' ||
-      activeModule === 'optics' ||
-      activeModule === 'dcCircuit' ||
-      activeModule === 'photoelectric' ||
-      activeModule === 'idealGas' ? (
+      {activeModule === 'rutherford' ||
+      activeModule === 'lightInterference' ||
+      activeModule === 'soundWave' ||
+      activeModule === 'nuclearFusion' ||
+      activeModule === 'nuclearFission' ||
+      activeModule === 'thermalLab' ? (
+        <ModernAndThermalSimulations moduleId={activeModule} />
+      ) : activeModule === 'standingWave' ||
+        activeModule === 'optics' ||
+        activeModule === 'dcCircuit' ||
+        activeModule === 'photoelectric' ||
+        activeModule === 'idealGas' ? (
         <ExtraPhysicsSimulations moduleId={activeModule} />
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
