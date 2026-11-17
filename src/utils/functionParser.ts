@@ -223,7 +223,149 @@ function detectAsymptotes(
   };
 }
 
-export function parseMathFunction(input: string): ParsedFunctionResult {
+export interface DomainRange {
+  a: number;
+  b: number;
+}
+
+/**
+ * Parses a numeric or mathematical constant bound expression such as:
+ * "-2", "3.5", "-pi", "pi/2", "2pi", "-2*pi", "e", "sqrt(2)", "1/3"
+ */
+export function parseBoundExpression(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  let expr = trimmed
+    .replace(/[\u2212\u2013\u2014]/g, '-')
+    .replace(/[\u00D7\u22C5]/g, '*')
+    .replace(/[\u00F7:]/g, '/')
+    .replace(/π/g, 'pi')
+    .replace(/,/g, '.');
+
+  // Implicit multiplication before pi, e, sqrt, (
+  expr = expr
+    .replace(/(\d+(\.\d+)?)\s*(pi|e|sqrt|\()/gi, '$1*$3')
+    .replace(/\)\s*(\d+(\.\d+)?|pi|e|sqrt|\()/gi, ')*$1')
+    .replace(/\^/g, '**');
+
+  const safePattern = /^[0-9\s\+\-\*\/\(\)\.pieEsqrt]+$/;
+  if (!safePattern.test(expr)) return null;
+
+  try {
+    const fn = new Function(
+      `const pi = Math.PI, PI = Math.PI, e = Math.E, E = Math.E, sqrt = Math.sqrt;
+       const val = (${expr});
+       return (typeof val === 'number' && !isNaN(val) && isFinite(val)) ? val : null;`
+    );
+    const result = fn();
+    return typeof result === 'number' && isFinite(result) ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+export function computeIntersections(
+  fn1: (x: number) => number,
+  fn2: (x: number) => number,
+  minX: number,
+  maxX: number
+): { x: number; y: number }[] {
+  if (!(minX < maxX)) return [];
+  const results: { x: number; y: number }[] = [];
+  const span = maxX - minX;
+  const steps = Math.min(800, Math.max(200, Math.round(span * 40)));
+  const dx = span / steps;
+
+  const diff = (x: number) => {
+    const y1 = fn1(x);
+    const y2 = fn2(x);
+    if (isNaN(y1) || isNaN(y2) || !isFinite(y1) || !isFinite(y2)) return NaN;
+    return y1 - y2;
+  };
+
+  for (let i = 0; i < steps; i++) {
+    const x1 = minX + i * dx;
+    const x2 = x1 + dx;
+    const d1 = diff(x1);
+    const d2 = diff(x2);
+    if (isNaN(d1) || isNaN(d2)) continue;
+
+    // Skip asymptote jumps
+    if (Math.abs(d1 - d2) > 50 && d1 * d2 < 0) continue;
+
+    let rootX: number | null = null;
+    if (Math.abs(d1) < 1e-4) {
+      rootX = x1;
+    } else if (d1 * d2 < 0) {
+      let lo = x1;
+      let hi = x2;
+      let fLo = d1;
+      for (let iter = 0; iter < 18; iter++) {
+        const mid = (lo + hi) / 2;
+        const fMid = diff(mid);
+        if (isNaN(fMid)) break;
+        if (Math.abs(fMid) < 1e-6) {
+          lo = mid;
+          hi = mid;
+          break;
+        }
+        if (fLo * fMid <= 0) {
+          hi = mid;
+        } else {
+          lo = mid;
+          fLo = fMid;
+        }
+      }
+      rootX = (lo + hi) / 2;
+    }
+
+    if (rootX !== null) {
+      const yVal = fn1(rootX);
+      const yCheck = fn2(rootX);
+      if (!isNaN(yVal) && !isNaN(yCheck) && Math.abs(yVal - yCheck) < 0.05 && Math.abs(yVal) < 500) {
+        const rx = Math.round(rootX * 1000) / 1000;
+        const ry = Math.round(yVal * 1000) / 1000;
+        if (!results.some((pt) => Math.abs(pt.x - rx) < 0.08)) {
+          results.push({ x: rx, y: ry });
+        }
+      }
+    }
+  }
+
+  return results.slice(0, 8);
+}
+
+export function computeDefiniteIntegral(
+  fn: (x: number) => number,
+  a: number,
+  b: number,
+  absolute = false
+): number | null {
+  if (!isFinite(a) || !isFinite(b) || Math.abs(b - a) < 1e-9) return 0;
+  const sign = a <= b ? 1 : -1;
+  const start = Math.min(a, b);
+  const end = Math.max(a, b);
+  const n = 400; // even number for Simpson's rule
+  const h = (end - start) / n;
+
+  let sum = 0;
+  for (let i = 0; i <= n; i++) {
+    const x = start + i * h;
+    let y = fn(x);
+    if (isNaN(y) || !isFinite(y) || Math.abs(y) > 1e5) {
+      return null;
+    }
+    if (absolute) y = Math.abs(y);
+    const weight = i === 0 || i === n ? 1 : i % 2 === 1 ? 4 : 2;
+    sum += weight * y;
+  }
+
+  const res = (sign * h * sum) / 3;
+  return isFinite(res) ? res : null;
+}
+
+export function parseMathFunction(input: string, domain?: DomainRange | null): ParsedFunctionResult {
   const trimmed = input.trim();
   if (!trimmed) {
     return {
@@ -241,62 +383,35 @@ export function parseMathFunction(input: string): ParsedFunctionResult {
     };
   }
 
-  // 1. Chuẩn hóa chuỗi đầu vào: bỏ "y =", "f(x) =", "g(x) ="
-  let expr = trimmed
-    .replace(/^(y|f\(x\)|g\(x\)|h\(x\))\s*=\s*/i, '')
+  // 1. Chuẩn hóa chuỗi đầu vào: bỏ "y =", "f(x) =", "f1(x) =", "g(x) ="
+  const expr = trimmed
+    .replace(/^(y\d*|f\d*\(x\)|g\d*\(x\)|h\d*\(x\))\s*=\s*/i, '')
     .trim();
 
-  // Chuẩn hóa dấu
-  expr = expr
+  // Chuẩn hóa dấu và biến X hoa -> x thường
+  let processed = expr
     .replace(/[\u2212\u2013\u2014]/g, '-') // unicode minus
     .replace(/[\u00D7\u22C5]/g, '*') // multiplication symbol
     .replace(/[\u00F7:]/g, '/') // division symbol
-    .replace(/π/g, 'Math.PI');
+    .replace(/π/g, 'pi')
+    .replace(/\bX\b/g, 'x')
+    .replace(/(\d)X/g, '$1x')
+    .replace(/X(\d|\()/g, 'x$1');
 
-  // Xử lý nhân ẩn: 3x -> 3*x, 2(x+1) -> 2*(x+1), x(x-1) -> x*(x-1)
-  let processed = expr;
-
-  // Tách biến x với số: 3x -> 3*x, 0.5x -> 0.5*x
-  processed = processed.replace(/(\d+(\.\d+)?)\s*x/gi, '$1*x');
-
-  // Số liền kề dấu mở ngoặc: 2( -> 2*(
+  // Xử lý nhân ẩn: 3x -> 3*x, 2(x+1) -> 2*(x+1), x(x-1) -> x*(x-1), 2pi -> 2*pi
+  processed = processed.replace(/(\d+(\.\d+)?)\s*(x|pi|e(?![a-zA-Z0-9_]))/gi, '$1*$3');
   processed = processed.replace(/(\d+(\.\d+)?)\s*\(/g, '$1*(');
-
-  // x liền kề dấu mở ngoặc: x( -> x*(
-  processed = processed.replace(/x\s*\(/gi, 'x*(');
-
-  // Đóng ngoặc liền kề số hoặc x hoặc mở ngoặc: )2 -> )*2, )x -> )*x, )( -> )*(
+  processed = processed.replace(/\bx\s*\(/gi, 'x*(');
   processed = processed.replace(/\)\s*(\d+(\.\d+)?)/g, ')*$1');
-  processed = processed.replace(/\)\s*x/gi, ')*x');
+  processed = processed.replace(/\)\s*(x|pi)/gi, ')*$1');
   processed = processed.replace(/\)\s*\(/g, ')*(');
-
-  // Số liền kề hàm số: 2sin -> 2*sin
   processed = processed.replace(/(\d+(\.\d+)?)\s*(sin|cos|tan|cot|sqrt|abs|log|ln|exp)/gi, '$1*$3');
-
-  // x liền kề hàm số: xsin -> x*sin
-  processed = processed.replace(/x\s*(sin|cos|tan|cot|sqrt|abs|log|ln|exp)/gi, 'x*$1');
-
-  // Đóng ngoặc liền kề hàm số: )sin -> )*sin
+  processed = processed.replace(/\bx\s*(sin|cos|tan|cot|sqrt|abs|log|ln|exp)/gi, 'x*$1');
   processed = processed.replace(/\)\s*(sin|cos|tan|cot|sqrt|abs|log|ln|exp)/gi, ')*$1');
-
-  // Lũy thừa: ^ -> **
   processed = processed.replace(/\^/g, '**');
 
-  // Thay thế hàm toán học
-  let jsExpr = processed
-    .replace(/\bsin\b/gi, 'Math.sin')
-    .replace(/\bcos\b/gi, 'Math.cos')
-    .replace(/\btan\b/gi, 'Math.tan')
-    .replace(/\bcot\b/gi, '(1/Math.tan')
-    .replace(/\bsqrt\b/gi, 'Math.sqrt')
-    .replace(/\babs\b/gi, 'Math.abs')
-    .replace(/\bln\b/gi, 'Math.log')
-    .replace(/\blog\b/gi, 'Math.log10')
-    .replace(/\bexp\b/gi, 'Math.exp');
-
-  // Kiểm tra an toàn: chỉ cho phép các ký tự và từ khóa hợp lệ
-  const safeRegex = /^[0-9xX\s\+\-\*\/\(\)\.\,MathsincotanqrblogexpPIE]+$/;
-  if (!safeRegex.test(jsExpr)) {
+  const safeRegex = /^[0-9xX\s\+\-\*\/\(\)\.\,sincotaqrblgexpiPIE]+$/;
+  if (!safeRegex.test(processed)) {
     return {
       rawInput: input,
       cleanedFormula: expr,
@@ -312,25 +427,29 @@ export function parseMathFunction(input: string): ParsedFunctionResult {
     };
   }
 
-  // Biên dịch hàm f(x)
+  // Biên dịch hàm f(x) với các hàm toán học chuẩn trong scope
   let evaluateFn: (x: number) => number;
   try {
     const compiled = new Function(
       'x',
-      `try {
-        const val = ${jsExpr};
+      `const sin = Math.sin, cos = Math.cos, tan = Math.tan,
+             cot = (v) => 1 / Math.tan(v),
+             sqrt = Math.sqrt, abs = Math.abs,
+             ln = Math.log, log = Math.log10, exp = Math.exp,
+             pi = Math.PI, PI = Math.PI, e = Math.E, E = Math.E;
+      try {
+        const val = (${processed});
         if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
           return val;
         }
         return NaN;
-      } catch (e) {
+      } catch (err) {
         return NaN;
       }`
     );
     evaluateFn = (xVal: number) => compiled(xVal);
-
     evaluateFn(1);
-  } catch (err: any) {
+  } catch {
     return {
       rawInput: input,
       cleanedFormula: expr,
@@ -367,29 +486,33 @@ export function parseMathFunction(input: string): ParsedFunctionResult {
 
   if (linearMatch && !simplified.includes('^') && !simplified.includes('/')) {
     functionType = 'linear';
-    functionTypeLabel = 'Hàm số bậc nhất (Đường thẳng y = ax + b)';
+    functionTypeLabel = 'Hàm bậc nhất (y = ax + b)';
   } else if (/x\^2|x\*\*2/.test(simplified) && !/x\^3|x\^4|\//.test(simplified)) {
     functionType = 'quadratic';
-    functionTypeLabel = 'Hàm số bậc hai (Parabol y = ax² + bx + c)';
+    functionTypeLabel = 'Hàm bậc hai (Parabol)';
   } else if (/x\^3|x\*\*3/.test(simplified) && !/\//.test(simplified)) {
     functionType = 'cubic';
-    functionTypeLabel = 'Hàm số bậc ba (y = ax³ + bx² + cx + d)';
+    functionTypeLabel = 'Hàm bậc ba';
   } else if (simplified.includes('/') && simplified.includes('x')) {
     functionType = 'rational';
-    functionTypeLabel = 'Hàm phân thức hữu tỉ y = P(x)/Q(x)';
-  } else if (/sin|cos|tan/.test(simplified)) {
+    functionTypeLabel = 'Hàm phân thức hữu tỉ';
+  } else if (/sin|cos|tan|cot/.test(simplified)) {
     functionType = 'trig';
-    functionTypeLabel = 'Hàm số lượng giác tuần hoàn';
+    functionTypeLabel = 'Hàm lượng giác';
   }
 
-  // Tính giao điểm trục tung Oy (x = 0)
-  const y0 = evaluateFn(0);
+  const scanStart = domain ? domain.a : -10;
+  const scanEnd = domain ? domain.b : 10;
+
+  // Tính giao điểm trục tung Oy (x = 0 nếu nằm trong miền)
+  const zeroInDomain = !domain || (0 >= domain.a - 1e-6 && 0 <= domain.b + 1e-6);
+  const y0 = zeroInDomain ? evaluateFn(0) : NaN;
   const yIntercept = !isNaN(y0) ? { x: 0, y: Math.round(y0 * 1000) / 1000 } : undefined;
 
   // Tìm giao điểm trục hoành Ox (f(x) = 0)
   const xIntercepts: { x: number; y: number }[] = [];
 
-  if (functionType === 'linear') {
+  if (functionType === 'linear' && !domain) {
     const d0 = derivativeFn(0);
     if (!isNaN(d0) && Math.abs(d0) > 0.0001 && yIntercept) {
       const rootX = -yIntercept.y / d0;
@@ -397,26 +520,28 @@ export function parseMathFunction(input: string): ParsedFunctionResult {
         xIntercepts.push({ x: Math.round(rootX * 1000) / 1000, y: 0 });
       }
     }
-  } else {
-    const scanStep = 0.05;
-    for (let x = -10; x <= 10; x += scanStep) {
+  } else if (scanStart < scanEnd) {
+    const scanStep = Math.max(0.01, (scanEnd - scanStart) / 300);
+    for (let x = scanStart; x < scanEnd; x += scanStep) {
+      const nextX = Math.min(x + scanStep, scanEnd);
       const y1 = evaluateFn(x);
-      const y2 = evaluateFn(x + scanStep);
+      const y2 = evaluateFn(nextX);
       if (isNaN(y1) || isNaN(y2)) continue;
 
       if (Math.abs(y1) < 0.001) {
         const roundedX = Math.round(x * 100) / 100;
-        if (!xIntercepts.some((pt) => Math.abs(pt.x - roundedX) < 0.1)) {
+        if (!xIntercepts.some((pt) => Math.abs(pt.x - roundedX) < 0.08)) {
           xIntercepts.push({ x: roundedX, y: 0 });
         }
-      } else if (y1 * y2 < 0) {
+      } else if (y1 * y2 < 0 && Math.abs(y1 - y2) < 50) {
         let low = x;
-        let high = x + scanStep;
-        for (let iter = 0; iter < 12; iter++) {
+        let high = nextX;
+        for (let iter = 0; iter < 14; iter++) {
           const mid = (low + high) / 2;
           const yMid = evaluateFn(mid);
           if (Math.abs(yMid) < 0.0001) {
             low = mid;
+            high = mid;
             break;
           }
           if (yMid * evaluateFn(low) < 0) {
@@ -426,7 +551,7 @@ export function parseMathFunction(input: string): ParsedFunctionResult {
           }
         }
         const exactRoot = Math.round(((low + high) / 2) * 1000) / 1000;
-        if (!xIntercepts.some((pt) => Math.abs(pt.x - exactRoot) < 0.15)) {
+        if (!xIntercepts.some((pt) => Math.abs(pt.x - exactRoot) < 0.1)) {
           xIntercepts.push({ x: exactRoot, y: 0 });
         }
       }
@@ -442,7 +567,7 @@ export function parseMathFunction(input: string): ParsedFunctionResult {
       if (!isNaN(d1) && !isNaN(d2) && d1 * d2 <= 0) {
         const vX = Math.round((x + 0.05) * 100) / 100;
         const vY = Math.round(evaluateFn(vX) * 100) / 100;
-        if (!isNaN(vY)) {
+        if (!isNaN(vY) && (!domain || (vX >= domain.a - 1e-6 && vX <= domain.b + 1e-6))) {
           vertex = { x: vX, y: vY };
           break;
         }
@@ -453,22 +578,30 @@ export function parseMathFunction(input: string): ParsedFunctionResult {
   // Khảo sát các đường tiệm cận (Đứng, Ngang, Xiên)
   const asymptotes = detectAsymptotes(evaluateFn, functionType, expr);
 
-  // Bảng giá trị mẫu (x, y)
+  // Bảng giá trị mẫu (x, y) — ưu tiên chia đều trên [a, b] nếu có giới hạn miền
   const sampleTable: { x: number; y: number }[] = [];
-  const samplePointsX = [-3, -2, -1, 0, 1, 2, 3];
-  if (xIntercepts.length > 0) {
-    xIntercepts.forEach((pt) => {
-      if (!samplePointsX.includes(pt.x) && Math.abs(pt.x) <= 5) {
-        samplePointsX.push(pt.x);
-      }
-    });
+  let samplePointsX: number[] = [];
+
+  if (domain && domain.a < domain.b) {
+    const count = 6;
+    for (let i = 0; i <= count; i++) {
+      const val = domain.a + ((domain.b - domain.a) * i) / count;
+      samplePointsX.push(Math.round(val * 100) / 100);
+    }
+  } else {
+    samplePointsX = [-3, -2, -1, 0, 1, 2, 3];
+    if (xIntercepts.length > 0) {
+      xIntercepts.forEach((pt) => {
+        if (!samplePointsX.includes(pt.x) && Math.abs(pt.x) <= 5) {
+          samplePointsX.push(pt.x);
+        }
+      });
+    }
   }
-  samplePointsX.sort((a, b) => a - b);
+  samplePointsX = Array.from(new Set(samplePointsX)).sort((a, b) => a - b);
 
   samplePointsX.forEach((xVal) => {
-    // Không tính giá trị tại điểm tiệm cận đứng
     if (asymptotes.vertical.some((v) => Math.abs(v.x - xVal) < 0.01)) return;
-
     const yVal = evaluateFn(xVal);
     if (!isNaN(yVal) && Math.abs(yVal) < 1000) {
       sampleTable.push({

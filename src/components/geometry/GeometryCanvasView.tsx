@@ -865,7 +865,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
           </div>
 
           <span className="text-[11px] text-blue-700 font-semibold pr-2 hidden sm:inline">
-            ✨ Tự động vẽ đồ thị, xác định tiệm cận đứng (TCĐ), tiệm cận ngang (TCN) và tiệm cận xiên (TCX)
+            Vẽ nhiều hàm số cùng lúc, giới hạn miền x chạy từ a đến b, tự động tìm giao điểm và tiệm cận
           </span>
         </div>
       )}
