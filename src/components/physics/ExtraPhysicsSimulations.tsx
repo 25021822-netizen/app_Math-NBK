@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import katex from 'katex';
 import { Play, Pause, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { IdealGasSimulation } from './IdealGasSimulation';
 
 export type ExtraPhysicsModuleId =
   | 'standingWave'
@@ -98,6 +99,15 @@ function nmToPhotonColor(nm: number): string {
 }
 
 export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = ({ moduleId }) => {
+  if (moduleId === 'idealGas') {
+    return <IdealGasSimulation />;
+  }
+  return <ExtraPhysicsSimulationsInner moduleId={moduleId} />;
+};
+
+const ExtraPhysicsSimulationsInner: React.FC<{
+  moduleId: Exclude<ExtraPhysicsModuleId, 'idealGas'>;
+}> = ({ moduleId }) => {
   const [isRunning, setIsRunning] = useState<boolean>(true);
   const [timeScale, setTimeScale] = useState<number>(1);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -253,36 +263,6 @@ export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = (
   }, [peMetalId, peLambdaNm, peIntensityPct, peVoltageV]);
 
   // ===========================================================================
-  // 9. KHÍ LÝ TƯỞNG & CÁC ĐẲNG QUÁ TRÌNH (IDEAL GAS)
-  // ===========================================================================
-  const [gasProcess, setGasProcess] = useState<'isothermal' | 'isobaric' | 'isochoric'>('isothermal');
-  const [gasMoles, setGasMoles] = useState<number>(1.0);
-  const [gasTempK, setGasTempK] = useState<number>(300);
-  const [gasVolL, setGasVolL] = useState<number>(12);
-  const [gasLockedPAtm, setGasLockedPAtm] = useState<number>(2.05);
-
-  const gasMoleculesRef = useRef(
-    Array.from({ length: 40 }, (_, i) => ({
-      x: 0.1 + ((i * 73) % 80) / 100,
-      y: 0.1 + ((i * 37) % 80) / 100,
-      vx: Math.cos(i * 1.7) * 0.45,
-      vy: Math.sin(i * 2.3) * 0.45,
-    }))
-  );
-
-  const gasCalc = useMemo(() => {
-    const R_GAS = 0.08206; // L·atm / (mol·K)
-    let vActual = gasVolL;
-    let pActual = (gasMoles * R_GAS * gasTempK) / gasVolL;
-    if (gasProcess === 'isobaric') {
-      pActual = gasLockedPAtm;
-      vActual = Math.min(32, Math.max(4, (gasMoles * R_GAS * gasTempK) / pActual));
-    }
-    const vrms = Math.sqrt((3 * 8.314 * gasTempK) / 0.028); // N2 approx m/s
-    return { pActual, vActual, vrms, R_GAS };
-  }, [gasProcess, gasMoles, gasTempK, gasVolL, gasLockedPAtm]);
-
-  // ===========================================================================
   // 60FPS ANIMATION LOOP FOR EXTRA MODULES
   // ===========================================================================
   useEffect(() => {
@@ -312,9 +292,6 @@ export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = (
             updatePhotoelectricParticles(dt);
           }
           drawPhotoelectricCanvas(canvas);
-        } else if (moduleId === 'idealGas') {
-          if (dt > 0) updateGasParticles(dt);
-          drawIdealGasCanvas(canvas);
         }
       }
 
@@ -1095,167 +1072,6 @@ export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = (
     ctx.fillText('I (mA)', zeroX + 6, gyTop + 10);
   };
 
-  const updateGasParticles = (dt: number) => {
-    const speedFactor = Math.sqrt(gasTempK / 300) * 1.4;
-    gasMoleculesRef.current.forEach((m) => {
-      m.x += m.vx * speedFactor * dt;
-      m.y += m.vy * speedFactor * dt;
-      if (m.x < 0.04) {
-        m.x = 0.04;
-        m.vx = Math.abs(m.vx);
-      } else if (m.x > 0.96) {
-        m.x = 0.96;
-        m.vx = -Math.abs(m.vx);
-      }
-      if (m.y < 0.04) {
-        m.y = 0.04;
-        m.vy = Math.abs(m.vy);
-      } else if (m.y > 0.96) {
-        m.y = 0.96;
-        m.vy = -Math.abs(m.vy);
-      }
-    });
-  };
-
-  const drawIdealGasCanvas = (canvas: HTMLCanvasElement) => {
-    const info = setupCanvasDpr(canvas);
-    if (!info) return;
-    const { ctx, w, h } = info;
-
-    ctx.fillStyle = '#F8FAFC';
-    ctx.fillRect(0, 0, w, h);
-
-    const splitX = Math.floor(w * 0.45);
-    ctx.strokeStyle = '#E2E8F0';
-    ctx.beginPath();
-    ctx.moveTo(splitX, 16);
-    ctx.lineTo(splitX, h - 16);
-    ctx.stroke();
-
-    // Left: Piston Cylinder
-    const cylX = 48;
-    const cylW = splitX - 96;
-    const cylBot = h - 46;
-    const cylMaxH = h - 120;
-    const volFrac = Math.min(1, Math.max(0.16, gasCalc.vActual / 32));
-    const chamberH = cylMaxH * volFrac;
-    const pistonY = cylBot - chamberH;
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = '700 12px ui-sans-serif, sans-serif';
-    ctx.fillText('Xi-lanh chứa khí lý tưởng', 24, 28);
-
-    // Thermal background tint
-    const tempNorm = Math.min(1, Math.max(0, (gasTempK - 200) / 400));
-    const rCol = Math.round(220 + tempNorm * 35);
-    const gCol = Math.round(240 - tempNorm * 50);
-    const bCol = Math.round(255 - tempNorm * 95);
-    ctx.fillStyle = `rgb(${rCol}, ${gCol}, ${bCol})`;
-    ctx.fillRect(cylX, pistonY, cylW, chamberH);
-
-    // Molecules inside chamber
-    ctx.fillStyle = tempNorm > 0.6 ? '#DC2626' : '#0284C7';
-    const activeCount = Math.min(40, Math.max(12, Math.round(gasMoles * 20)));
-    for (let i = 0; i < activeCount; i++) {
-      const m = gasMoleculesRef.current[i];
-      const mx = cylX + 6 + m.x * (cylW - 12);
-      const my = pistonY + 6 + m.y * (chamberH - 12);
-      ctx.beginPath();
-      ctx.arc(mx, my, 3.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Cylinder walls
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(cylX, cylBot - cylMaxH - 14);
-    ctx.lineTo(cylX, cylBot);
-    ctx.lineTo(cylX + cylW, cylBot);
-    ctx.lineTo(cylX + cylW, cylBot - cylMaxH - 14);
-    ctx.stroke();
-
-    // Piston block + rod
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(cylX + 2, pistonY - 14, cylW - 4, 14);
-    ctx.fillRect(cylX + cylW / 2 - 5, pistonY - 50, 10, 36);
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = 'bold 11px ui-monospace, monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`V = ${gasCalc.vActual.toFixed(1)} L · T = ${gasTempK} K`, cylX + cylW / 2, cylBot + 20);
-    ctx.textAlign = 'left';
-
-    // Right: p-V Diagram
-    const gx = splitX + 44;
-    const gw = w - gx - 24;
-    const gyTop = 62;
-    const gyBot = h - 54;
-    const gh = gyBot - gyTop;
-    const maxV = 34;
-    const maxP = 8;
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = '700 12px ui-sans-serif, sans-serif';
-    ctx.fillText('Đồ thị Trạng Thái p - V', splitX + 20, 28);
-
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(gx, gyTop);
-    ctx.lineTo(gx, gyBot);
-    ctx.lineTo(gx + gw, gyBot);
-    ctx.stroke();
-
-    // Process curve
-    ctx.strokeStyle = '#0284C7';
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    if (gasProcess === 'isothermal') {
-      let started = false;
-      for (let i = 0; i <= 100; i++) {
-        const vVal = 3 + (i / 100) * (maxV - 3);
-        const pVal = (gasMoles * gasCalc.R_GAS * gasTempK) / vVal;
-        if (pVal > maxP) continue;
-        const px = gx + (vVal / maxV) * gw;
-        const py = gyBot - (pVal / maxP) * gh;
-        if (!started) {
-          ctx.moveTo(px, py);
-          started = true;
-        } else ctx.lineTo(px, py);
-      }
-    } else if (gasProcess === 'isobaric') {
-      const py = gyBot - (Math.min(maxP, gasCalc.pActual) / maxP) * gh;
-      ctx.moveTo(gx + (4 / maxV) * gw, py);
-      ctx.lineTo(gx + (32 / maxV) * gw, py);
-    } else {
-      const px = gx + (gasCalc.vActual / maxV) * gw;
-      ctx.moveTo(px, gyBot);
-      ctx.lineTo(px, gyTop + 10);
-    }
-    ctx.stroke();
-
-    // Current state point
-    const curPx = gx + (Math.min(maxV, gasCalc.vActual) / maxV) * gw;
-    const curPy = gyBot - (Math.min(maxP, gasCalc.pActual) / maxP) * gh;
-    ctx.fillStyle = '#E11D48';
-    ctx.beginPath();
-    ctx.arc(curPx, curPy, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = 'bold 10px ui-monospace, monospace';
-    ctx.fillText(`(${gasCalc.vActual.toFixed(1)}L; ${gasCalc.pActual.toFixed(2)}atm)`, Math.min(gx + gw - 98, curPx + 8), Math.max(gyTop + 14, curPy - 8));
-
-    ctx.fillStyle = '#64748B';
-    ctx.font = '600 10px ui-monospace, monospace';
-    ctx.fillText('V (L)', gx + gw - 28, gyBot + 16);
-    ctx.fillText('p (atm)', gx - 36, gyTop - 8);
-  };
-
   // ---------------------------------------------------------------------------
   // RENDER TWO-ZONE SANDBOX FOR EXTRA MODULES
   // ---------------------------------------------------------------------------
@@ -1431,35 +1247,6 @@ export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = (
                 <span className="text-[11px] text-slate-500 block">Dòng quang điện I</span>
                 <span className="font-mono tabular-nums font-bold text-slate-900 mt-0.5 block">
                   {peCalc.currentMa.toFixed(2)} mA (v₀≈{peCalc.vMaxKmS.toFixed(0)} km/s)
-                </span>
-              </div>
-            </>
-          )}
-
-          {moduleId === 'idealGas' && (
-            <>
-              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                <span className="text-[11px] text-slate-500 block">Áp suất p</span>
-                <span className="font-mono tabular-nums font-bold text-rose-700 mt-0.5 block">
-                  {gasCalc.pActual.toFixed(2)} atm
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                <span className="text-[11px] text-slate-500 block">Thể tích V</span>
-                <span className="font-mono tabular-nums font-bold text-sky-700 mt-0.5 block">
-                  {gasCalc.vActual.toFixed(1)} lít
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                <span className="text-[11px] text-slate-500 block">Nhiệt độ T</span>
-                <span className="font-mono tabular-nums font-bold text-slate-900 mt-0.5 block">
-                  {gasTempK} K ({gasTempK - 273}°C)
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                <span className="text-[11px] text-slate-500 block">Tốc độ căn quân phương</span>
-                <span className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5 block">
-                  {gasCalc.vrms.toFixed(0)} m/s
                 </span>
               </div>
             </>
@@ -1777,72 +1564,6 @@ export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = (
               </button>
             </div>
           )}
-
-          {moduleId === 'idealGas' && (
-            <div className="space-y-4 text-xs">
-              <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg">
-                {[
-                  { id: 'isothermal' as const, label: 'Đẳng nhiệt' },
-                  { id: 'isobaric' as const, label: 'Đẳng áp' },
-                  { id: 'isochoric' as const, label: 'Đẳng tích' },
-                ].map((proc) => (
-                  <button
-                    key={proc.id}
-                    type="button"
-                    onClick={() => {
-                      if (proc.id === 'isobaric') {
-                        setGasLockedPAtm(Number(gasCalc.pActual.toFixed(2)));
-                      }
-                      setGasProcess(proc.id);
-                    }}
-                    className={`py-1.5 rounded-md font-bold text-[11px] cursor-pointer ${
-                      gasProcess === proc.id ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
-                    }`}
-                  >
-                    {proc.label}
-                  </button>
-                ))}
-              </div>
-
-              <SliderControl
-                label="Số mol khí n"
-                valueDisplay={`${gasMoles.toFixed(1)} mol`}
-                min={0.5}
-                max={2.0}
-                step={0.1}
-                value={gasMoles}
-                onChange={setGasMoles}
-              />
-              <SliderControl
-                label="Nhiệt độ tuyệt đối T"
-                valueDisplay={`${gasTempK} K`}
-                min={200}
-                max={600}
-                step={10}
-                value={gasTempK}
-                disabled={gasProcess === 'isothermal'}
-                onChange={setGasTempK}
-              />
-              <SliderControl
-                label="Thể tích xi-lanh V"
-                valueDisplay={`${gasCalc.vActual.toFixed(1)} lít`}
-                min={5}
-                max={30}
-                step={0.5}
-                value={gasCalc.vActual}
-                disabled={gasProcess === 'isobaric' || gasProcess === 'isochoric'}
-                onChange={setGasVolL}
-              />
-
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                {gasProcess === 'isothermal'
-                  ? 'Định luật Boyle (T không đổi): kéo thanh Thể tích V để quan sát áp suất p tỉ lệ nghịch với V.'
-                  : gasProcess === 'isobaric'
-                  ? 'Định luật Charles (p không đổi): thay đổi nhiệt độ T làm pít-tông dịch chuyển sao cho V tỉ lệ thuận với T.'
-                  : 'Định luật Gay-Lussac (V không đổi): nung nóng khí làm các phân tử chuyển động nhanh hơn và áp suất p tăng tỉ lệ thuận với T.'}
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Formula Card */}
@@ -1886,16 +1607,6 @@ export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = (
                 dangerouslySetInnerHTML={{
                   __html: renderLatex(
                     String.raw`\varepsilon = \frac{hc}{\lambda} = A + \frac{1}{2}m_e v_{0\max}^2 = A + eU_h`,
-                    false
-                  ),
-                }}
-              />
-            )}
-            {moduleId === 'idealGas' && (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: renderLatex(
-                    String.raw`pV = nRT,\quad \frac{p_1 V_1}{T_1} = \frac{p_2 V_2}{T_2}`,
                     false
                   ),
                 }}
