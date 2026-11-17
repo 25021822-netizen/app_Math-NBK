@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserProfile, UserRole, AutoApprovalSettings } from '../../types/math';
+import { UserProfile, AutoApprovalSettings, TeachingSubject, TEACHING_SUBJECTS } from '../../types/math';
 import { dbRegisterUser } from '../../services/dbSyncService';
 import {
   BookOpen,
@@ -53,6 +53,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   const [regName, setRegName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
   const [regGrade, setRegGrade] = useState<10 | 11 | 12>(12);
+  const [regSubject, setRegSubject] = useState<TeachingSubject>('Toán Học');
   const [regSchool, setRegSchool] = useState<string>('Toán Học LIKI');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
@@ -182,8 +183,8 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       grade: regGrade,
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(regName.trim())}`,
       schoolName: regSchool.trim() || 'Toán Học LIKI',
-      bio: `${regRole === 'teacher' ? 'Giáo viên THPT' : `Học sinh lớp ${regGrade} THPT`}, tài khoản đăng ký mới trên nền tảng Toán Học LIKI.`,
-      subject: 'Toán Học THPT',
+      bio: `${regRole === 'teacher' ? `Giáo viên bộ môn ${regSubject} THPT` : `Học sinh lớp ${regGrade} THPT`}, tài khoản đăng ký mới trên nền tảng Toán Học LIKI.`,
+      subject: regRole === 'teacher' ? regSubject : 'Toán - Lý - Hóa THPT',
       password: regPassword,
       status: initialStatus,
       requestedAt: new Date().toISOString(),
@@ -245,7 +246,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
               Toán Học <span className="text-cyan-400">LIKI</span>
             </span>
             <span className="text-[11px] text-blue-200 font-semibold tracking-wide">
-              Hệ Thống Học & Thi Toán THPT
+              Hệ Thống Học, Thi & Thí Nghiệm Toán · Lý · Hóa THPT
             </span>
           </div>
         </div>
@@ -332,7 +333,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Đăng Ký Học Sinh
+                  Đăng Ký Tài Khoản
                 </button>
               </div>
 
@@ -536,9 +537,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Email & Khối lớp / Bộ môn */}
+                  {/* Email & Bộ môn (GV) hoặc Khối lớp (HS) */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                    <div className="sm:col-span-8 space-y-1">
+                    <div className={`${regRole === 'teacher' ? 'sm:col-span-12' : 'sm:col-span-8'} space-y-1`}>
                       <label className="text-[11px] font-bold text-slate-300">
                         Email {regRole === 'teacher' ? 'giáo viên' : 'học sinh'} *
                       </label>
@@ -551,15 +552,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                       />
                     </div>
 
-                    <div className="sm:col-span-4 space-y-1">
-                      <label className="text-[11px] font-bold text-slate-300">
-                        {regRole === 'teacher' ? 'Bộ môn' : 'Khối lớp'}
-                      </label>
-                      {regRole === 'teacher' ? (
-                        <div className="w-full h-10 px-2 rounded-xl bg-slate-900 border border-white/20 text-purple-300 text-xs font-bold flex items-center justify-center">
-                          Toán THPT
-                        </div>
-                      ) : (
+                    {regRole === 'student' && (
+                      <div className="sm:col-span-4 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">Khối lớp</label>
                         <select
                           value={regGrade}
                           onChange={(e) => setRegGrade(Number(e.target.value) as 10 | 11 | 12)}
@@ -569,9 +564,41 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                           <option value={11}>Khối 11</option>
                           <option value={10}>Khối 10</option>
                         </select>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Chọn 1 trong 3 môn dạy cho Giáo viên: Toán Học, Vật Lý, Hóa Học */}
+                  {regRole === 'teacher' && (
+                    <div className="space-y-1.5 p-3 rounded-2xl bg-white/5 border border-white/10">
+                      <label className="text-[11px] font-bold text-slate-300 block">
+                        Môn giảng dạy * (Chọn 1 trong 3 môn)
+                      </label>
+                      <div className="grid grid-cols-3 gap-2 pt-0.5">
+                        {TEACHING_SUBJECTS.map((subj) => {
+                          const isSelected = regSubject === subj;
+                          return (
+                            <button
+                              key={subj}
+                              type="button"
+                              onClick={() => setRegSubject(subj)}
+                              className={`h-9 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                isSelected
+                                  ? subj === 'Toán Học'
+                                    ? 'bg-blue-600/35 border-cyan-400 text-cyan-200'
+                                    : subj === 'Vật Lý'
+                                    ? 'bg-sky-600/35 border-sky-400 text-sky-200'
+                                    : 'bg-emerald-600/35 border-emerald-400 text-emerald-200'
+                                  : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {subj}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Trường học */}
                   <div className="space-y-1">
@@ -745,6 +772,12 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                     <span className="text-slate-400">Email đăng nhập:</span>
                     <span className="font-mono font-bold text-cyan-300">{pendingModalUser.email}</span>
                   </div>
+                  {pendingModalUser.role === 'teacher' && pendingModalUser.subject && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Môn giảng dạy:</span>
+                      <span className="font-bold text-emerald-300">{pendingModalUser.subject}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2 pt-1">

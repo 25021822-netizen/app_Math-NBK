@@ -495,6 +495,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       let parsed: any = null;
       let scanSource = '';
 
+      const safeAiDuration = Math.max(1, Number(aiDuration) || 90);
       // Bước 1: Gửi yêu cầu lên Server Gemini API
       try {
         const response = await fetch('/api/gemini/parse-pdf', {
@@ -506,7 +507,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
             wordBase64: aiInputMethod === 'pdf' && aiPdfFile?.fileType === 'word' ? aiPdfFile?.fileBase64 : undefined,
             latexText: aiInputMethod === 'latex' ? aiLatexText : undefined,
             grade: aiGrade,
-            durationMinutes: aiDuration,
+            durationMinutes: safeAiDuration,
             examTitle: aiExamTitle.trim() || undefined,
           }),
         });
@@ -527,7 +528,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         const textToFallback = aiInputMethod === 'latex'
           ? (aiLatexText || '')
           : (aiPdfFile?.extractedText || aiPdfFile?.fileName || 'Đề Thi Toán THPT');
-        const localParsed = parseExamFromLatexOrText(textToFallback, aiGrade, aiDuration, aiExamTitle || aiPdfFile?.fileName);
+        const localParsed = parseExamFromLatexOrText(textToFallback, aiGrade, safeAiDuration, aiExamTitle || aiPdfFile?.fileName);
         if (localParsed && localParsed.questions && localParsed.questions.length > 0) {
           parsed = localParsed;
           scanSource = 'Bộ Phân Tích Cú Pháp Nội Bộ';
@@ -545,7 +546,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         title: aiExamTitle.trim() || parsed.metadata?.title || 'Đề Thi Quét AI',
         grade: (parsed.metadata?.grade || aiGrade) as 10 | 11 | 12,
         year: parsed.metadata?.year || new Date().getFullYear(),
-        durationMinutes: parsed.metadata?.durationMinutes || aiDuration,
+        durationMinutes: parsed.metadata?.durationMinutes || safeAiDuration,
         totalPoints: parsed.metadata?.totalPoints || Number(questions.reduce((sum, q) => sum + (q.points || 0), 0).toFixed(2)),
         status: 'approved',
         createdBy: manualCreatedBy || currentUserName || 'Giáo viên',
@@ -996,6 +997,9 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
     if (manualQuestions.length === 0) {
       errors.push('Đề thi chưa có câu hỏi nào. Vui lòng thêm ít nhất 1 câu hỏi vào đề thi trước khi xuất bản!');
     }
+    if (!manualDuration || manualDuration < 1) {
+      errors.push('Thời lượng làm bài phải từ 1 phút trở lên!');
+    }
 
     if (errors.length > 0) {
       setManualValidationErrors(errors);
@@ -1018,6 +1022,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
   // Xác nhận xuất bản chính thức trong modal
   const handleConfirmPublishExam = async () => {
     const calculatedTotalPoints = Number(dynamicTotalPoints.toFixed(2));
+    const safeManualDuration = Math.max(1, Number(manualDuration) || 90);
     const effectiveTargetIds =
       manualDistributionType !== 'repository'
         ? manualTargetClassIds.length > 0
@@ -1030,7 +1035,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
       title: manualTitle.trim() || 'Đề Thi Toán Mới',
       grade: manualGrade,
       year: manualYear,
-      durationMinutes: manualDuration,
+      durationMinutes: safeManualDuration,
       totalPoints: calculatedTotalPoints,
       status: 'approved',
       createdBy: manualCreatedBy,
@@ -1223,18 +1228,34 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Thời Lượng</label>
-                <select
-                  value={manualDuration}
-                  onChange={(e) => setManualDuration(Number(e.target.value))}
-                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-semibold bg-white focus:border-blue-600 focus:outline-none"
-                >
-                  <option value={15}>15 phút</option>
-                  <option value={45}>45 phút</option>
-                  <option value={60}>60 phút</option>
-                  <option value={90}>90 phút</option>
-                  <option value={120}>120 phút</option>
-                </select>
+                <label className="font-bold text-slate-700">Thời Lượng (phút)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={1}
+                    max={600}
+                    value={manualDuration > 0 ? manualDuration : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setManualDuration(0);
+                        return;
+                      }
+                      const num = Math.min(600, Math.max(0, parseInt(val, 10) || 0));
+                      setManualDuration(num);
+                    }}
+                    onBlur={() => {
+                      if (!manualDuration || manualDuration < 1) {
+                        setManualDuration(90);
+                      }
+                    }}
+                    placeholder="VD: 45, 90..."
+                    className="w-full h-10 pl-3 pr-12 rounded-xl border border-slate-300 font-semibold bg-white focus:border-blue-600 focus:outline-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">
+                    phút
+                  </span>
+                </div>
               </div>
 
               {/* 1. GIỚI HẠN SỐ LƯỢT LÀM BÀI */}
@@ -2091,16 +2112,33 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
               <div className="md:col-span-3 space-y-1">
                 <label className="font-bold text-slate-700">Thời Gian Làm Bài *</label>
-                <select
-                  value={aiDuration}
-                  onChange={(e) => setAiDuration(Number(e.target.value))}
-                  className="w-full h-10 px-3 rounded-xl border border-slate-300 font-bold focus:border-blue-600 focus:outline-none bg-white cursor-pointer"
-                >
-                  <option value={45}>45 Phút (Kiểm tra 1 tiết)</option>
-                  <option value={60}>60 Phút (Kiểm tra giữa kỳ)</option>
-                  <option value={90}>90 Phút (Chuẩn Bộ GD&ĐT)</option>
-                  <option value={120}>120 Phút (Khảo sát chuyên sâu)</option>
-                </select>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={1}
+                    max={600}
+                    value={aiDuration > 0 ? aiDuration : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setAiDuration(0);
+                        return;
+                      }
+                      const num = Math.min(600, Math.max(0, parseInt(val, 10) || 0));
+                      setAiDuration(num);
+                    }}
+                    onBlur={() => {
+                      if (!aiDuration || aiDuration < 1) {
+                        setAiDuration(90);
+                      }
+                    }}
+                    placeholder="VD: 45, 90..."
+                    className="w-full h-10 pl-3 pr-12 rounded-xl border border-slate-300 font-bold bg-white focus:border-blue-600 focus:outline-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">
+                    phút
+                  </span>
+                </div>
               </div>
             </div>
 

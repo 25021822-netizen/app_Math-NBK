@@ -1372,6 +1372,127 @@ Trả về DUY NHẤT chuỗi JSON hợp lệ, không có văn bản giải thí
   }
 });
 
+// API 3.5: AI VISION AUTO-CROP BOUNDING BOXES CHO TRANG PDF SCAN / ẢNH ĐỀ THI
+app.post('/api/gemini/auto-crop-page', async (req, res) => {
+  const { pageImageBase64, pageNumber = 1, currentPartHint = 'part_1_mcq' } = req.body || {};
+
+  if (!pageImageBase64 || typeof pageImageBase64 !== 'string') {
+    return res.status(400).json({
+      success: false,
+      code: 'EMPTY_INPUT',
+      error: 'Thiếu ảnh trang đề thi để nhận diện khung câu hỏi.',
+    });
+  }
+
+  const activeClient = getActiveGeminiClient();
+  if (!activeClient) {
+    const errInfo = classifyGeminiError(new Error('MISSING_API_KEY'));
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
+    });
+  }
+
+  try {
+    const imgPart = buildInlinePartFromDataUrl(pageImageBase64);
+    if (!imgPart) {
+      return res.status(400).json({ success: false, code: 'INVALID_IMAGE', error: 'Dữ liệu ảnh trang không hợp lệ.' });
+    }
+
+    const prompt = `Bạn là hệ thống Computer Vision chuyên định vị khung câu hỏi (Object Detection / Layout Segmentation) cho đề thi Toán THPT Việt Nam (định dạng BGD 2025).
+Đang phân tích TRANG ${pageNumber} (Phần gợi ý tiếp nối từ trang trước: "${currentPartHint}").
+
+YÊU CẦU TỌA ĐỘ BOUNDING BOX [ymin, xmin, ymax, xmax] (thang số nguyên 0..1000 theo chiều cao và chiều rộng ảnh):
+1. Với mỗi câu hỏi hoàn chỉnh bắt đầu trên trang này (ví dụ "Câu 1.", "Câu 2.", "Bài 1."):
+   - Bao trọn phần đề bài ("Câu X..."), công thức, hình vẽ/bảng biến thiên/đồ thị đi kèm, VÀ toàn bộ các phương án A, B, C, D (hoặc các ý a), b), c), d)) của câu đó.
+   - KHÔNG cắt lẫn vào câu trước hoặc câu sau; KHÔNG bao gồm tiêu đề Sở GD, mã đề, số trang, khung quy chế ("Thí sinh trả lời từ câu..."), hay phần "Lời giải chi tiết" nếu có.
+   - Nếu trang chia 2 cột: liệt kê TOÀN BỘ các câu ở CỘT TRÁI từ trên xuống dưới trước, rồi mới tới các câu ở CỘT PHẢI từ trên xuống dưới.
+2. Phân loại "part":
+   - "part_1_mcq": có các phương án A, B, C, D.
+   - "part_2_true_false": có các mệnh đề a), b), c), d) Đúng/Sai.
+   - "part_3_short_answer": dạng trả lời ngắn / điền số (không có A-D và không có a-d).
+3. Nếu đầu trang/cột có phần nội dung bị cắt dở từ câu cuối của trang trước (ví dụ chỉ có các đáp án C, D hoặc c), d) nằm phía trên câu hỏi đầu tiên của trang):
+   - Đặt hasTopContinuation = true và trả về continuationBox = { ymin, xmin, ymax, xmax } bao trọn phần bị dở đó.
+4. Nếu trang này CHỈ chứa BẢNG ĐÁP ÁN / HƯỚNG DẪN CHẤM / ĐÁP ÁN CUỐI ĐỀ:
+   - Đặt isAnswerKeyPage = true, trích xuất toàn bộ bảng đáp án dạng chữ vào rawAnswerKeyText (ví dụ: "1.A 2.C ..."), và trả về questions = [].
+5. Nếu nhìn thấy đáp án được đánh dấu sẵn trên trang (gạch chân, tô đỏ, hoặc "Đáp án: B"), điền vào correctAnswer ("A"/"B"/"C"/"D", hoặc "Đ,S,Đ,S" cho Đúng/Sai, hoặc số cho Phần III). Nếu không thấy dấu hiệu đáp án, để chuỗi rỗng "".`;
+
+    const response = await callWithTransientRetry(() =>
+      activeClient.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: { parts: [imgPart, { text: prompt }] },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              isAnswerKeyPage: { type: Type.BOOLEAN },
+              rawAnswerKeyText: { type: Type.STRING },
+              layout: { type: Type.STRING },
+              hasTopContinuation: { type: Type.BOOLEAN },
+              continuationBox: {
+                type: Type.OBJECT,
+                properties: {
+                  ymin: { type: Type.INTEGER },
+                  xmin: { type: Type.INTEGER },
+                  ymax: { type: Type.INTEGER },
+                  xmax: { type: Type.INTEGER },
+                },
+                required: ['ymin', 'xmin', 'ymax', 'xmax'],
+              },
+              questions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    questionNumber: { type: Type.INTEGER },
+                    part: { type: Type.STRING },
+                    ymin: { type: Type.INTEGER },
+                    xmin: { type: Type.INTEGER },
+                    ymax: { type: Type.INTEGER },
+                    xmax: { type: Type.INTEGER },
+                    correctAnswer: { type: Type.STRING },
+                    shortSummary: { type: Type.STRING },
+                  },
+                  required: ['questionNumber', 'part', 'ymin', 'xmin', 'ymax', 'xmax'],
+                },
+              },
+            },
+            required: ['isAnswerKeyPage', 'layout', 'hasTopContinuation', 'questions'],
+          },
+        },
+      })
+    );
+
+    const parsed = safeParseObjectJsonWithLatex(response.text || '');
+    if (!parsed) {
+      throw new Error('Không thể phân tích tọa độ câu hỏi từ phản hồi AI.');
+    }
+
+    return res.json({
+      success: true,
+      pageNumber,
+      result: {
+        isAnswerKeyPage: Boolean(parsed.isAnswerKeyPage),
+        rawAnswerKeyText: String(parsed.rawAnswerKeyText || ''),
+        layout: parsed.layout === 'two_column' ? 'two_column' : 'single_column',
+        hasTopContinuation: Boolean(parsed.hasTopContinuation),
+        continuationBox: parsed.continuationBox || null,
+        questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+      },
+    });
+  } catch (error: any) {
+    const errInfo = classifyGeminiError(error);
+    console.warn('[AutoCrop Vision] Error:', errInfo.code, error?.message);
+    return res.status(errInfo.status).json({
+      success: false,
+      code: errInfo.code,
+      error: errInfo.message,
+    });
+  }
+});
+
 // =========================================================================
 // HỆ THỐNG CƠ SỞ DỮ LIỆU ĐỒNG BỘ REAL-TIME GIỮA CÁC THIẾT BỊ (CROSS-MACHINE SYNC)
 // =========================================================================

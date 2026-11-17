@@ -4,6 +4,8 @@ import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
 import { cleanPdfNoiseAndOcr } from '../../lib/ocrNoiseCleaner';
+import { autoCropWordDocxToQuestions } from '../../lib/wordExamUtils';
+import { autoCropPdfDocument, autoCropImagePages } from '../../lib/pdfAutoCrop';
 import {
   Scissors,
   Crop,
@@ -655,15 +657,109 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     );
   };
 
-  // Tự động nhận diện và bóc tách toàn bộ câu hỏi (KHÔNG tạo câu hỏi mẫu rác khi không tìm thấy)
+  // Tự động nhận diện và cắt ảnh từng câu hỏi chuẩn xác từ PDF, Word hoặc Ảnh đề thi
   const handleAutoCropAllQuestions = async () => {
     setIsAiCroppingAll(true);
-    setStatusMessage('Đang quét tài liệu và bóc tách các câu hỏi...');
+    setCropError(null);
+    setStatusMessage('Đang phân tích bố cục tài liệu và tự động cắt từng câu hỏi...');
 
     try {
-      let parsed: any = null;
+      const safeExamDuration = Math.max(1, Number(examDuration) || 90);
+      let croppedQuestions: Question[] = [];
+      let detectedMeta: { title?: string; grade?: 10 | 11 | 12; durationMinutes?: number } = {};
+      let usedVisualMethodLabel = '';
 
-      // 1. Thử gọi API Gemini bóc tách từ file PDF base64 hoặc văn bản LaTeX
+      // 1. FILE WORD (.DOCX / .DOC): Cắt trực quan từng khối câu hỏi từ DOM Word + KaTeX
+      if (documentData?.isWord) {
+        const lowerName = (documentData.fileName || '').toLowerCase();
+        const isDocxBinary =
+          lowerName.endsWith('.docx') ||
+          Boolean(documentData.fileBase64?.includes('openxmlformats-officedocument'));
+
+        if (isDocxBinary && documentData.fileBase64) {
+          const cleanB64 = documentData.fileBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+          const binary = atob(cleanB64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const wordResult = await autoCropWordDocxToQuestions(bytes.buffer, {
+            onProgress: (msg) => setStatusMessage(msg),
+          });
+          croppedQuestions = wordResult.questions;
+          detectedMeta = wordResult.metadata || {};
+          if (croppedQuestions.length > 0) {
+            usedVisualMethodLabel = 'Word cấu trúc & công thức KaTeX';
+          }
+        }
+
+        // Nếu là file .doc cũ hoặc Word thuần ảnh không đọc được khối DOM -> chuyển sang ảnh trang + AI Vision
+        if (croppedQuestions.length === 0 && documentData.pageImages && documentData.pageImages.length > 0) {
+          const imgRes = await autoCropImagePages(documentData.pageImages, {
+            onProgress: (msg) => setStatusMessage(msg),
+            initialExtractedText: documentData.extractedText,
+          });
+          croppedQuestions = imgRes.questions;
+          detectedMeta = imgRes.metadata || {};
+          if (croppedQuestions.length > 0) {
+            usedVisualMethodLabel = 'AI Vision phân trang Word';
+          }
+        }
+      }
+      // 2. FILE PDF: Hệ thống lai (Tọa độ văn bản 1-2 cột + căn khe trắng pixel, tự chuyển AI Vision nếu là PDF scan)
+      else if (documentData?.isPdf && documentData.fileBase64) {
+        const pdfRes = await autoCropPdfDocument(documentData.fileBase64, {
+          onProgress: (msg) => setStatusMessage(msg),
+        });
+        croppedQuestions = pdfRes.questions;
+        detectedMeta = pdfRes.metadata || {};
+        if (croppedQuestions.length > 0) {
+          usedVisualMethodLabel =
+            pdfRes.methodUsed === 'gemini_vision' ? 'AI Vision (PDF Scan)' : 'Định vị tọa độ PDF & khe trắng';
+        } else if (pdfRes.errorMessage) {
+          setCropError(pdfRes.errorMessage);
+        }
+      }
+      // 3. FILE ẢNH ĐỀ THI HOẶC TÀI LIỆU ĐÃ PHÂN TRANG ẢNH
+      else if (
+        (documentData?.pageImages && documentData.pageImages.length > 0) ||
+        (documentData?.fileBase64 && documentData.fileBase64.startsWith('data:image/'))
+      ) {
+        const imgs =
+          documentData.pageImages && documentData.pageImages.length > 0
+            ? documentData.pageImages
+            : [documentData.fileBase64!];
+        const imgRes = await autoCropImagePages(imgs, {
+          onProgress: (msg) => setStatusMessage(msg),
+          initialExtractedText: documentData.extractedText,
+        });
+        croppedQuestions = imgRes.questions;
+        detectedMeta = imgRes.metadata || {};
+        if (croppedQuestions.length > 0) {
+          usedVisualMethodLabel = 'AI Vision cắt ảnh trực quan';
+        } else if (imgRes.errorMessage) {
+          setCropError(imgRes.errorMessage);
+        }
+      }
+
+      if (croppedQuestions.length > 0) {
+        setQuestions(croppedQuestions);
+        if (detectedMeta.title && !initialTitle) setExamTitle(detectedMeta.title);
+        if (detectedMeta.durationMinutes) setExamDuration(detectedMeta.durationMinutes);
+        if (detectedMeta.grade) setExamGrade(detectedMeta.grade);
+        setActiveQuestionId(croppedQuestions[0].id);
+
+        const p1 = croppedQuestions.filter((q) => q.part === 'part_1_mcq').length;
+        const p2 = croppedQuestions.filter((q) => q.part === 'part_2_true_false').length;
+        const p3 = croppedQuestions.filter((q) => q.part === 'part_3_short_answer').length;
+        setStatusMessage(
+          `Đã tự động cắt ${croppedQuestions.length} câu hỏi (${p1} MCQ, ${p2} Đúng/Sai, ${p3} Trả lời ngắn) bằng ${usedVisualMethodLabel}! Thầy/Cô có thể kiểm tra và tinh chỉnh đáp án ở cột bên phải.`
+        );
+        return;
+      }
+
+      // 4. DỰ PHÒNG CHO MÃ NGUỒN LATEX / VĂN BẢN THUẦN (KHÔNG CÓ TRANG ẢNH/PDF)
+      let parsed: any = null;
       if (documentData?.fileBase64 || documentData?.extractedText) {
         try {
           const resp = await fetch('/api/gemini/parse-pdf', {
@@ -675,7 +771,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               wordBase64: documentData?.isWord ? documentData.fileBase64 : undefined,
               latexText: !documentData?.isPdf && !documentData?.isWord ? documentData.extractedText : undefined,
               grade: examGrade,
-              durationMinutes: examDuration,
+              durationMinutes: safeExamDuration,
               examTitle: examTitle,
             }),
           });
@@ -690,11 +786,12 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         }
       }
 
-      // 2. Dự phòng bằng bộ giải mã thông minh nội bộ
       if (!parsed || !parsed.questions || parsed.questions.length === 0) {
-        const textToParse = documentData?.extractedText || documentData?.fileName || '';
-        const cleaned = cleanPdfNoiseAndOcr(textToParse);
-        parsed = parseExamFromLatexOrText(cleaned.cleanedText || textToParse, examGrade, examDuration, examTitle);
+        const textToParse = documentData?.extractedText || '';
+        if (textToParse.trim().length > 15) {
+          const cleaned = cleanPdfNoiseAndOcr(textToParse);
+          parsed = parseExamFromLatexOrText(cleaned.cleanedText || textToParse, examGrade, safeExamDuration, examTitle);
+        }
       }
 
       if (parsed && parsed.questions && parsed.questions.length > 0) {
@@ -703,17 +800,18 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         if (parsed.metadata?.durationMinutes) setExamDuration(parsed.metadata.durationMinutes);
         if (parsed.metadata?.grade) setExamGrade(parsed.metadata.grade);
         setActiveQuestionId(parsed.questions[0].id);
-        setStatusMessage(`AI đã tự động bóc tách thành công ${parsed.questions.length} câu hỏi vào đề thi!`);
+        setStatusMessage(`Đã tự động bóc tách thành công ${parsed.questions.length} câu hỏi vào đề thi!`);
       } else {
-        // KHÔNG TẠO CÂU HỎI MẪU RÁC: Chỉ thông báo để người dùng khoanh vùng cắt trực tiếp
-        setStatusMessage('Chưa tìm thấy câu hỏi tự động. Thầy/Cô hãy kéo chuột khoanh vùng để cắt câu hỏi và đáp án trực tiếp từ đề.');
+        setStatusMessage(
+          'Chưa nhận diện được cấu trúc câu hỏi tự động trên tệp này. Thầy/Cô vui lòng kéo chuột khoanh vùng cắt trực tiếp từng câu!'
+        );
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Lỗi auto crop:', err);
-      setStatusMessage('Thầy/Cô hãy kéo chuột khoanh vùng để cắt câu hỏi trực tiếp từ đề.');
+      setCropError(err?.message || 'Có lỗi khi tự động cắt đề. Thầy/Cô có thể khoanh chuột cắt thủ công từng câu.');
     } finally {
       setIsAiCroppingAll(false);
-      setTimeout(() => setStatusMessage(null), 4500);
+      setTimeout(() => setStatusMessage(null), 7000);
     }
   };
 
@@ -778,12 +876,13 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
         ? classrooms.map((c) => c.id)
         : undefined;
 
+    const safeDuration = Math.max(1, Number(examDuration) || 90);
     const newExam: Exam = {
       id: `exam_crop_${Date.now()}`,
       title: examTitle.trim() || 'Đề Thi Biên Soạn Từ Phòng Cắt Câu',
       grade: examGrade,
       year: 2025,
-      durationMinutes: examDuration,
+      durationMinutes: safeDuration,
       totalPoints: Number(totalPoints.toFixed(2)),
       status: 'approved',
       createdBy: currentUserName || 'Giáo viên',
@@ -814,7 +913,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
     onTransferToManualEditor(questions, {
       title: examTitle,
       grade: examGrade,
-      duration: examDuration,
+      duration: Math.max(1, Number(examDuration) || 90),
     });
   };
 
@@ -966,17 +1065,34 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
           </div>
 
           <div className="sm:col-span-2 space-y-1">
-            <label className="font-bold text-slate-700">Thời Gian *</label>
-            <select
-              value={examDuration}
-              onChange={(e) => setExamDuration(Number(e.target.value))}
-              className="w-full h-9 px-3 rounded-xl border border-slate-300 font-bold focus:border-indigo-600 focus:outline-none bg-white cursor-pointer"
-            >
-              <option value={45}>45 Phút</option>
-              <option value={60}>60 Phút</option>
-              <option value={90}>90 Phút</option>
-              <option value={120}>120 Phút</option>
-            </select>
+            <label className="font-bold text-slate-700">Thời Gian (phút) *</label>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                max={600}
+                value={examDuration > 0 ? examDuration : ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setExamDuration(0);
+                    return;
+                  }
+                  const num = Math.min(600, Math.max(0, parseInt(val, 10) || 0));
+                  setExamDuration(num);
+                }}
+                onBlur={() => {
+                  if (!examDuration || examDuration < 1) {
+                    setExamDuration(90);
+                  }
+                }}
+                placeholder="VD: 45, 90..."
+                className="w-full h-9 pl-3 pr-11 rounded-xl border border-slate-300 font-bold bg-white focus:border-indigo-600 focus:outline-none"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">
+                phút
+              </span>
+            </div>
           </div>
 
           <div className="sm:col-span-3 space-y-1">

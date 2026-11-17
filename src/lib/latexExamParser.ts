@@ -220,59 +220,187 @@ export interface ParsedExamResult {
   questions: Question[];
 }
 
-// Bóc tách bảng đáp án (Answer Key Table) ở cuối tài liệu nếu có
-function extractAnswerKeysFromTable(fullText: string) {
+export interface ExtractedAnswerKeys {
+  mcqAnswers: Record<number, 'A' | 'B' | 'C' | 'D'>;
+  tfAnswers: Record<number, Record<string, boolean>>;
+  shortAnswers: Record<number, string>;
+  // Lưu tách biệt theo từng phần phòng trường hợp mỗi phần đều đánh số lại từ Câu 1
+  byPart?: {
+    part_1_mcq: Record<number, 'A' | 'B' | 'C' | 'D'>;
+    part_2_true_false: Record<number, Record<string, boolean>>;
+    part_3_short_answer: Record<number, string>;
+  };
+}
+
+// Bóc tách bảng đáp án (Answer Key Table) ở cuối tài liệu hoặc từ đoạn text bảng đáp án
+export function extractAnswerKeysFromTable(fullText: string, forceTreatAsAnswerSection: boolean = false): ExtractedAnswerKeys {
   const mcqAnswers: Record<number, 'A' | 'B' | 'C' | 'D'> = {};
   const tfAnswers: Record<number, Record<string, boolean>> = {};
   const shortAnswers: Record<number, string> = {};
+  const part1Map: Record<number, 'A' | 'B' | 'C' | 'D'> = {};
+  const part2Map: Record<number, Record<string, boolean>> = {};
+  const part3Map: Record<number, string> = {};
 
-  // Tìm vùng bảng đáp án (thường nằm ở cuối file)
-  const answerSectionMatch = fullText.match(
-    /(?:BẢNG ĐÁP ÁN|ĐÁP ÁN|HƯỚNG DẪN CHẤM|BẢNG TRẢ LỜI)[\s\S]*$/i
-  );
-  if (!answerSectionMatch) return { mcqAnswers, tfAnswers, shortAnswers };
-
-  const answerText = answerSectionMatch[0];
-
-  // 1. Quét đáp án Phần I: dạng "1.A 2.B" hoặc "1-A 2-C" hoặc "Câu 1: A"
-  const mcqRegex = /(?:Câu\s*)?(\d+)[\.\s:\-]+([A-D])(?!\w)/gi;
-  let mMatch;
-  while ((mMatch = mcqRegex.exec(answerText)) !== null) {
-    const qNum = parseInt(mMatch[1], 10);
-    const ans = mMatch[2].toUpperCase() as 'A' | 'B' | 'C' | 'D';
-    if (qNum >= 1 && qNum <= 40) {
-      mcqAnswers[qNum] = ans;
-    }
+  if (!fullText || !fullText.trim()) {
+    return {
+      mcqAnswers,
+      tfAnswers,
+      shortAnswers,
+      byPart: { part_1_mcq: part1Map, part_2_true_false: part2Map, part_3_short_answer: part3Map },
+    };
   }
 
-  // 2. Quét đáp án Phần II Đúng/Sai: ví dụ "Câu 1: a-Đ, b-S, c-Đ, d-S" hoặc "1: a.Đ, b.S..."
-  const tfBlockRegex = /(?:Câu\s*)?(\d+)[\s:\.]+([a-d\s,;\.\-–—ĐSđsTF]+)/gi;
-  let tfMatch;
-  while ((tfMatch = tfBlockRegex.exec(answerText)) !== null) {
-    const qNum = parseInt(tfMatch[1], 10);
-    const content = tfMatch[2];
-    const itemMatches = content.matchAll(/([a-d])[\s:\.\-–—]+([ĐSđsTF]|Đúng|Sai|True|False)/gi);
-    const itemsMap: Record<string, boolean> = {};
-    for (const im of itemMatches) {
-      const k = im[1].toLowerCase();
-      const val = im[2].toLowerCase();
-      itemsMap[k] = val.startsWith('đ') || val.startsWith('t');
+  let answerText = fullText;
+  if (!forceTreatAsAnswerSection) {
+    // Tìm vùng bảng đáp án (thường nằm ở cuối file)
+    const answerSectionMatch = fullText.match(
+      /(?:BẢNG\s+ĐÁP\s+ÁN|ĐÁP\s+ÁN\s*(?:CHI\s+TIẾT|THAM\s+KHẢO|ĐỀ\s+THI)?|HƯỚNG\s+DẪN\s+CHẤM|BẢNG\s+TRẢ\s+LỜI)[\s\S]*$/i
+    );
+    if (!answerSectionMatch) {
+      return {
+        mcqAnswers,
+        tfAnswers,
+        shortAnswers,
+        byPart: { part_1_mcq: part1Map, part_2_true_false: part2Map, part_3_short_answer: part3Map },
+      };
     }
-    if (Object.keys(itemsMap).length > 0) {
+    answerText = answerSectionMatch[0];
+  }
+
+  const lines = answerText.split(/\r?\n/);
+  let currentPart: 'unknown' | 'p1' | 'p2' | 'p3' = 'unknown';
+
+  const parseLineTokensForTables = (lineIdx: number) => {
+    const line = lines[lineIdx].trim();
+    const nextLine = (lines[lineIdx + 1] || '').trim();
+    if (!line || !nextLine) return;
+
+    // Dạng bảng ngang 2 dòng:
+    // Dòng 1: "Câu | 1 | 2 | 3 | 4" hoặc "1  2  3  4  5"
+    // Dòng 2: "Đáp án | A | B | C | D" hoặc "A  B  C  D  A"
+    const numTokens = line
+      .replace(/^(?:Câu|Bài|STT)\s*[:\|]?\s*/i, '')
+      .split(/[\s\|\t,;]+/)
+      .filter((t) => /^\d{1,2}$/.test(t))
+      .map((t) => parseInt(t, 10));
+
+    if (numTokens.length >= 3) {
+      const nextTokens = nextLine
+        .replace(/^(?:Đáp\s*án|ĐA|Chọn|Kết\s*quả|KQ)\s*[:\|]?\s*/i, '')
+        .split(/[\s\|\t,;]+/)
+        .filter(Boolean);
+
+      if (nextTokens.length >= numTokens.length) {
+        const looksLikeMcqRow = nextTokens.slice(0, numTokens.length).every((t) => /^[A-D]$/i.test(t));
+        const looksLikeShortRow =
+          !looksLikeMcqRow &&
+          nextTokens.slice(0, numTokens.length).every((t) => /^[-+]?\d+(?:[.,]\d+)?$/.test(t));
+
+        if (looksLikeMcqRow && (currentPart === 'unknown' || currentPart === 'p1')) {
+          numTokens.forEach((qNum, i) => {
+            const ans = nextTokens[i].toUpperCase() as 'A' | 'B' | 'C' | 'D';
+            mcqAnswers[qNum] = ans;
+            part1Map[qNum] = ans;
+          });
+        } else if (looksLikeShortRow && (currentPart === 'unknown' || currentPart === 'p3')) {
+          numTokens.forEach((qNum, i) => {
+            const ans = nextTokens[i].replace(',', '.').slice(0, 4);
+            shortAnswers[qNum] = ans;
+            part3Map[qNum] = ans;
+          });
+        }
+      }
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const lower = line.toLowerCase();
+
+    if (/phần\s*(?:iii|3)|trả\s+lời\s+ngắn|điền\s+đáp/i.test(lower)) {
+      currentPart = 'p3';
+    } else if (/phần\s*(?:ii|2)|đúng\s*\/?\s*sai|trắc\s+nghiệm\s+đúng/i.test(lower)) {
+      currentPart = 'p2';
+    } else if (/phần\s*(?:i|1)(?!i)|nhiều\s+phương\s+án|trắc\s+nghiệm\s+4/i.test(lower)) {
+      currentPart = 'p1';
+    }
+
+    parseLineTokensForTables(i);
+
+    // 1. Quét đáp án Đúng/Sai dạng tường minh: "Câu 1: a-Đ, b-S, c-Đ, d-S" hoặc "1. aĐ bS cĐ dS"
+    const tfExplicitRegex = /(?:Câu\s*)?(\d+)\s*[:\.\|\-\s]+((?:[a-d]\s*[:\.\-–—\)]*\s*(?:Đúng|Sai|True|False|[ĐS])\s*[,;\|\s]*){2,4})/gi;
+    let tfMatch;
+    while ((tfMatch = tfExplicitRegex.exec(line)) !== null) {
+      const qNum = parseInt(tfMatch[1], 10);
+      const itemMatches = tfMatch[2].matchAll(/([a-d])\s*[:\.\-–—\)]*\s*(Đúng|Sai|True|False|[ĐS])/gi);
+      const itemsMap: Record<string, boolean> = {};
+      for (const im of itemMatches) {
+        const k = im[1].toLowerCase();
+        const val = im[2].toLowerCase();
+        itemsMap[k] = val.startsWith('đ') || val.startsWith('t');
+      }
+      if (Object.keys(itemsMap).length >= 2) {
+        tfAnswers[qNum] = itemsMap;
+        part2Map[qNum] = itemsMap;
+      }
+    }
+
+    // Dạng gọn 4 ký tự Đ/S: "1 | Đ | S | Đ | S" hoặc "Câu 1: Đ - S - Đ - Đ" hoặc "1. ĐSĐS"
+    const tfCompactMatch = line.match(/(?:Câu\s*)?(\d+)\s*[:\.\|\-\s]+([ĐS])\s*[-–,\|\s]*([ĐS])\s*[-–,\|\s]*([ĐS])\s*[-–,\|\s]*([ĐS])(?![a-zA-ZÀ-ỹ])/i);
+    if (tfCompactMatch && (currentPart === 'p2' || currentPart === 'unknown')) {
+      const qNum = parseInt(tfCompactMatch[1], 10);
+      const itemsMap: Record<string, boolean> = {
+        a: tfCompactMatch[2].toUpperCase() === 'Đ',
+        b: tfCompactMatch[3].toUpperCase() === 'Đ',
+        c: tfCompactMatch[4].toUpperCase() === 'Đ',
+        d: tfCompactMatch[5].toUpperCase() === 'Đ',
+      };
       tfAnswers[qNum] = itemsMap;
+      part2Map[qNum] = itemsMap;
+    }
+
+    // 2. Quét đáp án Phần I MCQ: dạng "1.A 2.B", "1-A", "1 | A", "Câu 1: A"
+    if (currentPart === 'p1' || currentPart === 'unknown') {
+      const mcqRegex = /(?:Câu\s*)?(\d+)\s*[\.\s:\-\|]+\s*([A-D])(?![a-zA-Z0-9À-ỹ])/gi;
+      let mMatch;
+      while ((mMatch = mcqRegex.exec(line)) !== null) {
+        const qNum = parseInt(mMatch[1], 10);
+        const ans = mMatch[2].toUpperCase() as 'A' | 'B' | 'C' | 'D';
+        if (qNum >= 1 && qNum <= 50) {
+          mcqAnswers[qNum] = ans;
+          part1Map[qNum] = ans;
+        }
+      }
+    }
+
+    // 3. Quét đáp án Phần III Trả lời ngắn: "Câu 1: 15" hoặc "1 | -3,5" hoặc "1. 2025"
+    if (currentPart === 'p3' || currentPart === 'unknown') {
+      const shortRegex = /(?:Câu\s*)?(\d+)\s*[\.\s:\-\|]+\s*([-+]?\d+(?:[\.,\/]\d+)?)(?=\s|$|\||,|;)/gi;
+      let sMatch;
+      while ((sMatch = shortRegex.exec(line)) !== null) {
+        const qNum = parseInt(sMatch[1], 10);
+        const val = sMatch[2].replace(',', '.').slice(0, 4);
+        if (qNum >= 1 && qNum <= 40) {
+          if (currentPart === 'p3' || (!tfAnswers[qNum] && !mcqAnswers[qNum])) {
+            shortAnswers[qNum] = val;
+            part3Map[qNum] = val;
+          }
+        }
+      }
     }
   }
 
-  // 3. Quét đáp án Phần III Trả lời ngắn: ví dụ "Câu 1: 15" hoặc "1. 3,5"
-  const shortRegex = /(?:Câu\s*)?(\d+)[\s:\.\-]+([-+]?\d+(?:[\.,\/]\d+)?)/gi;
-  let sMatch;
-  while ((sMatch = shortRegex.exec(answerText)) !== null) {
-    const qNum = parseInt(sMatch[1], 10);
-    const val = sMatch[2].replace(',', '.').slice(0, 4);
-    shortAnswers[qNum] = val;
-  }
-
-  return { mcqAnswers, tfAnswers, shortAnswers };
+  return {
+    mcqAnswers,
+    tfAnswers,
+    shortAnswers,
+    byPart: {
+      part_1_mcq: part1Map,
+      part_2_true_false: part2Map,
+      part_3_short_answer: part3Map,
+    },
+  };
 }
 
 /**

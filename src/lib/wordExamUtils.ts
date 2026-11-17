@@ -3,6 +3,8 @@ import { renderAsync } from 'docx-preview';
 import * as mammoth from 'mammoth';
 import html2canvas from 'html2canvas';
 import katex from 'katex';
+import { Question, QuestionPart1MCQ, QuestionPart2TrueFalse, QuestionPart3ShortAnswer } from '../types/math';
+import { extractAnswerKeysFromTable, extractExamMetadataFromHeader } from './latexExamParser';
 
 /**
  * Chuyển đổi một node OMML (<m:oMath> / <m:oMathPara>) từ word/document.xml sang chuỗi LaTeX đọc được
@@ -887,6 +889,562 @@ export async function renderPlainTextToPageImages(
       logging: false,
     });
     return sliceTallCanvasToPages(canvas);
+  } finally {
+    iframe.remove();
+  }
+}
+
+function getCleanElementText(el: Element): string {
+  // Đọc text bỏ qua lớp .katex-html bị nhân đôi với .katex-mathml, hoặc bỏ .katex-mathml nếu giữ .katex-html
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent || '';
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const elem = node as Element;
+    if (elem.classList?.contains('katex-mathml')) return '';
+    const tag = elem.tagName.toLowerCase();
+    if (tag === 'br') return '\n';
+    if (tag === 'tr') {
+      const cells = Array.from(elem.children).map((c) => walk(c).trim()).filter(Boolean);
+      return cells.join(' | ') + '\n';
+    }
+    let out = '';
+    for (let i = 0; i < node.childNodes.length; i++) {
+      out += walk(node.childNodes[i]);
+    }
+    if (tag === 'p' || tag === 'div' || tag === 'li' || tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4') {
+      out += '\n';
+    }
+    return out;
+  };
+  return walk(el)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function isVisualContentEmpty(el: Element): boolean {
+  const txt = getCleanElementText(el);
+  if (txt.length > 0) return false;
+  if (el.querySelector('img, svg, canvas, table, .katex, hr')) return false;
+  return true;
+}
+
+const WORD_QUESTION_START_RE = /^(?:\[[^\]]{1,45}\]\s*)?(?:Câu|CÂU|Bài|BÀI)\s+(\d{1,3})(?:\s*[\.\:\)\-–—]|\s+(?!(?:và|hoặc|,|đến)\s*(?:câu|bài)?\s*\d)|\s*$)/i;
+const WORD_ALT_NUM_START_RE = /^(\d{1,2})[\.\)]\s+(?=[A-ZÀ-Ỹa-zà-ỹ0-9\(])/;
+
+function detectPartFromHeading(text: string): 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' | null {
+  const lower = text.toLowerCase();
+  // Tránh nhận nhầm khi chữ "phần" xuất hiện trong câu đề bài dài
+  if (text.length > 260 && !/^(?:phần\s+[i123v])/i.test(text.trim())) return null;
+
+  if (
+    /\bphần\s*(?:iii|3)\b/i.test(lower) ||
+    (/trả\s+lời\s+ngắn|điền\s+đáp\s+số|điền\s+kết\s+quả/i.test(lower) && text.length < 220)
+  ) {
+    return 'part_3_short_answer';
+  }
+  if (
+    /\bphần\s*(?:ii|2)\b/i.test(lower) ||
+    (/câu\s+trắc\s+nghiệm\s+đúng\s*\/?\s*sai|chọn\s+đúng\s+hoặc\s+sai/i.test(lower) && text.length < 220)
+  ) {
+    return 'part_2_true_false';
+  }
+  if (
+    /\bphần\s*(?:i|1)\b(?!i)/i.test(lower) ||
+    (/trắc\s+nghiệm\s+(?:nhiều\s+phương\s+án|4\s+lựa\s+chọn)/i.test(lower) && text.length < 220)
+  ) {
+    return 'part_1_mcq';
+  }
+  return null;
+}
+
+function isAnswerSectionHeadingText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 120 || trimmed.includes('?')) return false;
+  if (/nào\s+(?:dưới|sau)\s+đây/i.test(trimmed)) return false;
+  return /^(?:BẢNG\s+ĐÁP\s+ÁN|ĐÁP\s+ÁN\s*(?:CHI\s+TIẾT|THAM\s+KHẢO|ĐỀ\s+THI|CHÍNH\s+THỨC)?|HƯỚNG\s+DẪN\s+CHẤM|LỜI\s+GIẢI\s+CHI\s+TIẾT|ĐÁP\s+ÁN\s+VÀ\s+HƯỚNG\s+DẪN)/i.test(
+    trimmed
+  );
+}
+
+function isExamBoilerplateLine(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  if (!lower) return true;
+  if (/^(?:trang|page)\s+\d+(?:\s*\/\s*\d+)?$/i.test(lower)) return true;
+  if (/^[-–—]\s*\d+\s*[-–—]$/.test(lower)) return true;
+  if (/^[-–—\*\s]{2,}hết[-–—\*\s]{2,}$/i.test(lower)) return true;
+  if (
+    lower.includes('thí sinh không được sử dụng tài liệu') ||
+    lower.includes('cán bộ coi thi không giải thích') ||
+    lower.includes('thí sinh trả lời từ câu') ||
+    lower.includes('mỗi câu hỏi thí sinh chỉ chọn') ||
+    lower.includes('trong mỗi ý a), b), c), d)')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export interface WordAutoCropResult {
+  questions: Question[];
+  extractedText: string;
+  metadata: {
+    title?: string;
+    grade?: 10 | 11 | 12;
+    durationMinutes?: number;
+  };
+}
+
+/**
+ * Tự động nhận diện ranh giới từng câu hỏi trong file Word (.docx)
+ * bằng cấu trúc DOM + KaTeX và kết xuất thành ảnh cắt riêng sắc nét cho từng câu
+ */
+export async function autoCropWordDocxToQuestions(
+  arrayBuffer: ArrayBuffer,
+  options?: {
+    onProgress?: (msg: string) => void;
+  }
+): Promise<WordAutoCropResult> {
+  const onProgress = options?.onProgress;
+  onProgress?.('Đang phân tích cấu trúc tài liệu Word...');
+
+  const extractedText = await extractWordTextFromDocx(arrayBuffer);
+  const rawMeta = extractExamMetadataFromHeader(extractedText);
+  const headerMeta = {
+    title: rawMeta.detectedTitle,
+    grade: rawMeta.detectedGrade,
+    durationMinutes: rawMeta.detectedDuration,
+  };
+
+  const { iframe, doc } = await createCleanRenderIframe();
+  try {
+    const styleRoot = doc.getElementById('style-root')!;
+    const docRoot = doc.getElementById('doc-root')!;
+
+    let usedFallbackHtml = false;
+    try {
+      await renderAsync(arrayBuffer, docRoot, styleRoot, {
+        className: 'docx',
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        ignoreFonts: false,
+        breakPages: true,
+        useBase64URL: true,
+        renderHeaders: false,
+        renderFooters: false,
+        experimental: true,
+      });
+    } catch {
+      usedFallbackHtml = true;
+    }
+
+    if (!usedFallbackHtml) {
+      replaceMathMlWithKatex(doc);
+    }
+
+    let sections = Array.from(docRoot.querySelectorAll('section.docx')) as HTMLElement[];
+    if (usedFallbackHtml || sections.length === 0) {
+      docRoot.innerHTML = '';
+      const pageDiv = doc.createElement('div');
+      pageDiv.className = 'word-fallback-page';
+      try {
+        const mammothResult = await mammoth.convertToHtml({ arrayBuffer });
+        pageDiv.innerHTML = mammothResult.value?.trim()
+          ? mammothResult.value
+          : extractedText.split('\n').map((line) => `<p>${renderTextLineWithKatex(line)}</p>`).join('');
+      } catch {
+        pageDiv.innerHTML = extractedText.split('\n').map((line) => `<p>${renderTextLineWithKatex(line)}</p>`).join('');
+      }
+      docRoot.appendChild(pageDiv);
+      sections = [pageDiv];
+    }
+
+    sanitizeStylesAgainstModernColorFunctions(doc);
+    await waitForIframeAssets(doc);
+
+    // Đo chiều rộng vùng nội dung chuẩn của trang Word
+    let contentWidthPx = 680;
+    const firstArticle = sections[0]?.querySelector('article') as HTMLElement | null;
+    if (firstArticle && firstArticle.getBoundingClientRect().width > 300) {
+      contentWidthPx = Math.round(firstArticle.getBoundingClientRect().width);
+    } else if (sections[0] && sections[0].getBoundingClientRect().width > 300) {
+      const cs = doc.defaultView?.getComputedStyle(sections[0]);
+      const padL = parseFloat(cs?.paddingLeft || '0') || 0;
+      const padR = parseFloat(cs?.paddingRight || '0') || 0;
+      const innerW = sections[0].getBoundingClientRect().width - padL - padR;
+      if (innerW > 300) contentWidthPx = Math.round(innerW);
+    }
+    contentWidthPx = Math.max(580, Math.min(760, contentWidthPx));
+
+    // Thu thập tuần tự các block DOM từ tất cả các trang (bỏ header/footer)
+    const rawBlocks: HTMLElement[] = [];
+    const pushElementExpanded = (el: HTMLElement) => {
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'header' || tag === 'footer') return;
+      if (el.classList?.contains('docx-header') || el.classList?.contains('docx-footer')) return;
+
+      // Nếu là bảng bố cục chứa nhiều câu hỏi (giáo viên xếp đề vào bảng), bung các ô theo cột/hàng
+      if (tag === 'table') {
+        const txt = getCleanElementText(el);
+        const qHits = (txt.match(/(?:^|\n|\|)\s*(?:Câu|CÂU|Bài)\s+\d+/gi) || []).length;
+        if (qHits >= 2 && !isAnswerSectionHeadingText(txt.split('\n')[0] || '')) {
+          const rows = Array.from(el.querySelectorAll(':scope > tbody > tr, :scope > tr')) as HTMLTableRowElement[];
+          const maxCols = rows.reduce((m, r) => Math.max(m, r.cells.length), 0);
+          const col1HasQ =
+            maxCols >= 2 &&
+            rows.some((r) => r.cells[1] && WORD_QUESTION_START_RE.test(getCleanElementText(r.cells[1])));
+
+          if (col1HasQ) {
+            for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+              for (const row of rows) {
+                const cell = row.cells[colIdx];
+                if (!cell) continue;
+                Array.from(cell.children).forEach((child) => pushElementExpanded(child as HTMLElement));
+              }
+            }
+          } else {
+            for (const row of rows) {
+              for (let colIdx = 0; colIdx < row.cells.length; colIdx++) {
+                const cell = row.cells[colIdx];
+                Array.from(cell.children).forEach((child) => pushElementExpanded(child as HTMLElement));
+              }
+            }
+          }
+          return;
+        }
+      }
+
+      rawBlocks.push(el);
+    };
+
+    for (const sec of sections) {
+      const article = sec.querySelector('article') as HTMLElement | null;
+      const container = article || sec;
+      for (let i = 0; i < container.children.length; i++) {
+        pushElementExpanded(container.children[i] as HTMLElement);
+      }
+    }
+
+    // Kiểm tra xem tài liệu có sử dụng nhãn "Câu X" hay đánh số "1."
+    const allBlockTexts = rawBlocks.map((b) => getCleanElementText(b));
+    const cauMarkerCount = allBlockTexts.filter((t) => WORD_QUESTION_START_RE.test(t)).length;
+    const useAltNumbering = cauMarkerCount < 2;
+
+    interface GroupedWordQuestion {
+      part: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer';
+      declaredNumber: number;
+      localPartNumber: number;
+      nodes: HTMLElement[];
+      textLines: string[];
+      explanationLines: string[];
+    }
+
+    const grouped: GroupedWordQuestion[] = [];
+    const answerKeyLines: string[] = [];
+    let currentPart: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' = 'part_1_mcq';
+    let inAnswerSection = false;
+    let inQuestionSolution = false;
+    let currentGroup: GroupedWordQuestion | null = null;
+    let pendingSharedNodes: HTMLElement[] = [];
+    let pendingSharedLines: string[] = [];
+    let sharedRemainingCount = 0;
+    const partLocalCounters = { part_1_mcq: 0, part_2_true_false: 0, part_3_short_answer: 0 };
+
+    const flushCurrentGroup = () => {
+      if (!currentGroup) return;
+      while (currentGroup.nodes.length > 0 && isVisualContentEmpty(currentGroup.nodes[currentGroup.nodes.length - 1])) {
+        currentGroup.nodes.pop();
+      }
+      if (currentGroup.nodes.length > 0) {
+        grouped.push(currentGroup);
+      }
+      currentGroup = null;
+      inQuestionSolution = false;
+    };
+
+    for (let i = 0; i < rawBlocks.length; i++) {
+      const block = rawBlocks[i];
+      const text = allBlockTexts[i];
+
+      if (inAnswerSection) {
+        if (text) answerKeyLines.push(text);
+        continue;
+      }
+
+      if (text && isAnswerSectionHeadingText(text)) {
+        flushCurrentGroup();
+        inAnswerSection = true;
+        answerKeyLines.push(text);
+        continue;
+      }
+
+      const detectedPart = detectPartFromHeading(text);
+      if (detectedPart && !WORD_QUESTION_START_RE.test(text)) {
+        flushCurrentGroup();
+        currentPart = detectedPart;
+        pendingSharedNodes = [];
+        pendingSharedLines = [];
+        sharedRemainingCount = 0;
+        continue;
+      }
+
+      if (text && isExamBoilerplateLine(text)) {
+        // Nếu gặp dòng "--- HẾT ---" ở cuối đề thì đóng câu cuối lại để không hút nội dung thừa phía sau
+        if (/hết/i.test(text) && currentGroup) {
+          flushCurrentGroup();
+        }
+        continue;
+      }
+
+      // Kiểm tra bắt đầu câu hỏi mới
+      const qMatch = text.match(WORD_QUESTION_START_RE) || (useAltNumbering ? text.match(WORD_ALT_NUM_START_RE) : null);
+      if (qMatch) {
+        flushCurrentGroup();
+        if (detectedPart) {
+          currentPart = detectedPart;
+        }
+        const declaredNum = parseInt(qMatch[1], 10) || grouped.length + 1;
+        partLocalCounters[currentPart] += 1;
+
+        const initNodes: HTMLElement[] = [];
+        const initLines: string[] = [];
+        if (sharedRemainingCount > 0 && pendingSharedNodes.length > 0) {
+          initNodes.push(...pendingSharedNodes);
+          initLines.push(...pendingSharedLines);
+          sharedRemainingCount--;
+          if (sharedRemainingCount <= 0) {
+            pendingSharedNodes = [];
+            pendingSharedLines = [];
+          }
+        }
+        initNodes.push(block);
+        if (text) initLines.push(text);
+
+        currentGroup = {
+          part: currentPart,
+          declaredNumber: declaredNum,
+          localPartNumber: partLocalCounters[currentPart],
+          nodes: initNodes,
+          textLines: initLines,
+          explanationLines: [],
+        };
+        continue;
+      }
+
+      // Nhận diện lời dẫn dữ kiện chung (nếu đứng giữa các câu hỏi)
+      if (
+        !currentGroup &&
+        /(?:dựa\s+vào\s+(?:thông\s+tin|dữ\s+kiện|bảng|đồ\s+thị)|sử\s+dụng\s+(?:thông\s+tin|dữ\s+kiện)|dữ\s+kiện\s+chung|dùng\s+cho\s+(?:các\s+)?câu)/i.test(
+          text
+        )
+      ) {
+        pendingSharedNodes.push(block);
+        pendingSharedLines.push(text);
+        const rangeM = text.match(/câu\s*(\d+)\s*(?:đến|-|và)\s*(?:câu\s*)?(\d+)/i);
+        sharedRemainingCount = rangeM ? Math.max(2, parseInt(rangeM[2], 10) - parseInt(rangeM[1], 10) + 1) : 2;
+        continue;
+      }
+
+      if (!currentGroup) {
+        // Bỏ qua phần tiêu đề trường/sở/họ tên trước Câu 1
+        continue;
+      }
+
+      // Nếu trong cùng một câu có phần "Lời giải:" / "Hướng dẫn giải:" -> tách riêng sang explanation, không vẽ vào ảnh đề thi của học sinh
+      if (/^(?:Lời\s+giải|Hướng\s+dẫn\s+giải|HDG)\s*[:\.]/i.test(text)) {
+        inQuestionSolution = true;
+      }
+
+      if (inQuestionSolution) {
+        if (text) currentGroup.explanationLines.push(text);
+        continue;
+      }
+
+      currentGroup.nodes.push(block);
+      if (text) currentGroup.textLines.push(text);
+    }
+
+    flushCurrentGroup();
+
+    if (grouped.length === 0) {
+      return { questions: [], extractedText, metadata: headerMeta };
+    }
+
+    // Tạo vùng staging chuẩn bề rộng để render từng câu hỏi thành ảnh sắc nét
+    const staging = doc.createElement('div');
+    staging.id = 'auto-crop-question-staging';
+    staging.style.width = `${contentWidthPx}px`;
+    staging.style.padding = '14px 18px';
+    staging.style.background = '#ffffff';
+    staging.style.color = '#0f172a';
+    staging.style.boxSizing = 'content-box';
+    staging.style.overflow = 'hidden';
+    docRoot.innerHTML = '';
+    docRoot.appendChild(staging);
+
+    // Trích xuất đáp án từ bảng đáp án cuối file (hoặc toàn file)
+    const answerText = answerKeyLines.join('\n');
+    const parsedKeys = answerText
+      ? extractAnswerKeysFromTable(answerText, true)
+      : extractAnswerKeysFromTable(extractedText, false);
+
+    const questions: Question[] = [];
+    const baseTs = Date.now();
+
+    for (let idx = 0; idx < grouped.length; idx++) {
+      const grp = grouped[idx];
+      onProgress?.(`Đang cắt ảnh câu ${idx + 1}/${grouped.length} từ file Word...`);
+
+      staging.innerHTML = '';
+      for (const origNode of grp.nodes) {
+        const clone = origNode.cloneNode(true) as HTMLElement;
+        // Chuẩn hóa nhẹ margin đầu/cuối để khung cắt cân đối
+        clone.style.maxWidth = '100%';
+        staging.appendChild(clone);
+      }
+
+      await waitForIframeAssets(doc);
+
+      let croppedDataUrl = '';
+      if (staging.offsetHeight >= 8 && staging.offsetWidth >= 20) {
+        const rawCanvas = await html2canvas(staging, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          logging: false,
+        });
+
+        const MAX_W = 1200;
+        if (rawCanvas.width > MAX_W) {
+          const outCanvas = doc.createElement('canvas');
+          outCanvas.width = MAX_W;
+          outCanvas.height = Math.max(1, Math.round((rawCanvas.height * MAX_W) / rawCanvas.width));
+          const ctx = outCanvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+            ctx.drawImage(rawCanvas, 0, 0, outCanvas.width, outCanvas.height);
+            croppedDataUrl = outCanvas.toDataURL('image/jpeg', 0.9);
+          } else {
+            croppedDataUrl = rawCanvas.toDataURL('image/jpeg', 0.9);
+          }
+        } else {
+          croppedDataUrl = rawCanvas.toDataURL('image/jpeg', 0.9);
+        }
+      }
+
+      const fullQText = grp.textLines.join('\n');
+      const fullExplText = grp.explanationLines.join('\n').trim();
+      const seqNum = idx + 1;
+
+      // Xác định lại loại câu hỏi nếu dấu hiệu thực tế trong nội dung rất rõ
+      const hasUppercaseOpts = /(?:^|\n|\s{2,})\s*A\s*[\.\:\)]\s*[\s\S]*B\s*[\.\:\)]/m.test(fullQText);
+      const hasLowerTfOpts = /(?:^|\n|\s{2,})\s*a\s*[\)\.]\s*[\s\S]*b\s*[\)\.]/m.test(fullQText);
+
+      let finalPart = grp.part;
+      if (hasUppercaseOpts && !hasLowerTfOpts) finalPart = 'part_1_mcq';
+      else if (hasLowerTfOpts && !hasUppercaseOpts) finalPart = 'part_2_true_false';
+
+      const numCandidates = [grp.declaredNumber, grp.localPartNumber, seqNum];
+
+      if (finalPart === 'part_2_true_false') {
+        let tfKey: Record<string, boolean> | undefined;
+        for (const n of numCandidates) {
+          tfKey = parsedKeys.byPart?.part_2_true_false?.[n] || parsedKeys.tfAnswers[n];
+          if (tfKey) break;
+        }
+        const subKeys: Array<'a' | 'b' | 'c' | 'd'> = ['a', 'b', 'c', 'd'];
+        const items = subKeys.map((sk) => ({
+          id: `tf_${sk}_${baseTs}_${idx}`,
+          subKey: sk,
+          text: '',
+          isCorrect: tfKey && tfKey[sk] !== undefined ? tfKey[sk] : sk === 'a' || sk === 'b',
+        }));
+
+        const qObj: QuestionPart2TrueFalse = {
+          id: `q_word_${baseTs}_${seqNum}`,
+          part: 'part_2_true_false',
+          questionNumber: seqNum,
+          prompt: `Câu ${seqNum}. Xét tính đúng/sai của các mệnh đề sau:`,
+          pdfAttachmentUrl: croppedDataUrl || undefined,
+          imageAttachment: croppedDataUrl || undefined,
+          items,
+          explanation: fullExplText || '',
+          points: 1.0,
+        };
+        questions.push(qObj);
+      } else if (finalPart === 'part_3_short_answer') {
+        let shortAns = '';
+        const inlineAns = (fullQText + '\n' + fullExplText).match(/(?:Đáp\s*(?:án|số)|Kết\s*quả|Chọn)\s*[:\.]?\s*([-+]?\d+(?:[.,\/]\d+)?)/i);
+        if (inlineAns) {
+          shortAns = inlineAns[1].replace(',', '.').slice(0, 4);
+        }
+        if (!shortAns) {
+          for (const n of numCandidates) {
+            const k = parsedKeys.byPart?.part_3_short_answer?.[n] || parsedKeys.shortAnswers[n];
+            if (k) {
+              shortAns = k;
+              break;
+            }
+          }
+        }
+        const qObj: QuestionPart3ShortAnswer = {
+          id: `q_word_${baseTs}_${seqNum}`,
+          part: 'part_3_short_answer',
+          questionNumber: seqNum,
+          prompt: `Câu ${seqNum}. Điền đáp số của bài toán:`,
+          pdfAttachmentUrl: croppedDataUrl || undefined,
+          imageAttachment: croppedDataUrl || undefined,
+          correctAnswer: shortAns,
+          explanation: fullExplText || '',
+          points: 0.5,
+        };
+        questions.push(qObj);
+      } else {
+        let mcqAns: 'A' | 'B' | 'C' | 'D' = 'A';
+        const inlineAns = (fullQText + '\n' + fullExplText).match(/(?:Đáp\s*án|Chọn|Key)\s*[:\.]?\s*([A-D])\b/i);
+        if (inlineAns) {
+          mcqAns = inlineAns[1].toUpperCase() as 'A' | 'B' | 'C' | 'D';
+        } else {
+          for (const n of numCandidates) {
+            const k = parsedKeys.byPart?.part_1_mcq?.[n] || parsedKeys.mcqAnswers[n];
+            if (k) {
+              mcqAns = k;
+              break;
+            }
+          }
+        }
+        const qObj: QuestionPart1MCQ = {
+          id: `q_word_${baseTs}_${seqNum}`,
+          part: 'part_1_mcq',
+          questionNumber: seqNum,
+          prompt: `Câu ${seqNum}. Chọn một phương án đúng nhất:`,
+          pdfAttachmentUrl: croppedDataUrl || undefined,
+          imageAttachment: croppedDataUrl || undefined,
+          options: [
+            { key: 'A', text: '' },
+            { key: 'B', text: '' },
+            { key: 'C', text: '' },
+            { key: 'D', text: '' },
+          ],
+          correctAnswer: mcqAns,
+          explanation: fullExplText || '',
+          points: 0.25,
+        };
+        questions.push(qObj);
+      }
+    }
+
+    return {
+      questions,
+      extractedText,
+      metadata: headerMeta,
+    };
   } finally {
     iframe.remove();
   }

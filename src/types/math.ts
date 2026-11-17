@@ -1,6 +1,9 @@
 export type UserRole = 'student' | 'teacher' | 'admin';
 export type AccountTier = 'free' | 'premium';
 
+export type TeachingSubject = 'Toán Học' | 'Vật Lý' | 'Hóa Học';
+export const TEACHING_SUBJECTS: TeachingSubject[] = ['Toán Học', 'Vật Lý', 'Hóa Học'];
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -21,7 +24,7 @@ export interface UserProfile {
   status?: 'active' | 'pending_approval' | 'rejected'; // Trạng thái tài khoản (phê duyệt bởi admin)
   requestedAt?: string; // Thời gian gửi yêu cầu đăng ký
   rejectionReason?: string; // Lý do từ chối nếu có
-  subject?: string; // Tổ chuyên môn hoặc bộ môn giảng dạy
+  subject?: string; // Tổ chuyên môn hoặc bộ môn giảng dạy (Toán Học | Vật Lý | Hóa Học)
 }
 
 export interface AutoApprovalSettings {

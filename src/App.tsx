@@ -65,6 +65,8 @@ import { ClassroomManagerView } from './components/classroom/ClassroomManagerVie
 import { TeacherPortalView } from './components/teacher/TeacherPortalView';
 import { TeacherGradebookView } from './components/teacher/TeacherGradebookView';
 import { GeometryCanvasView } from './components/geometry/GeometryCanvasView';
+import { PhysicsSimulationLabView } from './components/physics/PhysicsSimulationLabView';
+import { ChemistryExperimentLabView } from './components/chemistry/ChemistryExperimentLabView';
 import { AdminDashboardView } from './components/admin/AdminDashboardView';
 import { AuthLoginView } from './components/auth/AuthLoginView';
 import {
@@ -923,12 +925,12 @@ export default function App() {
         setCurrentTab('admin_dashboard');
       }
     } else if (userRole === 'teacher') {
-      const allowedTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'geometry', 'ask_ai', 'profile', 'exam', 'three_3d', 'image_studio'];
+      const allowedTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'geometry', 'physics_sim', 'chemistry_lab', 'ask_ai', 'profile', 'exam', 'three_3d', 'image_studio'];
       if (!allowedTeacherTabs.includes(currentTab)) {
         setCurrentTab('classroom');
       }
     } else if (userRole === 'student') {
-      const allowedStudentTabs = ['ask_ai', 'classroom', 'student_history', 'geometry', 'profile', 'exam', 'three_3d', 'image_studio'];
+      const allowedStudentTabs = ['ask_ai', 'classroom', 'student_history', 'geometry', 'physics_sim', 'chemistry_lab', 'profile', 'exam', 'three_3d', 'image_studio'];
       if (!allowedStudentTabs.includes(currentTab)) {
         setCurrentTab('ask_ai');
       }
@@ -1621,6 +1623,14 @@ export default function App() {
       return <GeometryCanvasView />;
     }
 
+    // 2b. Mô Phỏng Vật Lý & Thí Nghiệm Hóa Học (Học sinh và Giáo viên)
+    if (currentTab === 'physics_sim') {
+      return <PhysicsSimulationLabView />;
+    }
+    if (currentTab === 'chemistry_lab') {
+      return <ChemistryExperimentLabView />;
+    }
+
     // 3. Quản trị viên (Super Admin)
     if (userRole === 'admin') {
       return (
@@ -2099,7 +2109,7 @@ export default function App() {
         <footer className="bg-white border-t border-slate-200 py-5 px-4 text-center text-xs text-slate-500">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
             <p>© 2026 Toán Học LIKI</p>
-            <span className="text-slate-400">Học &amp; Thi Toán THPT Trực Tuyến</span>
+            <span className="text-slate-400">Học, Thi &amp; Thí Nghiệm Toán · Lý · Hóa THPT</span>
           </div>
         </footer>
       )}

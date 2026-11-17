@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, Classroom, StudentExamSubmission } from '../../types/math';
+import { UserProfile, Classroom, StudentExamSubmission, TEACHING_SUBJECTS } from '../../types/math';
 import {
   User,
   Mail,
@@ -56,12 +56,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const [phone, setPhone] = useState(userProfile.phone || '0912 345 678');
   const [schoolName, setSchoolName] = useState(userProfile.schoolName || 'Toán Học LIKI');
   const [grade, setGrade] = useState<10 | 11 | 12>(userProfile.grade);
-  const [subject, setSubject] = useState(userProfile.subject || (isTeacher ? 'Tổ Toán - Tin THPT' : 'Toán Học'));
+  const [subject, setSubject] = useState(userProfile.subject || (isTeacher ? 'Toán Học' : 'Toán - Lý - Hóa THPT'));
   const [bio, setBio] = useState(
     userProfile.bio ||
       (isTeacher
-        ? 'Giáo viên phụ trách bồi dưỡng chuyên đề Toán Giải tích và Hình học không gian THPT.'
-        : 'Học sinh lớp 12 chuyên Toán, định hướng ôn luyện kỳ thi Tốt nghiệp THPT 2025.')
+        ? 'Giáo viên phụ trách giảng dạy và bồi dưỡng kiến thức THPT.'
+        : 'Học sinh THPT, định hướng ôn luyện kỳ thi Tốt nghiệp THPT.')
   );
   const [avatarUrl, setAvatarUrl] = useState(
     userProfile.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userProfile.name)}`
@@ -78,12 +78,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     setPhone(userProfile.phone || '0912 345 678');
     setSchoolName(userProfile.schoolName || 'Toán Học LIKI');
     setGrade(userProfile.grade);
-    setSubject(userProfile.subject || (userProfile.role === 'teacher' ? 'Tổ Toán - Tin THPT' : 'Toán Học'));
+    setSubject(userProfile.subject || (userProfile.role === 'teacher' ? 'Toán Học' : 'Toán - Lý - Hóa THPT'));
     setBio(
       userProfile.bio ||
         (userProfile.role === 'teacher'
-          ? 'Giáo viên phụ trách bồi dưỡng chuyên đề Toán Giải tích và Hình học không gian THPT.'
-          : 'Học sinh lớp 12 chuyên Toán, định hướng ôn luyện kỳ thi Tốt nghiệp THPT 2025.')
+          ? 'Giáo viên phụ trách giảng dạy và bồi dưỡng kiến thức THPT.'
+          : 'Học sinh THPT, định hướng ôn luyện kỳ thi Tốt nghiệp THPT.')
     );
     setAvatarUrl(
       userProfile.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userProfile.name)}`
@@ -263,11 +263,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               <span className="text-[10px] text-amber-700 font-semibold">Bài tập trên lớp</span>
             </div>
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Trạng Thái Giảng Dạy</span>
+              <span className="text-[11px] font-bold text-slate-400 block uppercase">Môn Giảng Dạy</span>
               <span className="text-base font-extrabold text-blue-600 mt-2 block">
-                Đang Giảng Dạy
+                {subject || 'Toán Học'}
               </span>
-              <span className="text-[10px] text-blue-500 font-semibold">Tổ Toán THPT</span>
+              <span className="text-[10px] text-blue-500 font-semibold">Đang Giảng Dạy</span>
             </div>
           </>
         ) : (
@@ -415,12 +415,25 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               )}
             </div>
             {isTeacher ? (
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="w-full h-11 px-3.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
-              />
+              <div className="grid grid-cols-3 gap-2">
+                {TEACHING_SUBJECTS.map((subj) => {
+                  const active = subject === subj;
+                  return (
+                    <button
+                      key={subj}
+                      type="button"
+                      onClick={() => setSubject(subj)}
+                      className={`h-11 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        active
+                          ? 'bg-blue-50 border-blue-600 text-blue-700'
+                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {subj}
+                    </button>
+                  );
+                })}
+              </div>
             ) : (
               <div className="space-y-1">
                 <div className="relative">

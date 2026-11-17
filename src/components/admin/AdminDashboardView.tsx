@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { UserProfile, CheatLog, UserRole, AutoApprovalSettings } from '../../types/math';
+import { UserProfile, CheatLog, UserRole, AutoApprovalSettings, TeachingSubject, TEACHING_SUBJECTS } from '../../types/math';
 import {
   Users,
   ShieldAlert,
@@ -167,6 +167,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<'teacher' | 'student'>('student');
   const [newUserGrade, setNewUserGrade] = useState<10 | 11 | 12>(12);
+  const [newUserSubject, setNewUserSubject] = useState<TeachingSubject>('Toán Học');
   const [newUserPassword, setNewUserPassword] = useState('MatKhau@123');
   const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [createUserError, setCreateUserError] = useState<string | null>(null);
@@ -331,6 +332,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       dailyScanCount: 0,
       maxDailyScans: 9999,
       grade: newUserGrade,
+      subject: newUserRole === 'teacher' ? newUserSubject : 'Toán - Lý - Hóa THPT',
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(newUserName.trim())}`,
       password: newUserPassword.trim(),
       status: 'active',
@@ -582,6 +584,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           </span>
                           {u.role === 'student' && (
                             <span className="text-[11px] font-semibold text-slate-500">Khối {u.grade}</span>
+                          )}
+                          {u.role === 'teacher' && u.subject && (
+                            <span className="text-[11px] font-semibold text-slate-600">{u.subject}</span>
                           )}
                         </div>
                       </td>
@@ -886,6 +891,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
+                    {u.role === 'teacher' && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500">Môn giảng dạy:</span>
+                        <span className="font-bold text-purple-700">{u.subject || 'Toán Học'}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-500">Trường THPT:</span>
                       <span className="font-semibold text-slate-800">{u.schoolName || 'Chưa cập nhật'}</span>
@@ -1098,7 +1109,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     }`}
                   >
                     <GraduationCap size={16} />
-                    <span>Giáo Viên Toán</span>
+                    <span>Giáo Viên</span>
                   </button>
 
                   <button
@@ -1215,8 +1226,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </div>
               </div>
 
-              {/* Khối lớp (Nếu là Học sinh) */}
-              {newUserRole === 'student' && (
+              {/* Khối lớp (HS) hoặc Môn giảng dạy (GV) */}
+              {newUserRole === 'student' ? (
                 <div className="space-y-1">
                   <label className="font-bold text-slate-700">Khối Lớp Đang Học *</label>
                   <select
@@ -1227,6 +1238,21 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     <option value={12}>Lớp 12</option>
                     <option value={11}>Lớp 11</option>
                     <option value={10}>Lớp 10</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Môn Giảng Dạy *</label>
+                  <select
+                    value={newUserSubject}
+                    onChange={(e) => setNewUserSubject(e.target.value as TeachingSubject)}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs bg-white focus:border-blue-600 focus:outline-none"
+                  >
+                    {TEACHING_SUBJECTS.map((subj) => (
+                      <option key={subj} value={subj}>
+                        {subj}
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}
