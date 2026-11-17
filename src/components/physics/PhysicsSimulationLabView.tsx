@@ -10,9 +10,15 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Gauge,
+  Radio,
+  Eye,
+  Cpu,
+  Sun,
+  Flame,
 } from 'lucide-react';
+import { ExtraPhysicsSimulations, ExtraPhysicsModuleId } from './ExtraPhysicsSimulations';
 
-type PhysicsModuleId = 'oscillation' | 'projectile' | 'waves' | 'rlc';
+type PhysicsModuleId = 'oscillation' | 'projectile' | 'waves' | 'rlc' | ExtraPhysicsModuleId;
 type OscillationType = 'pendulum' | 'spring';
 type WaveType = 'ripple' | 'young';
 
@@ -1358,26 +1364,33 @@ export const PhysicsSimulationLabView: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 space-y-5">
       {/* Header Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700">
-            Phòng Thí Nghiệm Vật Lý Tương Tác
-          </p>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-0.5">
-            Mô Phỏng Vật Lý THPT Trực Quan
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Điều chỉnh tham số vật lý theo thời gian thực · Quan sát véc-tơ lực, đồ thị dao động &amp; hiện tượng giao thoa
-          </p>
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700">
+              Phòng Thí Nghiệm Vật Lý Tương Tác (Lớp 10 · 11 · 12)
+            </p>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-0.5">
+              Mô Phỏng Vật Lý THPT Trực Quan
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              9 thí nghiệm trọng tâm: Cơ học · Sóng &amp; Quang học · Điện học · Lượng tử · Nhiệt học
+            </p>
+          </div>
         </div>
 
         {/* Interactive Module Switcher */}
-        <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
           {[
             { id: 'oscillation' as PhysicsModuleId, label: 'Dao Động Điều Hòa', icon: Activity },
+            { id: 'standingWave' as PhysicsModuleId, label: 'Sóng Dừng', icon: Radio },
             { id: 'projectile' as PhysicsModuleId, label: 'Ném Xiên', icon: ArrowUpRight },
-            { id: 'waves' as PhysicsModuleId, label: 'Giao Thoa Sóng & Y-âng', icon: Waves },
+            { id: 'waves' as PhysicsModuleId, label: 'Giao Thoa & Y-âng', icon: Waves },
+            { id: 'optics' as PhysicsModuleId, label: 'Thấu Kính Quang Hình', icon: Eye },
+            { id: 'dcCircuit' as PhysicsModuleId, label: 'Định Luật Ôm Toàn Mạch', icon: Cpu },
             { id: 'rlc' as PhysicsModuleId, label: 'Mạch RLC Xoay Chiều', icon: Zap },
+            { id: 'photoelectric' as PhysicsModuleId, label: 'Hiệu Ứng Quang Điện', icon: Sun },
+            { id: 'idealGas' as PhysicsModuleId, label: 'Khí Lý Tưởng (p-V-T)', icon: Flame },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeModule === tab.id;
@@ -1386,7 +1399,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveModule(tab.id)}
-                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   active
                     ? 'bg-white text-sky-700 shadow-xs border border-slate-200'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1400,7 +1413,14 @@ export const PhysicsSimulationLabView: React.FC = () => {
         </div>
       </div>
 
-      {/* Two-Zone Sandbox Layout: 65% Stage (Left) + 35% Controls & Readouts (Right) */}
+      {/* Render New THPT Modules or Core 4 Modules */}
+      {activeModule === 'standingWave' ||
+      activeModule === 'optics' ||
+      activeModule === 'dcCircuit' ||
+      activeModule === 'photoelectric' ||
+      activeModule === 'idealGas' ? (
+        <ExtraPhysicsSimulations moduleId={activeModule} />
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* LEFT ZONE: INTERACTIVE CANVAS STAGE */}
         <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col">
@@ -2244,6 +2264,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
