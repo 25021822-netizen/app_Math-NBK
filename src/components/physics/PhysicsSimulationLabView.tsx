@@ -69,6 +69,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
   // ===========================================================================
   const [oscType, setOscType] = useState<OscillationType>('pendulum');
   const [pendulumLength, setPendulumLength] = useState<number>(1.2); // m
+  const [pendulumMass, setPendulumMass] = useState<number>(1.0); // kg
   const [pendulumAngleDeg, setPendulumAngleDeg] = useState<number>(18); // độ
   const [springK, setSpringK] = useState<number>(40); // N/m
   const [springMass, setSpringMass] = useState<number>(0.4); // kg
@@ -76,6 +77,8 @@ export const PhysicsSimulationLabView: React.FC = () => {
   const [gravity, setGravity] = useState<number>(9.81); // m/s^2
   const [damping, setDamping] = useState<number>(0); // hệ số tắt dần
   const [showVectorsOsc, setShowVectorsOsc] = useState<boolean>(true);
+  const [showEnergyBarsOsc, setShowEnergyBarsOsc] = useState<boolean>(true);
+  const [oscGraphMode, setOscGraphMode] = useState<'both' | 'kinematics' | 'energy'>('both');
   const [oscTelemetry, setOscTelemetry] = useState({
     t: 0,
     x: 0,
@@ -83,6 +86,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
     ek: 0,
     ep: 0,
     eTotal: 0,
+    eInitial: 0,
   });
 
   const oscCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -92,20 +96,49 @@ export const PhysicsSimulationLabView: React.FC = () => {
     omega: 0,
     x: 0.1,
     v: 0,
+    eInitial: 1.0 * 9.81 * 1.2 * (1 - Math.cos((18 * Math.PI) / 180)),
     trail: [] as { x: number; y: number }[],
-    history: [] as { t: number; x: number; v: number }[],
+    history: [] as { t: number; x: number; v: number; ek: number; ep: number; eTotal: number }[],
   });
+
+  const computeInitialOscEnergy = (
+    type: OscillationType = oscType,
+    len = pendulumLength,
+    pMass = pendulumMass,
+    angleDeg = pendulumAngleDeg,
+    gVal = gravity,
+    kVal = springK,
+    ampCm = springAmpCm
+  ) => {
+    if (type === 'pendulum') {
+      const rad = (angleDeg * Math.PI) / 180;
+      return pMass * gVal * len * (1 - Math.cos(rad));
+    }
+    const ampM = ampCm / 100;
+    return 0.5 * kVal * ampM * ampM;
+  };
 
   const resetOscillation = (
     angleDeg = pendulumAngleDeg,
-    ampCm = springAmpCm
+    ampCm = springAmpCm,
+    type = oscType
   ) => {
+    const e0 = computeInitialOscEnergy(
+      type,
+      pendulumLength,
+      pendulumMass,
+      angleDeg,
+      gravity,
+      springK,
+      ampCm
+    );
     oscStateRef.current = {
       t: 0,
       theta: (angleDeg * Math.PI) / 180,
       omega: 0,
       x: ampCm / 100,
       v: 0,
+      eInitial: e0,
       trail: [],
       history: [],
     };
@@ -303,7 +336,26 @@ export const PhysicsSimulationLabView: React.FC = () => {
           st.t += dt;
           const valX = oscType === 'pendulum' ? st.theta * pendulumLength : st.x;
           const valV = oscType === 'pendulum' ? st.omega * pendulumLength : st.v;
-          st.history.push({ t: st.t, x: valX, v: valV });
+          const ekStep =
+            oscType === 'pendulum'
+              ? 0.5 * pendulumMass * valV * valV
+              : 0.5 * springMass * st.v * st.v;
+          const epStep =
+            oscType === 'pendulum'
+              ? pendulumMass * gravity * pendulumLength * (1 - Math.cos(st.theta))
+              : 0.5 * springK * st.x * st.x;
+          const eTotalStep = ekStep + epStep;
+          if (st.history.length === 0 || damping === 0) {
+            st.eInitial = eTotalStep;
+          }
+          st.history.push({
+            t: st.t,
+            x: valX,
+            v: valV,
+            ek: ekStep,
+            ep: epStep,
+            eTotal: eTotalStep,
+          });
           if (st.history.length > 260) st.history.shift();
         }
 
@@ -315,26 +367,30 @@ export const PhysicsSimulationLabView: React.FC = () => {
           if (oscType === 'pendulum') {
             const vLinear = st.omega * pendulumLength;
             const hBob = pendulumLength * (1 - Math.cos(st.theta));
-            const ek = 0.5 * 1.0 * vLinear * vLinear;
-            const ep = 1.0 * gravity * hBob;
+            const ek = 0.5 * pendulumMass * vLinear * vLinear;
+            const ep = pendulumMass * gravity * hBob;
+            const eTotal = ek + ep;
             setOscTelemetry({
               t: st.t,
               x: st.theta * pendulumLength * 100,
               v: vLinear,
               ek,
               ep,
-              eTotal: ek + ep,
+              eTotal,
+              eInitial: Math.max(st.eInitial, eTotal),
             });
           } else {
             const ek = 0.5 * springMass * st.v * st.v;
             const ep = 0.5 * springK * st.x * st.x;
+            const eTotal = ek + ep;
             setOscTelemetry({
               t: st.t,
               x: st.x * 100,
               v: st.v,
               ek,
               ep,
-              eTotal: ek + ep,
+              eTotal,
+              eInitial: Math.max(st.eInitial, eTotal),
             });
           }
         }
@@ -429,7 +485,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
     ctx.fillStyle = '#F8FAFC';
     ctx.fillRect(0, 0, w, h);
 
-    const stageH = Math.floor(h * 0.62);
+    const stageH = Math.floor(h * 0.58);
     const graphH = h - stageH;
 
     // Subtle millimeter grid
@@ -449,22 +505,21 @@ export const PhysicsSimulationLabView: React.FC = () => {
     }
 
     const st = oscStateRef.current;
+    const stageCenterOffset = showEnergyBarsOsc && w > 500 ? -54 : 0;
 
     if (oscType === 'pendulum') {
-      const pivotX = w * 0.5;
-      const pivotY = 36;
-      const pxPerMeter = Math.min(180, (stageH - 80) / Math.max(0.6, pendulumLength));
+      const pivotX = w * 0.5 + stageCenterOffset;
+      const pivotY = 34;
+      const pxPerMeter = Math.min(170, (stageH - 76) / Math.max(0.6, pendulumLength));
       const rodPx = pendulumLength * pxPerMeter;
       const bobX = pivotX + rodPx * Math.sin(st.theta);
       const bobY = pivotY + rodPx * Math.cos(st.theta);
 
-      // Update motion trail
       if (isRunning) {
         st.trail.push({ x: bobX, y: bobY });
         if (st.trail.length > 42) st.trail.shift();
       }
 
-      // Support beam
       ctx.fillStyle = '#334155';
       ctx.fillRect(pivotX - 70, pivotY - 10, 140, 10);
       ctx.strokeStyle = '#94A3B8';
@@ -475,7 +530,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Angle arc
       if (Math.abs(st.theta) > 0.01) {
         ctx.strokeStyle = '#0284C7';
         ctx.lineWidth = 1.5;
@@ -493,7 +547,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
         );
       }
 
-      // Trail
       if (st.trail.length > 1) {
         for (let i = 1; i < st.trail.length; i++) {
           ctx.strokeStyle = `rgba(2, 132, 199, ${(i / st.trail.length) * 0.45})`;
@@ -505,7 +558,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
         }
       }
 
-      // Rod & Pivot
       ctx.strokeStyle = '#1E293B';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -518,7 +570,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
       ctx.arc(pivotX, pivotY, 5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Vectors on bob
       if (showVectorsOsc) {
         const vLin = st.omega * pendulumLength;
         const vScale = 28;
@@ -527,7 +578,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
         if (Math.hypot(vx, vy) > 3) {
           drawArrow(ctx, bobX, bobY, bobX + vx, bobY + vy, '#059669', 'v');
         }
-        // Restoring tangential gravity component
         const fRest = -gravity * Math.sin(st.theta) * 5.5;
         const fx = fRest * Math.cos(st.theta);
         const fy = -fRest * Math.sin(st.theta);
@@ -536,7 +586,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
         }
       }
 
-      // Bob sphere
       const grad = ctx.createRadialGradient(bobX - 4, bobY - 4, 2, bobX, bobY, 16);
       grad.addColorStop(0, '#38BDF8');
       grad.addColorStop(1, '#0369A1');
@@ -548,24 +597,22 @@ export const PhysicsSimulationLabView: React.FC = () => {
       ctx.lineWidth = 1.5;
       ctx.stroke();
     } else {
-      // Horizontal spring-mass oscillator
-      const wallX = 48;
-      const eqX = w * 0.56;
-      const trackY = stageH * 0.55;
-      const pxPerCm = Math.min(8, (w * 0.28) / Math.max(10, springAmpCm));
+      const wallX = 44;
+      const eqX = (showEnergyBarsOsc && w > 500 ? w * 0.43 : w * 0.56);
+      const trackY = stageH * 0.54;
+      const maxAmpSpan = showEnergyBarsOsc && w > 500 ? w * 0.21 : w * 0.28;
+      const pxPerCm = Math.min(8, maxAmpSpan / Math.max(10, springAmpCm));
       const massX = eqX + st.x * 100 * pxPerCm;
 
-      // Wall & track
       ctx.fillStyle = '#334155';
       ctx.fillRect(wallX - 14, trackY - 75, 14, 105);
       ctx.strokeStyle = '#94A3B8';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(wallX, trackY + 26);
-      ctx.lineTo(w - 30, trackY + 26);
+      ctx.lineTo(eqX + springAmpCm * pxPerCm + 42, trackY + 26);
       ctx.stroke();
 
-      // Equilibrium & amplitude markers
       const ampPx = springAmpCm * pxPerCm;
       [
         { x: eqX - ampPx, label: '-A', color: '#94A3B8' },
@@ -584,7 +631,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
         ctx.fillText(m.label, m.x - 14, trackY + 56);
       });
 
-      // Helical spring coils
       const springStart = wallX;
       const springEnd = massX - 24;
       const coils = 14;
@@ -601,7 +647,6 @@ export const PhysicsSimulationLabView: React.FC = () => {
       ctx.lineTo(springEnd, trackY);
       ctx.stroke();
 
-      // Mass block
       ctx.fillStyle = '#0284C7';
       ctx.fillRect(massX - 24, trackY - 24, 48, 48);
       ctx.strokeStyle = '#0369A1';
@@ -623,7 +668,97 @@ export const PhysicsSimulationLabView: React.FC = () => {
       }
     }
 
-    // Bottom Subplot: Real-time Oscilloscope Graph x(t) and v(t)
+    // =========================================================================
+    // CỘT NĂNG LƯỢNG TRỰC QUAN TRÊN SÂN KHẤU: ĐỘNG NĂNG (Wđ), THẾ NĂNG (Wt), CƠ NĂNG (W)
+    // =========================================================================
+    const currentEk =
+      oscType === 'pendulum'
+        ? 0.5 * pendulumMass * Math.pow(st.omega * pendulumLength, 2)
+        : 0.5 * springMass * st.v * st.v;
+    const currentEp =
+      oscType === 'pendulum'
+        ? pendulumMass * gravity * pendulumLength * (1 - Math.cos(st.theta))
+        : 0.5 * springK * st.x * st.x;
+    const currentE = currentEk + currentEp;
+    const refMaxE = Math.max(st.eInitial, currentE, 1e-4);
+
+    if (showEnergyBarsOsc && w > 420) {
+      const boxW = 158;
+      const boxH = stageH - 28;
+      const boxX = w - boxW - 14;
+      const boxY = 14;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+      ctx.strokeStyle = '#CBD5E1';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxW, boxH, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 11px ui-sans-serif, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Biểu đồ Năng lượng', boxX + 10, boxY + 18);
+
+      const chartTop = boxY + 32;
+      const chartBottom = boxY + boxH - 36;
+      const chartH = Math.max(60, chartBottom - chartTop);
+
+      // Reference ceiling line for Initial Mechanical Energy W0
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(boxX + 10, chartTop);
+      ctx.lineTo(boxX + boxW - 10, chartTop);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#64748B';
+      ctx.font = '600 9px ui-monospace, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`W₀=${refMaxE.toFixed(2)}J`, boxX + boxW - 10, chartTop - 4);
+
+      const bars = [
+        { label: 'Wđ', val: currentEk, color: '#059669' },
+        { label: 'Wt', val: currentEp, color: '#D97706' },
+        { label: 'W', val: currentE, color: '#0284C7' },
+      ];
+      const barW = 28;
+      const gap = 16;
+      const startBarsX = boxX + 22;
+
+      bars.forEach((b, idx) => {
+        const bx = startBarsX + idx * (barW + gap);
+        const ratio = Math.min(1, Math.max(0, b.val / refMaxE));
+        const bh = ratio * chartH;
+        const by = chartBottom - bh;
+
+        // Track
+        ctx.fillStyle = '#F1F5F9';
+        ctx.fillRect(bx, chartTop, barW, chartH);
+
+        // Filled Energy Bar
+        ctx.fillStyle = b.color;
+        ctx.fillRect(bx, by, barW, bh);
+
+        // Label below bar
+        ctx.fillStyle = '#0F172A';
+        ctx.font = '700 10px ui-sans-serif, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(b.label, bx + barW / 2, chartBottom + 13);
+
+        ctx.fillStyle = b.color;
+        ctx.font = '700 9px ui-monospace, monospace';
+        ctx.fillText(b.val.toFixed(2), bx + barW / 2, chartBottom + 25);
+      });
+      ctx.textAlign = 'left';
+    }
+
+    // =========================================================================
+    // BOTTOM SUBPLOT: ĐỒ THỊ x(t), v(t) VÀ/HOẶC NĂNG LƯỢNG Wđ(t), Wt(t), W(t)
+    // =========================================================================
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, stageH, w, graphH);
     ctx.strokeStyle = '#CBD5E1';
@@ -633,56 +768,136 @@ export const PhysicsSimulationLabView: React.FC = () => {
     ctx.lineTo(w, stageH);
     ctx.stroke();
 
-    const midY = stageH + graphH * 0.52;
-    ctx.strokeStyle = '#E2E8F0';
-    ctx.beginPath();
-    ctx.moveTo(48, midY);
-    ctx.lineTo(w - 16, midY);
-    ctx.stroke();
-
-    ctx.fillStyle = '#475569';
-    ctx.font = '600 11px ui-sans-serif, sans-serif';
-    ctx.fillText('Đồ thị thời gian thực: x(t) [xanh dương] · v(t) [xanh lục]', 14, stageH + 18);
-
     const hist = st.history;
-    if (hist.length > 1) {
-      const maxX = Math.max(
-        0.05,
-        oscType === 'pendulum'
-          ? pendulumLength * ((pendulumAngleDeg * Math.PI) / 180)
-          : springAmpCm / 100
-      );
-      const omega0 =
-        oscType === 'pendulum'
-          ? Math.sqrt(gravity / pendulumLength)
-          : Math.sqrt(springK / springMass);
-      const maxV = Math.max(0.1, maxX * omega0);
-      const plotW = w - 64;
-      const plotHalfH = graphH * 0.34;
 
-      // x(t)
-      ctx.strokeStyle = '#0284C7';
-      ctx.lineWidth = 2;
+    const drawKinematicsSubplot = (leftX: number, subW: number) => {
+      const midY = stageH + graphH * 0.56;
+      const padL = leftX + 24;
+      const plotW = Math.max(40, subW - 38);
+      const plotHalfH = graphH * 0.31;
+
+      ctx.strokeStyle = '#E2E8F0';
       ctx.beginPath();
-      hist.forEach((pt, idx) => {
-        const px = 48 + (idx / 259) * plotW;
-        const py = midY - (pt.x / maxX) * plotHalfH;
-        if (idx === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
+      ctx.moveTo(padL, midY);
+      ctx.lineTo(padL + plotW, midY);
       ctx.stroke();
 
-      // v(t)
-      ctx.strokeStyle = '#059669';
-      ctx.lineWidth = 1.6;
+      ctx.fillStyle = '#334155';
+      ctx.font = '600 11px ui-sans-serif, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('x(t) [xanh dương] · v(t) [xanh lục]', leftX + 12, stageH + 18);
+
+      if (hist.length > 1) {
+        const maxX = Math.max(
+          0.05,
+          oscType === 'pendulum'
+            ? pendulumLength * ((pendulumAngleDeg * Math.PI) / 180)
+            : springAmpCm / 100
+        );
+        const omega0 =
+          oscType === 'pendulum'
+            ? Math.sqrt(gravity / pendulumLength)
+            : Math.sqrt(springK / springMass);
+        const maxV = Math.max(0.1, maxX * omega0);
+
+        ctx.strokeStyle = '#0284C7';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        hist.forEach((pt, idx) => {
+          const px = padL + (idx / Math.max(1, hist.length - 1)) * plotW;
+          const py = midY - (pt.x / maxX) * plotHalfH;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+
+        ctx.strokeStyle = '#059669';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        hist.forEach((pt, idx) => {
+          const px = padL + (idx / Math.max(1, hist.length - 1)) * plotW;
+          const py = midY - (pt.v / maxV) * plotHalfH;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      }
+    };
+
+    const drawEnergySubplot = (leftX: number, subW: number) => {
+      const baseY = stageH + graphH - 18;
+      const topY = stageH + 30;
+      const padL = leftX + 24;
+      const plotW = Math.max(40, subW - 38);
+      const plotH = Math.max(30, baseY - topY);
+
+      ctx.strokeStyle = '#E2E8F0';
       ctx.beginPath();
-      hist.forEach((pt, idx) => {
-        const px = 48 + (idx / 259) * plotW;
-        const py = midY - (pt.v / maxV) * plotHalfH;
-        if (idx === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
+      ctx.moveTo(padL, baseY);
+      ctx.lineTo(padL + plotW, baseY);
+      ctx.moveTo(padL, topY);
+      ctx.lineTo(padL + plotW, topY);
       ctx.stroke();
+
+      ctx.fillStyle = '#334155';
+      ctx.font = '600 11px ui-sans-serif, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Wđ(t) [lục] · Wt(t) [cam] · Cơ năng W(t) [xanh]', leftX + 12, stageH + 18);
+
+      if (hist.length > 1) {
+        const eMax = Math.max(refMaxE, ...hist.map((p) => p.eTotal), 1e-4);
+
+        // Đường Wđ (Kinetic)
+        ctx.strokeStyle = '#059669';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        hist.forEach((pt, idx) => {
+          const px = padL + (idx / Math.max(1, hist.length - 1)) * plotW;
+          const py = baseY - (pt.ek / eMax) * plotH;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+
+        // Đường Wt (Potential)
+        ctx.strokeStyle = '#D97706';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        hist.forEach((pt, idx) => {
+          const px = padL + (idx / Math.max(1, hist.length - 1)) * plotW;
+          const py = baseY - (pt.ep / eMax) * plotH;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+
+        // Đường Cơ năng W = Wđ + Wt
+        ctx.strokeStyle = '#0284C7';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        hist.forEach((pt, idx) => {
+          const px = padL + (idx / Math.max(1, hist.length - 1)) * plotW;
+          const py = baseY - (pt.eTotal / eMax) * plotH;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      }
+    };
+
+    if (oscGraphMode === 'both' && w > 520) {
+      const halfW = Math.floor(w / 2);
+      drawKinematicsSubplot(0, halfW);
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.beginPath();
+      ctx.moveTo(halfW, stageH + 8);
+      ctx.lineTo(halfW, h - 8);
+      ctx.stroke();
+      drawEnergySubplot(halfW, w - halfW);
+    } else if (oscGraphMode === 'energy') {
+      drawEnergySubplot(0, w);
+    } else {
+      drawKinematicsSubplot(0, w);
     }
   };
 
@@ -1221,27 +1436,52 @@ export const PhysicsSimulationLabView: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-500 font-semibold">Tốc độ mô phỏng:</span>
-              {[0.5, 1, 1.5].map((sp) => (
-                <button
-                  key={sp}
-                  type="button"
-                  onClick={() => setTimeScale(sp)}
-                  className={`px-2 py-1 rounded-md font-mono tabular-nums font-bold text-[11px] border cursor-pointer ${
-                    timeScale === sp
-                      ? 'bg-sky-600 text-white border-sky-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {sp}×
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              {activeModule === 'oscillation' && (
+                <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200">
+                  {[
+                    { id: 'both' as const, label: 'Song song' },
+                    { id: 'energy' as const, label: 'Đồ thị Wđ, Wt, W' },
+                    { id: 'kinematics' as const, label: 'Đồ thị x, v' },
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setOscGraphMode(mode.id)}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                        oscGraphMode === mode.id
+                          ? 'bg-sky-600 text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-500 font-semibold">Tốc độ:</span>
+                {[0.5, 1, 1.5].map((sp) => (
+                  <button
+                    key={sp}
+                    type="button"
+                    onClick={() => setTimeScale(sp)}
+                    className={`px-2 py-1 rounded-md font-mono tabular-nums font-bold text-[11px] border cursor-pointer ${
+                      timeScale === sp
+                        ? 'bg-sky-600 text-white border-sky-600'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {sp}×
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Canvas Container */}
-          <div className="relative w-full h-[430px] sm:h-[490px] bg-slate-50">
+          <div className="relative w-full h-[450px] sm:h-[520px] bg-slate-50">
             {activeModule === 'oscillation' && (
               <canvas ref={oscCanvasRef} className="w-full h-full block" />
             )}
@@ -1284,9 +1524,9 @@ export const PhysicsSimulationLabView: React.FC = () => {
                   </span>
                 </div>
                 <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                  <span className="text-[11px] text-slate-500 block">Động năng / Thế năng</span>
-                  <span className="font-mono tabular-nums font-bold text-slate-900 mt-0.5 block">
-                    {oscTelemetry.ek.toFixed(3)} J / {oscTelemetry.ep.toFixed(3)} J
+                  <span className="text-[11px] text-slate-500 block">Cơ năng hiện tại W</span>
+                  <span className="font-mono tabular-nums font-bold text-sky-700 mt-0.5 block">
+                    {oscTelemetry.eTotal.toFixed(3)} J
                   </span>
                 </div>
               </>
@@ -1400,6 +1640,109 @@ export const PhysicsSimulationLabView: React.FC = () => {
               </>
             )}
           </div>
+
+          {/* Dedicated Conservation of Mechanical Energy Breakdown for Oscillation */}
+          {activeModule === 'oscillation' && (() => {
+            const denom = Math.max(oscTelemetry.eInitial, oscTelemetry.eTotal, 1e-6);
+            const ekPct = Math.min(100, Math.max(0, (oscTelemetry.ek / denom) * 100));
+            const epPct = Math.min(100 - ekPct, Math.max(0, (oscTelemetry.ep / denom) * 100));
+            const lostEnergy = Math.max(0, oscTelemetry.eInitial - oscTelemetry.eTotal);
+            const lossPct = Math.min(100, Math.max(0, (lostEnergy / denom) * 100));
+            return (
+              <div className="p-4 border-t border-slate-200 bg-slate-50/70 space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm">
+                      Định Luật Bảo Toàn Cơ Năng: W = Wđ + Wt
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Theo dõi sự chuyển hóa qua lại giữa động năng và thế năng trong quá trình dao động
+                    </p>
+                  </div>
+                  <div className="font-mono tabular-nums font-bold text-xs text-slate-800">
+                    {damping === 0 ? (
+                      <span className="text-emerald-700">
+                        Bảo toàn (W = W₀ = {oscTelemetry.eTotal.toFixed(3)} J)
+                      </span>
+                    ) : (
+                      <span className="text-amber-700">
+                        Tắt dần (Hao phí ΔW = {lostEnergy.toFixed(3)} J)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live Proportional Conversion Bar */}
+                <div className="space-y-1.5">
+                  <div className="h-4 w-full rounded-lg overflow-hidden bg-slate-200 flex border border-slate-300/70">
+                    <div
+                      style={{ width: `${ekPct}%` }}
+                      className="h-full bg-emerald-600 transition-all duration-75"
+                      title={`Động năng Wđ: ${ekPct.toFixed(1)}%`}
+                    />
+                    <div
+                      style={{ width: `${epPct}%` }}
+                      className="h-full bg-amber-500 transition-all duration-75"
+                      title={`Thế năng Wt: ${epPct.toFixed(1)}%`}
+                    />
+                    {lossPct > 0.3 && (
+                      <div
+                        style={{ width: `${lossPct}%` }}
+                        className="h-full bg-slate-400 transition-all duration-75"
+                        title={`Năng lượng hao phí: ${lossPct.toFixed(1)}%`}
+                      />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums text-slate-600">
+                    <span>■ Wđ: {ekPct.toFixed(1)}%</span>
+                    <span>■ Wt: {epPct.toFixed(1)}%</span>
+                    {damping > 0 && <span>■ Hao phí do ma sát: {lossPct.toFixed(1)}%</span>}
+                  </div>
+                </div>
+
+                {/* Three Quantitative Energy Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                    <div className="text-[11px] font-bold text-emerald-700">
+                      Động năng (Wđ = ½mv²)
+                    </div>
+                    <div className="font-mono tabular-nums text-base font-extrabold text-slate-900">
+                      {oscTelemetry.ek.toFixed(4)} J
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      Cực đại khi qua vị trí cân bằng (x = 0) và bằng 0 ở hai biên.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                    <div className="text-[11px] font-bold text-amber-700">
+                      Thế năng ({oscType === 'pendulum' ? 'Wt = mgl(1 - cosα)' : 'Wt = ½kx²'})
+                    </div>
+                    <div className="font-mono tabular-nums text-base font-extrabold text-slate-900">
+                      {oscTelemetry.ep.toFixed(4)} J
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      Cực đại ở vị trí biên (±A hoặc ±α₀) và bằng 0 tại vị trí cân bằng.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                    <div className="text-[11px] font-bold text-sky-700">
+                      Cơ năng (W = Wđ + Wt)
+                    </div>
+                    <div className="font-mono tabular-nums text-base font-extrabold text-slate-900">
+                      {oscTelemetry.eTotal.toFixed(4)} J
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      {damping === 0
+                        ? 'Không đổi theo thời gian: động năng tăng bao nhiêu thì thế năng giảm bấy nhiêu.'
+                        : 'Giảm dần theo thời gian do công của lực cản môi trường (b > 0).'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* RIGHT ZONE: PARAMETER CONTROLS & PHYSICS FORMULAS */}
@@ -1417,7 +1760,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setOscType('pendulum');
-                      resetOscillation();
+                      resetOscillation(pendulumAngleDeg, springAmpCm, 'pendulum');
                     }}
                     className={`py-1.5 rounded-md font-bold cursor-pointer ${
                       oscType === 'pendulum' ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
@@ -1429,7 +1772,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setOscType('spring');
-                      resetOscillation();
+                      resetOscillation(pendulumAngleDeg, springAmpCm, 'spring');
                     }}
                     className={`py-1.5 rounded-md font-bold cursor-pointer ${
                       oscType === 'spring' ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
@@ -1451,6 +1794,15 @@ export const PhysicsSimulationLabView: React.FC = () => {
                       onChange={setPendulumLength}
                     />
                     <SliderControl
+                      label="Khối lượng vật nặng m"
+                      valueDisplay={`${pendulumMass.toFixed(2)} kg`}
+                      min={0.2}
+                      max={3.0}
+                      step={0.1}
+                      value={pendulumMass}
+                      onChange={setPendulumMass}
+                    />
+                    <SliderControl
                       label="Biên độ góc ban đầu α₀"
                       valueDisplay={`${pendulumAngleDeg}°`}
                       min={5}
@@ -1459,7 +1811,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
                       value={pendulumAngleDeg}
                       onChange={(v) => {
                         setPendulumAngleDeg(v);
-                        resetOscillation(v, springAmpCm);
+                        resetOscillation(v, springAmpCm, 'pendulum');
                       }}
                     />
                     <SliderControl
@@ -1501,7 +1853,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
                       value={springAmpCm}
                       onChange={(v) => {
                         setSpringAmpCm(v);
-                        resetOscillation(pendulumAngleDeg, v);
+                        resetOscillation(pendulumAngleDeg, v, 'spring');
                       }}
                     />
                   </>
@@ -1517,15 +1869,26 @@ export const PhysicsSimulationLabView: React.FC = () => {
                   onChange={setDamping}
                 />
 
-                <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={showVectorsOsc}
-                    onChange={(e) => setShowVectorsOsc(e.target.checked)}
-                    className="rounded accent-sky-600"
-                  />
-                  <span className="font-semibold text-slate-700">Hiển thị véc-tơ vận tốc (v) &amp; lực phục hồi (F_ph)</span>
-                </label>
+                <div className="space-y-2 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showVectorsOsc}
+                      onChange={(e) => setShowVectorsOsc(e.target.checked)}
+                      className="rounded accent-sky-600"
+                    />
+                    <span className="font-semibold text-slate-700">Hiển thị véc-tơ vận tốc (v) &amp; lực phục hồi (F_ph)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showEnergyBarsOsc}
+                      onChange={(e) => setShowEnergyBarsOsc(e.target.checked)}
+                      className="rounded accent-sky-600"
+                    />
+                    <span className="font-semibold text-slate-700">Hiển thị cột Cơ năng · Động năng · Thế năng</span>
+                  </label>
+                </div>
 
                 <div className="pt-2 border-t border-slate-100 space-y-1.5">
                   <span className="text-[11px] font-bold text-slate-500 block">Mẫu thí nghiệm nhanh</span>
@@ -1539,18 +1902,18 @@ export const PhysicsSimulationLabView: React.FC = () => {
                       }}
                       className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 font-semibold text-[11px] cursor-pointer"
                     >
-                      Trái Đất · Lý tưởng
+                      Lý tưởng (b = 0)
                     </button>
                     <button
                       type="button"
                       onClick={() => {
-                        setGravity(1.62);
-                        setDamping(0);
+                        setGravity(9.81);
+                        setDamping(0.24);
                         resetOscillation();
                       }}
                       className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 font-semibold text-[11px] cursor-pointer"
                     >
-                      Mặt Trăng (g = 1.62)
+                      Tắt dần (b = 0.24)
                     </button>
                   </div>
                 </div>
@@ -1822,18 +2185,28 @@ export const PhysicsSimulationLabView: React.FC = () => {
             <h3 className="font-extrabold text-slate-900">Công Thức Trọng Tâm</h3>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-x-auto text-slate-800 space-y-2">
               {activeModule === 'oscillation' && (
-                <>
+                <div className="space-y-2">
                   <div
                     dangerouslySetInnerHTML={{
                       __html: renderLatex(
                         oscType === 'pendulum'
                           ? String.raw`T = 2\pi\sqrt{\frac{l}{g}} = ${oscPeriod.toFixed(2)}\text{ s},\quad \omega = ${oscOmega.toFixed(2)}\text{ rad/s}`
-                          : String.raw`T = 2\pi\sqrt{\frac{m}{k}} = ${oscPeriod.toFixed(2)}\text{ s},\quad W = \frac{1}{2}kA^2`,
+                          : String.raw`T = 2\pi\sqrt{\frac{m}{k}} = ${oscPeriod.toFixed(2)}\text{ s},\quad \omega = ${oscOmega.toFixed(2)}\text{ rad/s}`,
                         false
                       ),
                     }}
                   />
-                </>
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: renderLatex(
+                        oscType === 'pendulum'
+                          ? String.raw`W = W_{\text{đ}} + W_t = \frac{1}{2}mv^2 + mgl(1 - \cos\alpha)`
+                          : String.raw`W = W_{\text{đ}} + W_t = \frac{1}{2}mv^2 + \frac{1}{2}kx^2 = \frac{1}{2}kA^2`,
+                        false
+                      ),
+                    }}
+                  />
+                </div>
               )}
               {activeModule === 'projectile' && (
                 <div
