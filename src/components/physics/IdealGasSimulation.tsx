@@ -213,6 +213,44 @@ export const IdealGasSimulation: React.FC = () => {
     return { tMin, tMax: Math.max(tMin, tMax) };
   }, [lockedPAtm, moles]);
 
+  // Valid physical pressure bounds [pMin, pMax] for the active process
+  const pressureLimits = useMemo(() => {
+    if (processId === 'isobaric') {
+      return { pMin: 0.4, pMax: 8.0 };
+    }
+    if (processId === 'isochoric') {
+      const pMin = Math.max(0.2, (moles * R_ATM * MIN_TEMP_K) / volL);
+      const pMax = (moles * R_ATM * MAX_TEMP_K) / volL;
+      return { pMin: Number(pMin.toFixed(2)), pMax: Number(Math.max(pMin + 0.1, pMax).toFixed(2)) };
+    }
+    // isothermal or general: pressure adjusts volume within [MIN_VOL_L, MAX_VOL_L] at current T
+    const pMin = (moles * R_ATM * tempK) / MAX_VOL_L;
+    const pMax = (moles * R_ATM * tempK) / MIN_VOL_L;
+    return { pMin: Number(pMin.toFixed(2)), pMax: Number(Math.max(pMin + 0.1, pMax).toFixed(2)) };
+  }, [processId, moles, tempK, volL]);
+
+  const handlePressureChange = (nextP: number) => {
+    const clampedP = Math.max(pressureLimits.pMin, Math.min(pressureLimits.pMax, nextP));
+    if (processId === 'isobaric') {
+      setLockedPAtm(clampedP);
+      const idealV = (moles * R_ATM * tempK) / clampedP;
+      if (idealV < MIN_VOL_L) {
+        setTempK(Math.min(MAX_TEMP_K, Math.max(MIN_TEMP_K, Math.ceil((clampedP * MIN_VOL_L) / (moles * R_ATM)))));
+      } else if (idealV > MAX_VOL_L) {
+        setTempK(Math.min(MAX_TEMP_K, Math.max(MIN_TEMP_K, Math.floor((clampedP * MAX_VOL_L) / (moles * R_ATM)))));
+      }
+      return;
+    }
+    if (processId === 'isochoric') {
+      const nextT = Math.round((clampedP * volL) / (moles * R_ATM));
+      setTempK(Math.min(MAX_TEMP_K, Math.max(MIN_TEMP_K, nextT)));
+      return;
+    }
+    // isothermal or general: V = nRT / p
+    const nextV = (moles * R_ATM * tempK) / clampedP;
+    setVolL(Number(Math.min(MAX_VOL_L, Math.max(MIN_VOL_L, nextV)).toFixed(2)));
+  };
+
   const handleSelectProcess = (nextProc: GasProcessId) => {
     const curP = gasCalc.actualP;
     const curV = gasCalc.actualV;
@@ -221,7 +259,7 @@ export const IdealGasSimulation: React.FC = () => {
     setVolL(Number(curV.toFixed(2)));
     setTempK(Math.round(curT));
     if (nextProc === 'isobaric') {
-      setLockedPAtm(curP);
+      setLockedPAtm(Math.min(8.0, Math.max(0.4, Number(curP.toFixed(2)))));
     }
     setState1({
       pAtm: curP,
@@ -1073,14 +1111,24 @@ export const IdealGasSimulation: React.FC = () => {
               onChange={setVolL}
             />
 
+            <SliderControl
+              label="Áp suất p"
+              valueDisplay={`${gasCalc.actualP.toFixed(2)} atm (${gasCalc.pKpa.toFixed(0)} kPa)`}
+              min={pressureLimits.pMin}
+              max={pressureLimits.pMax}
+              step={0.05}
+              value={Number(gasCalc.actualP.toFixed(2))}
+              onChange={handlePressureChange}
+            />
+
             <p className="text-[11px] text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-200">
               {processId === 'isothermal'
-                ? 'Định luật Boyle (T = const): p tỉ lệ nghịch với V (p₁V₁ = p₂V₂). Trên đồ thị p-V đường đẳng nhiệt là một nhánh hyperbol.'
+                ? 'Định luật Boyle (T = const): kéo thanh Thể tích V hoặc Áp suất p để thấy p và V tỉ lệ nghịch (p₁V₁ = p₂V₂).'
                 : processId === 'isobaric'
-                ? 'Định luật Charles (p = const): V tỉ lệ thuận với T (V₁/T₁ = V₂/T₂). Đường đẳng áp trên đồ thị V-T có đường kéo dài đi qua gốc 0 K.'
+                ? 'Định luật Charles (p = const): đặt mức áp suất p không đổi rồi kéo Nhiệt độ T để quan sát V tỉ lệ thuận với T.'
                 : processId === 'isochoric'
-                ? 'Quá trình đẳng tích (V = const): p tỉ lệ thuận với T (p₁/T₁ = p₂/T₂). Khí không thực hiện công (A = 0), toàn bộ nhiệt lượng làm tăng nội năng.'
-                : 'Phương trình Clapeyron (pV = nRT): tự do thay đổi cả V, T và n để kiểm chứng định luật trạng thái khí lý tưởng.'}
+                ? 'Quá trình đẳng tích (V = const): kéo Nhiệt độ T hoặc Áp suất p để kiểm chứng p tỉ lệ thuận với T (p₁/T₁ = p₂/T₂).'
+                : 'Phương trình Clapeyron (pV = nRT): tự do thay đổi cả V, T, p và n để kiểm chứng phương trình trạng thái khí lý tưởng.'}
             </p>
           </div>
         </div>
