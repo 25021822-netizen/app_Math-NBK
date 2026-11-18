@@ -31,6 +31,7 @@ import {
 import type { ExtraPhysicsModuleId } from './ExtraPhysicsSimulations';
 import type { ModernThermalModuleId } from './ModernAndThermalSimulations';
 import type { AdditionalPhysicsModuleId } from './AdditionalPhysicsSimulations';
+import type { ElectromagnetismModuleId } from './ElectromagnetismSimulations';
 
 const ExtraPhysicsSimulations = lazy(() =>
   import('./ExtraPhysicsSimulations').then((m) => ({ default: m.ExtraPhysicsSimulations }))
@@ -41,6 +42,9 @@ const ModernAndThermalSimulations = lazy(() =>
 const AdditionalPhysicsSimulations = lazy(() =>
   import('./AdditionalPhysicsSimulations').then((m) => ({ default: m.AdditionalPhysicsSimulations }))
 );
+const ElectromagnetismSimulations = lazy(() =>
+  import('./ElectromagnetismSimulations').then((m) => ({ default: m.ElectromagnetismSimulations }))
+);
 
 type PhysicsModuleId =
   | 'oscillation'
@@ -49,7 +53,8 @@ type PhysicsModuleId =
   | 'rlc'
   | ExtraPhysicsModuleId
   | ModernThermalModuleId
-  | AdditionalPhysicsModuleId;
+  | AdditionalPhysicsModuleId
+  | ElectromagnetismModuleId;
 type OscillationType = 'pendulum' | 'spring';
 type WaveType = 'ripple' | 'young';
 type PhysicsCategoryId = 'mechanics' | 'waves' | 'optics' | 'electricity' | 'thermal' | 'nuclear';
@@ -88,7 +93,7 @@ const PHYSICS_CATEGORIES: PhysicsCategoryMeta[] = [
     id: 'electricity',
     title: 'Điện Học & Từ Trường',
     grades: 'Lớp 11 · 12',
-    description: 'Định luật Ôm toàn mạch, mạch xoay chiều RLC, cảm ứng điện từ Faraday và lực Lo-ren-xơ.',
+    description: 'Cảm ứng điện từ Faraday-Lenz, tự cảm, máy biến áp, máy gia tốc hạt Xyclôtron, lực Lo-ren-xơ và mạch RLC.',
     icon: Zap,
   },
   {
@@ -300,12 +305,39 @@ const PHYSICS_EXPERIMENTS: PhysicsExperimentMeta[] = [
   },
   {
     id: 'electromagneticInduction',
-    title: 'Cảm Ứng Điện Từ & Máy Phát Xoay Chiều',
+    title: 'Cảm Ứng Điện Từ (Faraday - Lenz & Thanh Dẫn)',
     category: 'electricity',
     categoryLabel: 'Điện & Từ',
     grade: 'Lớp 12',
-    summary: 'Thí nghiệm Faraday nam châm - ống dây, kim điện kế và đồ thị từ thông Φ(t), suất điện động e(t).',
+    summary: 'Nam châm - ống dây (kéo tay/tự động), thanh dẫn cắt đường sức từ, máy phát xoay chiều và đồ thị Φ(t), e(t).',
     icon: Magnet,
+  },
+  {
+    id: 'selfInduction',
+    title: 'Hiện Tượng Tự Cảm & Đóng Ngắt Mạch',
+    category: 'electricity',
+    categoryLabel: 'Điện & Từ',
+    grade: 'Lớp 12',
+    summary: 'Khảo sát mạch 2 nhánh R và L với lõi sắt non khi đóng/ngắt khóa K, độ sáng 2 đèn và suất điện động tự cảm.',
+    icon: Zap,
+  },
+  {
+    id: 'transformer',
+    title: 'Máy Biến Áp & Truyền Tải Điện Năng',
+    category: 'electricity',
+    categoryLabel: 'Điện & Từ',
+    grade: 'Lớp 12',
+    summary: 'Biến đổi điện áp N₁/N₂, từ thông trong lõi thép và tính công suất hao phí khi truyền tải điện đi xa.',
+    icon: Cpu,
+  },
+  {
+    id: 'cyclotron',
+    title: 'Máy Gia Tốc Hạt Xyclôtron (Cyclotron)',
+    category: 'electricity',
+    categoryLabel: 'Điện & Từ',
+    grade: 'Lớp 12',
+    summary: 'Gia tốc prôtôn, đơtêri, hạt alpha qua hai hộp chữ D trong từ trường đều B và điện trường cao tần U₀.',
+    icon: Orbit,
   },
   {
     id: 'lorentzForce',
@@ -1882,7 +1914,19 @@ export const PhysicsSimulationLabView: React.FC = () => {
       </div>
 
       {/* Render Selected Experiment Module */}
-      {activeModule === 'accelerationNewton' ||
+      {activeModule === 'cyclotron' ||
+      activeModule === 'selfInduction' ||
+      activeModule === 'transformer' ? (
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+              Đang tải mô phỏng thí nghiệm...
+            </div>
+          }
+        >
+          <ElectromagnetismSimulations moduleId={activeModule} />
+        </Suspense>
+      ) : activeModule === 'accelerationNewton' ||
       activeModule === 'circularMotion' ||
       activeModule === 'momentumCollision' ||
       activeModule === 'dopplerEffect' ||

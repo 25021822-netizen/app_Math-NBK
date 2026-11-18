@@ -427,28 +427,42 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
   }, [n1Val, n2Val, refAngleI]);
 
   // ===========================================================================
-  // 5. CẢM ỨNG ĐIỆN TỪ FARADAY & MÁY PHÁT ĐIỆN
+  // 5. CẢM ỨNG ĐIỆN TỪ FARADAY, ĐỊNH LUẬT LENZ, THANH DẪN & MÁY PHÁT ĐIỆN
   // ===========================================================================
-  const [emSubMode, setEmSubMode] = useState<'faraday' | 'generator'>('faraday');
+  const [emSubMode, setEmSubMode] = useState<'faraday' | 'rod' | 'generator'>('faraday');
   const [emTurns, setEmTurns] = useState<number>(120); // N vòng
   const [emBField, setEmBField] = useState<number>(0.45); // T
   const [emFreqHz, setEmFreqHz] = useState<number>(0.8); // Hz
   const [emAreaCm2, setEmAreaCm2] = useState<number>(40); // cm^2
+  const [emManualMagnet, setEmManualMagnet] = useState<boolean>(false);
+  const [emManualPos, setEmManualPos] = useState<number>(-0.9); // [-1.1 .. 1.1]
+  // Rod submode params
+  const [emRodLenCm, setEmRodLenCm] = useState<number>(40); // cm
+  const [emRodVelMs, setEmRodVelMs] = useState<number>(2.5); // m/s
+  const [emRodResOhm, setEmRodResOhm] = useState<number>(2.0); // Ohm
+
   const emStateRef = useRef({
     t: 0,
     magPos: -1.0, // [-1.2 .. 1.2]
+    prevMagPos: -1.0,
     angle: 0,
+    rodX: 0.15, // [0.15 .. 0.85]
+    rodDir: 1,
     history: [] as { t: number; phi: number; emf: number }[],
   });
-  const [emReadout, setEmReadout] = useState({ phiMwb: 0, emfV: 0 });
+  const [emReadout, setEmReadout] = useState({ phiMwb: 0, emfV: 0, currentA: 0, fMagN: 0 });
 
   const emCalc = useMemo(() => {
     const S = emAreaCm2 / 10000;
     const omega = 2 * Math.PI * emFreqHz;
     const phiMax = emTurns * emBField * S * 1000; // mWb
-    const emfMax = emTurns * emBField * S * omega; // V
-    return { S, omega, phiMax, emfMax };
-  }, [emTurns, emBField, emFreqHz, emAreaCm2]);
+    const emfMax =
+      emSubMode === 'rod'
+        ? emBField * (emRodLenCm / 100) * emRodVelMs
+        : emTurns * emBField * S * omega; // V
+    const rodMaxPhiMwb = emBField * (emRodLenCm / 100) * 1.0 * 1000;
+    return { S, omega, phiMax, emfMax, rodMaxPhiMwb };
+  }, [emTurns, emBField, emFreqHz, emAreaCm2, emSubMode, emRodLenCm, emRodVelMs]);
 
   // ===========================================================================
   // 6. LỰC TỪ & LỰC LO-REN-XƠ
@@ -713,27 +727,60 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
           st.t += dt;
           const omega = 2 * Math.PI * emFreqHz;
           st.angle = omega * st.t;
-          st.magPos = -Math.cos(st.angle);
           const S = emAreaCm2 / 10000;
           let phi = 0;
           let emf = 0;
+          let currentA = 0;
+          let fMagN = 0;
+
           if (emSubMode === 'faraday') {
-            // Smooth bell-shaped magnetic flux as magnet passes through coil center
-            const bell = Math.exp(-3.2 * st.magPos * st.magPos);
-            phi = emTurns * emBField * S * bell * 1000; // mWb
-            const dMagDt = omega * Math.sin(st.angle);
-            const dBellDPos = -6.4 * st.magPos * bell;
-            emf = -emTurns * emBField * S * dBellDPos * dMagDt;
+            if (emManualMagnet) {
+              // Smoothly approach manual position and compute derivative dPos/dt
+              const diff = emManualPos - st.magPos;
+              const vel = (diff * 12);
+              st.magPos += diff * Math.min(1, dt * 12);
+              const bell = Math.exp(-3.2 * st.magPos * st.magPos);
+              phi = emTurns * emBField * S * bell * 1000; // mWb
+              const dBellDPos = -6.4 * st.magPos * bell;
+              emf = -emTurns * emBField * S * dBellDPos * vel;
+            } else {
+              st.magPos = -Math.cos(st.angle);
+              const bell = Math.exp(-3.2 * st.magPos * st.magPos);
+              phi = emTurns * emBField * S * bell * 1000; // mWb
+              const dMagDt = omega * Math.sin(st.angle);
+              const dBellDPos = -6.4 * st.magPos * bell;
+              emf = -emTurns * emBField * S * dBellDPos * dMagDt;
+            }
+            currentA = emf / 2.0;
+          } else if (emSubMode === 'rod') {
+            const lenM = emRodLenCm / 100;
+            const normSpeed = 0.22 * (emRodVelMs / 2.5);
+            st.rodX += st.rodDir * normSpeed * dt;
+            if (st.rodX >= 0.86) {
+              st.rodX = 0.86;
+              st.rodDir = -1;
+            } else if (st.rodX <= 0.16) {
+              st.rodX = 0.16;
+              st.rodDir = 1;
+            }
+            const signedV = st.rodDir * emRodVelMs;
+            // Flux Phi = B * l * x (with x proportional to rodX)
+            phi = emBField * lenM * (st.rodX * 1.0) * 1000; // mWb
+            emf = -emBField * lenM * signedV;
+            currentA = emf / emRodResOhm;
+            fMagN = emBField * Math.abs(currentA) * lenM;
           } else {
             phi = emTurns * emBField * S * Math.cos(st.angle) * 1000;
             emf = emTurns * emBField * S * omega * Math.sin(st.angle);
+            currentA = emf / 2.0;
           }
+
           st.history.push({ t: st.t, phi, emf });
           if (st.history.length > 220) st.history.shift();
           uiTimer += rawDt;
           if (uiTimer >= 0.07) {
             uiTimer = 0;
-            setEmReadout({ phiMwb: phi, emfV: emf });
+            setEmReadout({ phiMwb: phi, emfV: emf, currentA, fMagN });
           }
         }
         drawEmCanvas(canvasRef.current);
@@ -1475,7 +1522,7 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
     const graphH = h - stageH;
 
     if (emSubMode === 'faraday') {
-      const coilCx = w * 0.56;
+      const coilCx = w * 0.58;
       const coilCy = stageH * 0.52;
       const magX = coilCx + st.magPos * (w * 0.24);
 
@@ -1490,8 +1537,14 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
         ctx.stroke();
       }
 
+      // Induced B_c arrow inside coil (Lenz's law visualization)
+      if (Math.abs(emReadout.emfV) > 0.06) {
+        const bcDir = emReadout.emfV >= 0 ? -1 : 1;
+        drawArrow(ctx, coilCx - bcDir * 24, coilCy - 56, coilCx + bcDir * 24, coilCy - 56, '#059669', 'B_c (Lenz)');
+      }
+
       // Galvanometer connected below
-      const gx = w * 0.18;
+      const gx = w * 0.17;
       const gy = stageH * 0.52;
       ctx.strokeStyle = '#334155';
       ctx.lineWidth = 1.8;
@@ -1510,7 +1563,7 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
       ctx.fill();
       ctx.stroke();
 
-      const needleNorm = Math.max(-1, Math.min(1, emReadout.emfV / Math.max(0.1, emCalc.emfMax * 0.7)));
+      const needleNorm = Math.max(-1, Math.min(1, emReadout.emfV / Math.max(0.15, emCalc.emfMax * 0.7)));
       const needleAng = -Math.PI / 2 + needleNorm * (Math.PI / 3);
       drawArrow(ctx, gx, gy + 10, gx + 24 * Math.cos(needleAng), gy + 10 + 24 * Math.sin(needleAng), '#DC2626');
       ctx.fillStyle = '#0F172A';
@@ -1526,6 +1579,75 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
       ctx.font = '800 12px ui-sans-serif, sans-serif';
       ctx.fillText('N', magX - 26, coilCy + 4);
       ctx.fillText('S', magX + 16, coilCy + 4);
+    } else if (emSubMode === 'rod') {
+      const railLeft = w * 0.16;
+      const railRight = w * 0.88;
+      const railTop = stageH * 0.24;
+      const railBot = stageH * 0.78;
+
+      // Magnetic field markers (⊗ B into page)
+      ctx.strokeStyle = 'rgba(100, 116, 139, 0.35)';
+      ctx.lineWidth = 1.2;
+      for (let gx = railLeft + 24; gx < railRight - 10; gx += 42) {
+        for (let gy = railTop + 16; gy < railBot - 10; gy += 36) {
+          ctx.beginPath();
+          ctx.arc(gx, gy, 6, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(gx - 3.5, gy - 3.5);
+          ctx.lineTo(gx + 3.5, gy + 3.5);
+          ctx.moveTo(gx + 3.5, gy - 3.5);
+          ctx.lineTo(gx - 3.5, gy + 3.5);
+          ctx.stroke();
+        }
+      }
+
+      // Parallel rails + left resistor R
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(railRight, railTop);
+      ctx.lineTo(railLeft, railTop);
+      ctx.lineTo(railLeft, railBot);
+      ctx.lineTo(railRight, railBot);
+      ctx.stroke();
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      const resY = (railTop + railBot) / 2;
+      ctx.fillRect(railLeft - 14, resY - 22, 28, 44);
+      ctx.strokeRect(railLeft - 14, resY - 22, 28, 44);
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.fillText(`R`, railLeft - 4, resY + 4);
+
+      // Moving metal rod MN
+      const rodPx = railLeft + st.rodX * (railRight - railLeft);
+      ctx.strokeStyle = '#B45309';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(rodPx, railTop - 10);
+      ctx.lineTo(rodPx, railBot + 10);
+      ctx.stroke();
+
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '800 12px ui-sans-serif, sans-serif';
+      ctx.fillText('M', rodPx - 5, railTop - 16);
+      ctx.fillText('N', rodPx - 5, railBot + 24);
+
+      // Velocity vector v & opposing Magnetic force F_từ (Lenz)
+      const dir = st.rodDir;
+      drawArrow(ctx, rodPx, resY - 14, rodPx + dir * 48, resY - 14, '#059669', 'v');
+      drawArrow(ctx, rodPx, resY + 14, rodPx - dir * 38, resY + 14, '#DC2626', 'F_từ');
+
+      // Induced current direction on rod & rails
+      const iDirY = dir > 0 ? -1 : 1; // v=(+1,0), B into page -> F_L on +q is up (N -> M)
+      drawArrow(ctx, rodPx - 14, resY + iDirY * 22, rodPx - 14, resY - iDirY * 22, '#0284C7', 'I_c');
+
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 11px ui-sans-serif, sans-serif';
+      ctx.fillText(`Từ trường B = ${emBField.toFixed(2)} T (⊗) · Thanh MN dài l = ${emRodLenCm} cm`, railLeft + 14, 20);
     } else {
       const cx = w * 0.5;
       const cy = stageH * 0.5;
@@ -1570,11 +1692,11 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
 
     ctx.fillStyle = '#334155';
     ctx.font = '600 11px ui-sans-serif, sans-serif';
-    ctx.fillText('Từ thông Φ(t) [xanh dương] · Suất điện động e(t) [đỏ]', 16, stageH + 18);
+    ctx.fillText('Từ thông Φ(t) [xanh dương] · Suất điện động cảm ứng e(t) [đỏ]', 16, stageH + 18);
 
     const hist = st.history;
     if (hist.length > 1) {
-      const maxPhi = Math.max(0.5, emCalc.phiMax);
+      const maxPhi = Math.max(0.5, emSubMode === 'rod' ? emCalc.rodMaxPhiMwb : emCalc.phiMax);
       const maxEmf = Math.max(0.2, emCalc.emfMax);
       const plotW = w - 48;
       const halfH = graphH * 0.32;
@@ -1808,7 +1930,8 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
                 else if (moduleId === 'circularMotion') circStateRef.current = { angle: 0, t: 0 };
                 else if (moduleId === 'momentumCollision') resetCollision();
                 else if (moduleId === 'dopplerEffect') dopplerStateRef.current = { sourceX: -0.78, t: 0, lastEmitT: 0, rings: [] };
-                else if (moduleId === 'electromagneticInduction') emStateRef.current = { t: 0, magPos: -1, angle: 0, history: [] };
+                else if (moduleId === 'electromagneticInduction')
+                  emStateRef.current = { t: 0, magPos: -1, prevMagPos: -1, angle: 0, rodX: 0.16, rodDir: 1, history: [] };
                 else if (moduleId === 'lorentzForce') resetLorentz();
                 else if (moduleId === 'radioactiveDecay') resetDecay();
                 setIsRunning(true);
@@ -2031,15 +2154,19 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
           {moduleId === 'electromagneticInduction' && (
             <>
               <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                <span className="text-[11px] text-slate-500 block">Từ thông cực đại Φ₀</span>
+                <span className="text-[11px] text-slate-500 block">
+                  {emSubMode === 'rod' ? 'Độ lớn s.đ.đ |e_c| = Blv' : 'Từ thông cực đại Φ₀'}
+                </span>
                 <span className="font-mono tabular-nums font-bold text-sky-700 mt-0.5 block">
-                  {emCalc.phiMax.toFixed(1)} mWb
+                  {emSubMode === 'rod' ? `${emCalc.emfMax.toFixed(2)} V` : `${emCalc.phiMax.toFixed(1)} mWb`}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                <span className="text-[11px] text-slate-500 block">Suất điện động cực đại E₀</span>
+                <span className="text-[11px] text-slate-500 block">
+                  {emSubMode === 'rod' ? 'Dòng cảm ứng I_c' : 'Suất điện động cực đại E₀'}
+                </span>
                 <span className="font-mono tabular-nums font-bold text-rose-700 mt-0.5 block">
-                  {emCalc.emfMax.toFixed(2)} V
+                  {emSubMode === 'rod' ? `${emReadout.currentA.toFixed(2)} A` : `${emCalc.emfMax.toFixed(2)} V`}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
@@ -2049,9 +2176,11 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
                 </span>
               </div>
               <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                <span className="text-[11px] text-slate-500 block">Suất điện động e(t)</span>
+                <span className="text-[11px] text-slate-500 block">
+                  {emSubMode === 'rod' ? 'Lực từ cản trở F_từ' : 'Suất điện động e(t)'}
+                </span>
                 <span className="font-mono tabular-nums font-bold text-slate-900 mt-0.5 block">
-                  {emReadout.emfV.toFixed(2)} V
+                  {emSubMode === 'rod' ? `${emReadout.fMagN.toFixed(3)} N` : `${emReadout.emfV.toFixed(2)} V`}
                 </span>
               </div>
             </>
@@ -2467,68 +2596,132 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
 
           {moduleId === 'electromagneticInduction' && (
             <>
-              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmSubMode('faraday');
-                    emStateRef.current.history = [];
-                  }}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    emSubMode === 'faraday' ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Thí nghiệm Faraday
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmSubMode('generator');
-                    emStateRef.current.history = [];
-                  }}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    emSubMode === 'generator' ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Máy phát xoay chiều
-                </button>
+              <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg">
+                {[
+                  { id: 'faraday', label: 'Nam châm' },
+                  { id: 'rod', label: 'Thanh dẫn' },
+                  { id: 'generator', label: 'Máy phát' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setEmSubMode(m.id as 'faraday' | 'rod' | 'generator');
+                      emStateRef.current.history = [];
+                    }}
+                    className={`py-1.5 rounded-md font-bold cursor-pointer ${
+                      emSubMode === m.id ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
-              <SliderControl
-                label="Số vòng dây N"
-                valueDisplay={`${emTurns} vòng`}
-                min={20}
-                max={300}
-                step={10}
-                value={emTurns}
-                onChange={setEmTurns}
-              />
-              <SliderControl
-                label="Cảm ứng từ B"
-                valueDisplay={`${emBField.toFixed(2)} T`}
-                min={0.1}
-                max={1.2}
-                step={0.05}
-                value={emBField}
-                onChange={setEmBField}
-              />
-              <SliderControl
-                label="Diện tích khung S"
-                valueDisplay={`${emAreaCm2} cm²`}
-                min={10}
-                max={100}
-                step={5}
-                value={emAreaCm2}
-                onChange={setEmAreaCm2}
-              />
-              <SliderControl
-                label="Tần số dao động/quay f"
-                valueDisplay={`${emFreqHz.toFixed(1)} Hz`}
-                min={0.2}
-                max={2.5}
-                step={0.1}
-                value={emFreqHz}
-                onChange={setEmFreqHz}
-              />
+
+              {emSubMode === 'rod' ? (
+                <>
+                  <SliderControl
+                    label="Cảm ứng từ B"
+                    valueDisplay={`${emBField.toFixed(2)} T`}
+                    min={0.1}
+                    max={1.2}
+                    step={0.05}
+                    value={emBField}
+                    onChange={setEmBField}
+                  />
+                  <SliderControl
+                    label="Chiều dài thanh MN (l)"
+                    valueDisplay={`${emRodLenCm} cm`}
+                    min={20}
+                    max={80}
+                    step={5}
+                    value={emRodLenCm}
+                    onChange={setEmRodLenCm}
+                  />
+                  <SliderControl
+                    label="Tốc độ kéo thanh v"
+                    valueDisplay={`${emRodVelMs.toFixed(1)} m/s`}
+                    min={0.5}
+                    max={6.0}
+                    step={0.2}
+                    value={emRodVelMs}
+                    onChange={setEmRodVelMs}
+                  />
+                  <SliderControl
+                    label="Điện trở mạch R"
+                    valueDisplay={`${emRodResOhm.toFixed(1)} Ω`}
+                    min={0.5}
+                    max={10.0}
+                    step={0.5}
+                    value={emRodResOhm}
+                    onChange={setEmRodResOhm}
+                  />
+                </>
+              ) : (
+                <>
+                  {emSubMode === 'faraday' && (
+                    <>
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={emManualMagnet}
+                          onChange={(e) => setEmManualMagnet(e.target.checked)}
+                          className="rounded accent-sky-600"
+                        />
+                        <span className="font-semibold text-slate-700">Tự tay kéo nam châm (kiểm chứng ΔΦ/Δt)</span>
+                      </label>
+                      {emManualMagnet && (
+                        <SliderControl
+                          label="Vị trí nam châm (kéo qua ống dây)"
+                          valueDisplay={emManualPos.toFixed(2)}
+                          min={-1.1}
+                          max={1.1}
+                          step={0.02}
+                          value={emManualPos}
+                          onChange={setEmManualPos}
+                        />
+                      )}
+                    </>
+                  )}
+                  <SliderControl
+                    label="Số vòng dây N"
+                    valueDisplay={`${emTurns} vòng`}
+                    min={20}
+                    max={300}
+                    step={10}
+                    value={emTurns}
+                    onChange={setEmTurns}
+                  />
+                  <SliderControl
+                    label="Cảm ứng từ B"
+                    valueDisplay={`${emBField.toFixed(2)} T`}
+                    min={0.1}
+                    max={1.2}
+                    step={0.05}
+                    value={emBField}
+                    onChange={setEmBField}
+                  />
+                  <SliderControl
+                    label="Diện tích khung S"
+                    valueDisplay={`${emAreaCm2} cm²`}
+                    min={10}
+                    max={100}
+                    step={5}
+                    value={emAreaCm2}
+                    onChange={setEmAreaCm2}
+                  />
+                  <SliderControl
+                    label="Tần số dao động/quay f"
+                    valueDisplay={`${emFreqHz.toFixed(1)} Hz`}
+                    min={0.2}
+                    max={2.5}
+                    step={0.1}
+                    value={emFreqHz}
+                    disabled={emSubMode === 'faraday' && emManualMagnet}
+                    onChange={setEmFreqHz}
+                  />
+                </>
+              )}
             </>
           )}
 
@@ -2674,7 +2867,9 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
               <div
                 dangerouslySetInnerHTML={{
                   __html: renderLatex(
-                    String.raw`\Phi = NBS\cos(\omega t),\quad e_c = -\frac{\Delta \Phi}{\Delta t} = \omega NBS\sin(\omega t)`,
+                    emSubMode === 'rod'
+                      ? String.raw`|e_c| = B l v\sin\theta,\quad I_c = \frac{|e_c|}{R},\quad F_{t\text{ừ}} = B I_c l`
+                      : String.raw`\Phi = NBS\cos(\omega t),\quad e_c = -\frac{\Delta \Phi}{\Delta t} = \omega NBS\sin(\omega t)`,
                     false
                   ),
                 }}
