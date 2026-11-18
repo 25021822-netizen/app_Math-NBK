@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, Classroom, StudentExamSubmission, TEACHING_SUBJECTS } from '../../types/math';
+import { UserProfile, Classroom, StudentExamSubmission, resolveTeacherSubject } from '../../types/math';
 import {
   User,
   Mail,
@@ -117,7 +117,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       phone: phone.trim(),
       schoolName: schoolName.trim(),
       grade: userProfile.grade, // Cố định theo quy định, không cho phép sửa khối lớp
-      subject: subject.trim(),
+      subject: userProfile.subject, // Cố định theo môn giảng dạy khi tạo tài khoản
       bio: bio.trim(),
       avatar: avatarUrl.trim(),
       password: userProfile.password,
@@ -401,38 +401,29 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             />
           </div>
 
-          {/* Khối Lớp Đang Học: Cố định theo niên khóa học sinh, KHÔNG CHO PHÉP SỬA */}
+          {/* Khối Lớp Đang Học / Môn Giảng Dạy: Cố định theo tài khoản đã đăng ký */}
           <div className="space-y-1 sm:col-span-2">
             <div className="flex items-center justify-between">
               <label className="font-bold text-slate-700">
-                {isTeacher ? 'Tổ Bộ Môn / Khối Phụ Trách' : 'Khối Lớp Đang Học *'}
+                {isTeacher ? 'Môn Giảng Dạy *' : 'Khối Lớp Đang Học *'}
               </label>
-              {!isTeacher && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                  <Lock size={10} />
-                  <span>Không cho phép sửa</span>
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                <Lock size={10} />
+                <span>Không cho phép sửa</span>
+              </span>
             </div>
             {isTeacher ? (
-              <div className="grid grid-cols-3 gap-2">
-                {TEACHING_SUBJECTS.map((subj) => {
-                  const active = subject === subj;
-                  return (
-                    <button
-                      key={subj}
-                      type="button"
-                      onClick={() => setSubject(subj)}
-                      className={`h-11 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                        active
-                          ? 'bg-blue-50 border-blue-600 text-blue-700'
-                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {subj}
-                    </button>
-                  );
-                })}
+              <div className="space-y-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={`${resolveTeacherSubject('teacher', userProfile.subject) || subject} (Cố định theo môn đăng ký · Chỉ xem phân hệ môn này)`}
+                    readOnly
+                    disabled
+                    className="w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-300 bg-slate-100/90 text-slate-800 font-bold cursor-not-allowed select-none shadow-inner"
+                  />
+                  <Lock size={15} className="absolute right-3 top-3 text-slate-400" />
+                </div>
               </div>
             ) : (
               <div className="space-y-1">

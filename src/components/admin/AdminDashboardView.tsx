@@ -1254,6 +1254,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       </option>
                     ))}
                   </select>
+                  <p className="text-[10px] text-slate-500 pt-0.5">
+                    Giáo viên chỉ nhìn thấy và sử dụng phân hệ / thí nghiệm của môn giảng dạy này.
+                  </p>
                 </div>
               )}
 

@@ -57,6 +57,7 @@ interface AIMathStudioViewProps {
   onIncrementScan: () => void;
   onStartExam?: (exam?: Exam) => void;
   onOpenCropStudio?: (fileData: { fileName: string; fileSize: string; fileBase64?: string; isPdf?: boolean; extractedText?: string }) => void;
+  allowThree3D?: boolean;
 }
 
 export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
@@ -64,10 +65,13 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
   onIncrementScan,
   onStartExam,
   onOpenCropStudio,
+  allowThree3D = true,
 }) => {
   // Chế độ tích hợp trực tiếp trong Liki:
   // 'tutor' (Gia sư Liki), 'three_3d' (Không gian 3D Three.js), 'image_studio' (Tạo ảnh AI), 'scanner' (Quét OCR)
-  const [activeStudioTab, setActiveStudioTab] = useState<StudioSubTab>(initialTab);
+  const [activeStudioTab, setActiveStudioTab] = useState<StudioSubTab>(
+    initialTab === 'three_3d' && !allowThree3D ? 'tutor' : initialTab
+  );
 
   // ==========================================
   // STATE MÁY QUÉT BÀI TẬP AI & LỌC NOISE OCR
@@ -547,17 +551,19 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
             <span className="truncate">Hỏi Đáp Liki</span>
           </button>
 
-          <button
-            onClick={() => setActiveStudioTab('three_3d')}
-            className={`px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-center ${
-              activeStudioTab === 'three_3d'
-                ? 'bg-cyan-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <Box size={16} className="shrink-0" />
-            <span className="truncate">Không Gian 3D</span>
-          </button>
+          {allowThree3D && (
+            <button
+              onClick={() => setActiveStudioTab('three_3d')}
+              className={`px-3 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-center ${
+                activeStudioTab === 'three_3d'
+                  ? 'bg-cyan-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+            >
+              <Box size={16} className="shrink-0" />
+              <span className="truncate">Không Gian 3D</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveStudioTab('image_studio')}
@@ -635,15 +641,17 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setActiveStudioTab('three_3d')}
-                  title="Mở mô phỏng không gian Three.js 3D trực tiếp trong Liki"
-                  className="px-3 py-1.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Box size={14} className="text-cyan-600" />
-                  <span className="hidden sm:inline">Mở 3D</span>
-                </button>
+                {allowThree3D && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveStudioTab('three_3d')}
+                    title="Mở mô phỏng không gian Three.js 3D trực tiếp trong Liki"
+                    className="px-3 py-1.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Box size={14} className="text-cyan-600" />
+                    <span className="hidden sm:inline">Mở 3D</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -693,18 +701,20 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                     </h4>
                   </div>
 
-                  {/* 3 Quick Action Shortcuts directly into Liki features */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 max-w-xl mx-auto text-left">
-                    <button
-                      type="button"
-                      onClick={() => setActiveStudioTab('three_3d')}
-                      className="p-3.5 rounded-2xl bg-cyan-50/70 hover:bg-cyan-50 border border-cyan-200 transition-all text-left group cursor-pointer"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-cyan-600 text-white flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-                        <Box size={16} />
-                      </div>
-                      <div className="font-extrabold text-xs text-cyan-950">Không Gian 3D</div>
-                    </button>
+                  {/* Quick Action Shortcuts directly into Liki features */}
+                  <div className={`grid grid-cols-1 ${allowThree3D ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 pt-2 max-w-xl mx-auto text-left`}>
+                    {allowThree3D && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveStudioTab('three_3d')}
+                        className="p-3.5 rounded-2xl bg-cyan-50/70 hover:bg-cyan-50 border border-cyan-200 transition-all text-left group cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-cyan-600 text-white flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                          <Box size={16} />
+                        </div>
+                        <div className="font-extrabold text-xs text-cyan-950">Không Gian 3D</div>
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -959,15 +969,17 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
                 <span>Không Gian Toán Học Liki</span>
               </div>
               <h4 className="font-extrabold text-base text-white">Công cụ hỗ trợ học Toán</h4>
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveStudioTab('three_3d')}
-                  className="py-2.5 px-3 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-400/40 text-cyan-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Box size={14} />
-                  <span>Mở 3D Studio</span>
-                </button>
+              <div className={`grid ${allowThree3D ? 'grid-cols-2' : 'grid-cols-1'} gap-2 pt-2`}>
+                {allowThree3D && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveStudioTab('three_3d')}
+                    className="py-2.5 px-3 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-400/40 text-cyan-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Box size={14} />
+                    <span>Mở 3D Studio</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setActiveStudioTab('image_studio')}
@@ -985,7 +997,7 @@ export const AIMathStudioView: React.FC<AIMathStudioViewProps> = ({
       {/* ========================================================= */}
       {/* PHÂN HỆ 2: KHÔNG GIAN 3D THREE.JS TÍCH HỢP TRỰC TIẾP LIKI  */}
       {/* ========================================================= */}
-      {activeStudioTab === 'three_3d' && (
+      {allowThree3D && activeStudioTab === 'three_3d' && (
         <div className="space-y-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>

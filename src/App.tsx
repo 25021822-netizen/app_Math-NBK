@@ -16,6 +16,8 @@ import {
   AutoApprovalSettings,
   ScoreVisibilityMode,
   canStudentViewExamScore,
+  canAccessSubjectTab,
+  getTeacherSubjectTab,
 } from './types/math';
 import {
   INITIAL_USER_PROFILE,
@@ -116,6 +118,8 @@ import {
   LogOut,
   AlertTriangle,
   CheckCircle2,
+  Atom,
+  FlaskConical,
 } from 'lucide-react';
 
 function getRestoredAuthSession(): { isAuth: boolean; user: UserProfile; remembered: boolean } {
@@ -949,8 +953,12 @@ export default function App() {
         setCurrentTab('admin_dashboard');
       }
     } else if (userRole === 'teacher') {
-      const allowedTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'geometry', 'physics_sim', 'chemistry_lab', 'ask_ai', 'profile', 'exam', 'three_3d', 'image_studio'];
-      if (!allowedTeacherTabs.includes(currentTab)) {
+      const baseTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'ask_ai', 'profile', 'exam', 'image_studio'];
+      const isAllowedBase = baseTeacherTabs.includes(currentTab);
+      const isAllowedSubject =
+        ['geometry', 'physics_sim', 'chemistry_lab', 'three_3d'].includes(currentTab) &&
+        canAccessSubjectTab(currentTab, userRole, userProfile.subject);
+      if (!isAllowedBase && !isAllowedSubject) {
         setCurrentTab('classroom');
       }
     } else if (userRole === 'student') {
@@ -959,7 +967,7 @@ export default function App() {
         setCurrentTab('ask_ai');
       }
     }
-  }, [userRole, currentTab, isAuthenticated]);
+  }, [userRole, userProfile.subject, currentTab, isAuthenticated]);
 
   // Đăng nhập thành công
   const handleLoginSuccess = (user: UserProfile, rememberMe = true) => {
@@ -1642,16 +1650,16 @@ export default function App() {
       );
     }
 
-    // 2. Vẽ Hình 2D & 3D (Học sinh và Giáo viên)
-    if (currentTab === 'geometry') {
+    // 2. Vẽ Hình 2D & 3D (Học sinh hoặc Giáo viên Toán)
+    if (currentTab === 'geometry' && canAccessSubjectTab('geometry', userRole, userProfile.subject)) {
       return <GeometryCanvasView />;
     }
 
-    // 2b. Mô Phỏng Vật Lý & Thí Nghiệm Hóa Học (Học sinh và Giáo viên)
-    if (currentTab === 'physics_sim') {
+    // 2b. Mô Phỏng Vật Lý & Thí Nghiệm Hóa Học (Học sinh hoặc Giáo viên đúng bộ môn)
+    if (currentTab === 'physics_sim' && canAccessSubjectTab('physics_sim', userRole, userProfile.subject)) {
       return <PhysicsSimulationLabView />;
     }
-    if (currentTab === 'chemistry_lab') {
+    if (currentTab === 'chemistry_lab' && canAccessSubjectTab('chemistry_lab', userRole, userProfile.subject)) {
       return <ChemistryExperimentLabView />;
     }
 
@@ -1743,10 +1751,11 @@ export default function App() {
         );
       }
 
-      if (currentTab === 'three_3d') {
+      if (currentTab === 'three_3d' && canAccessSubjectTab('three_3d', userRole, userProfile.subject)) {
         return (
           <AIMathStudioView
             initialTab="three_3d"
+            allowThree3D={true}
             dailyScanCount={userProfile.dailyScanCount}
             onIncrementScan={handleIncrementScan}
             onStartExam={(newExam) => {
@@ -1763,6 +1772,7 @@ export default function App() {
         return (
           <AIMathStudioView
             initialTab="image_studio"
+            allowThree3D={canAccessSubjectTab('three_3d', userRole, userProfile.subject)}
             dailyScanCount={userProfile.dailyScanCount}
             onIncrementScan={handleIncrementScan}
             onStartExam={(newExam) => {
@@ -1779,6 +1789,7 @@ export default function App() {
         return (
           <AIMathStudioView
             initialTab="tutor"
+            allowThree3D={canAccessSubjectTab('three_3d', userRole, userProfile.subject)}
             dailyScanCount={userProfile.dailyScanCount}
             onIncrementScan={handleIncrementScan}
             onStartExam={(newExam) => {
@@ -1981,6 +1992,7 @@ export default function App() {
           xp={userProfile.xp}
           userName={userProfile.name}
           userAvatar={userProfile.avatar}
+          userSubject={userProfile.subject}
           onLogout={handleLogout}
           notifications={notifications}
           onClearNotifications={() => setNotifications([])}
@@ -2068,15 +2080,33 @@ export default function App() {
                 <FileText size={18} />
                 <span className="text-[10px]">Tạo Đề</span>
               </button>
-              <button
-                onClick={() => setCurrentTab('geometry')}
-                className={`flex flex-col items-center gap-0.5 ${
-                  currentTab === 'geometry' ? 'text-blue-600 font-bold' : 'text-slate-400'
-                }`}
-              >
-                <Compass size={18} />
-                <span className="text-[10px]">Vẽ Hình</span>
-              </button>
+              {(() => {
+                const subjectTab = getTeacherSubjectTab(userProfile.subject);
+                const isActive = currentTab === subjectTab;
+                return (
+                  <button
+                    onClick={() => setCurrentTab(subjectTab)}
+                    className={`flex flex-col items-center gap-0.5 ${
+                      isActive ? 'text-blue-600 font-bold' : 'text-slate-400'
+                    }`}
+                  >
+                    {subjectTab === 'chemistry_lab' ? (
+                      <FlaskConical size={18} />
+                    ) : subjectTab === 'physics_sim' ? (
+                      <Atom size={18} />
+                    ) : (
+                      <Compass size={18} />
+                    )}
+                    <span className="text-[10px]">
+                      {subjectTab === 'chemistry_lab'
+                        ? 'Hóa Học'
+                        : subjectTab === 'physics_sim'
+                        ? 'Vật Lý'
+                        : 'Vẽ Hình'}
+                    </span>
+                  </button>
+                );
+              })()}
               <button
                 onClick={() => setCurrentTab('profile')}
                 className={`flex flex-col items-center gap-0.5 ${

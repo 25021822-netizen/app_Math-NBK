@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserRole } from '../types/math';
+import { UserRole, canAccessSubjectTab, resolveTeacherSubject } from '../types/math';
 import {
   PushNotificationItem,
   isNotificationsEnabled,
@@ -60,6 +60,7 @@ interface NavbarProps {
   onClearNotifications?: () => void;
   onRequestPushPermission?: () => void;
   unreadClassroomMessagesCount?: number;
+  userSubject?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -79,7 +80,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onClearNotifications,
   onRequestPushPermission,
   unreadClassroomMessagesCount = 0,
+  userSubject,
 }) => {
+  const teacherSubject = resolveTeacherSubject(userRole, userSubject);
   const [showNotifDropdown, setShowNotifDropdown] = useState<boolean>(false);
   const [showMobileMenu, setShowMobileMenu] = useState<boolean>(false);
   const [notificationsEnabled, setNotificationsEnabledState] = useState<boolean>(() => isNotificationsEnabled());
@@ -303,39 +306,45 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   Tạo Đề Thi & Tải PDF
                 </button>
-                <button
-                  onClick={() => onSelectTab('geometry')}
-                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                    currentTab === 'geometry'
-                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                      : 'hover:text-slate-900'
-                  }`}
-                >
-                  <Compass size={14} />
-                  <span>Vẽ Hình 2D/3D</span>
-                </button>
-                <button
-                  onClick={() => onSelectTab('physics_sim')}
-                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                    currentTab === 'physics_sim'
-                      ? 'text-sky-600 font-bold border-b-2 border-sky-600'
-                      : 'hover:text-slate-900'
-                  }`}
-                >
-                  <Atom size={14} className="text-sky-600" />
-                  <span>Mô Phỏng (Vật Lý)</span>
-                </button>
-                <button
-                  onClick={() => onSelectTab('chemistry_lab')}
-                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                    currentTab === 'chemistry_lab'
-                      ? 'text-emerald-600 font-bold border-b-2 border-emerald-600'
-                      : 'hover:text-slate-900'
-                  }`}
-                >
-                  <FlaskConical size={14} className="text-emerald-600" />
-                  <span>Thí Nghiệm (Hóa Học)</span>
-                </button>
+                {canAccessSubjectTab('geometry', userRole, userSubject) && (
+                  <button
+                    onClick={() => onSelectTab('geometry')}
+                    className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                      currentTab === 'geometry'
+                        ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                        : 'hover:text-slate-900'
+                    }`}
+                  >
+                    <Compass size={14} />
+                    <span>Vẽ Hình 2D/3D</span>
+                  </button>
+                )}
+                {canAccessSubjectTab('physics_sim', userRole, userSubject) && (
+                  <button
+                    onClick={() => onSelectTab('physics_sim')}
+                    className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                      currentTab === 'physics_sim'
+                        ? 'text-sky-600 font-bold border-b-2 border-sky-600'
+                        : 'hover:text-slate-900'
+                    }`}
+                  >
+                    <Atom size={14} className="text-sky-600" />
+                    <span>Mô Phỏng (Vật Lý)</span>
+                  </button>
+                )}
+                {canAccessSubjectTab('chemistry_lab', userRole, userSubject) && (
+                  <button
+                    onClick={() => onSelectTab('chemistry_lab')}
+                    className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                      currentTab === 'chemistry_lab'
+                        ? 'text-emerald-600 font-bold border-b-2 border-emerald-600'
+                        : 'hover:text-slate-900'
+                    }`}
+                  >
+                    <FlaskConical size={14} className="text-emerald-600" />
+                    <span>Thí Nghiệm (Hóa Học)</span>
+                  </button>
+                )}
                 <button
                   onClick={() => onSelectTab('ask_ai')}
                   className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
@@ -623,7 +632,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {userName}
                 </span>
                 <span className="text-[9px] text-slate-400 font-semibold uppercase">
-                  {userRole === 'student' ? 'Học sinh' : userRole === 'teacher' ? 'Giáo viên' : 'Quản trị'}
+                  {userRole === 'student'
+                    ? 'Học sinh'
+                    : userRole === 'teacher'
+                    ? `GV ${teacherSubject || 'Toán Học'}`
+                    : 'Quản trị'}
                 </span>
               </div>
             </button>
@@ -646,7 +659,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <BookOpen size={15} className="text-emerald-600 shrink-0" />
               )}
               <span className="whitespace-nowrap hidden md:inline">
-                {userRole === 'admin' ? 'Quản Trị Viên' : userRole === 'teacher' ? 'Giáo Viên' : 'Học Sinh'}
+                {userRole === 'admin'
+                  ? 'Quản Trị Viên'
+                  : userRole === 'teacher'
+                  ? `GV ${teacherSubject || 'Toán Học'}`
+                  : 'Học Sinh'}
               </span>
             </div>
 
@@ -689,7 +706,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {userName}
                     </span>
                     <span className="text-[11px] text-blue-700 font-semibold mt-0.5">
-                      {userRole === 'student' ? 'Học Sinh THPT' : userRole === 'teacher' ? 'Giáo Viên THPT' : 'Quản Trị Viên'}
+                      {userRole === 'student'
+                        ? 'Học Sinh THPT'
+                        : userRole === 'teacher'
+                        ? `Giáo Viên ${teacherSubject || 'Toán Học'} THPT`
+                        : 'Quản Trị Viên'}
                     </span>
                   </div>
                 </div>
@@ -995,65 +1016,71 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <ChevronRight size={16} className="opacity-60" />
                     </button>
 
-                    <button
-                      onClick={() => handleMobileTabSelect('geometry')}
-                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
-                        currentTab === 'geometry'
-                          ? 'bg-blue-600 text-white font-bold shadow-md'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center">
-                          <Compass size={18} />
+                    {canAccessSubjectTab('geometry', userRole, userSubject) && (
+                      <button
+                        onClick={() => handleMobileTabSelect('geometry')}
+                        className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                          currentTab === 'geometry'
+                            ? 'bg-blue-600 text-white font-bold shadow-md'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center">
+                            <Compass size={18} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-extrabold">Vẽ Hình 2D / 3D</div>
+                            <div className="text-[10px] text-slate-400">Vẽ hình học không gian, trục Oxyz</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-xs font-extrabold">Vẽ Hình 2D / 3D</div>
-                          <div className="text-[10px] text-slate-400">Vẽ hình học không gian, trục Oxyz</div>
-                        </div>
-                      </div>
-                      <ChevronRight size={16} className="opacity-60" />
-                    </button>
+                        <ChevronRight size={16} className="opacity-60" />
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => handleMobileTabSelect('physics_sim')}
-                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
-                        currentTab === 'physics_sim'
-                          ? 'bg-sky-600 text-white font-bold shadow-md'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center">
-                          <Atom size={18} />
+                    {canAccessSubjectTab('physics_sim', userRole, userSubject) && (
+                      <button
+                        onClick={() => handleMobileTabSelect('physics_sim')}
+                        className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                          currentTab === 'physics_sim'
+                            ? 'bg-sky-600 text-white font-bold shadow-md'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center">
+                            <Atom size={18} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-extrabold">Mô Phỏng (Vật Lý)</div>
+                            <div className="text-[10px] text-slate-400">Dao động, ném xiên, giao thoa &amp; mạch RLC</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-xs font-extrabold">Mô Phỏng (Vật Lý)</div>
-                          <div className="text-[10px] text-slate-400">Dao động, ném xiên, giao thoa &amp; mạch RLC</div>
-                        </div>
-                      </div>
-                      <ChevronRight size={16} className="opacity-60" />
-                    </button>
+                        <ChevronRight size={16} className="opacity-60" />
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => handleMobileTabSelect('chemistry_lab')}
-                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
-                        currentTab === 'chemistry_lab'
-                          ? 'bg-emerald-600 text-white font-bold shadow-md'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                          <FlaskConical size={18} />
+                    {canAccessSubjectTab('chemistry_lab', userRole, userSubject) && (
+                      <button
+                        onClick={() => handleMobileTabSelect('chemistry_lab')}
+                        className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                          currentTab === 'chemistry_lab'
+                            ? 'bg-emerald-600 text-white font-bold shadow-md'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                            <FlaskConical size={18} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-extrabold">Thí Nghiệm (Hóa Học)</div>
+                            <div className="text-[10px] text-slate-400">Chuẩn độ pH, kim loại + acid, kết tủa &amp; cân bằng</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-xs font-extrabold">Thí Nghiệm (Hóa Học)</div>
-                          <div className="text-[10px] text-slate-400">Chuẩn độ pH, kim loại + acid, kết tủa &amp; cân bằng</div>
-                        </div>
-                      </div>
-                      <ChevronRight size={16} className="opacity-60" />
-                    </button>
+                        <ChevronRight size={16} className="opacity-60" />
+                      </button>
+                    )}
 
                     <button
                       onClick={() => handleMobileTabSelect('profile')}

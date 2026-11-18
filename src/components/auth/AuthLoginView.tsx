@@ -597,6 +597,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                           );
                         })}
                       </div>
+                      <p className="text-[10px] text-cyan-200/80 pt-0.5 leading-snug">
+                        Tài khoản giáo viên chỉ hiển thị và sử dụng phân hệ thí nghiệm / công cụ của môn đã chọn.
+                      </p>
                     </div>
                   )}
 

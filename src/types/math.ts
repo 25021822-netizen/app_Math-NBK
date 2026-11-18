@@ -4,6 +4,36 @@ export type AccountTier = 'free' | 'premium';
 export type TeachingSubject = 'Toán Học' | 'Vật Lý' | 'Hóa Học';
 export const TEACHING_SUBJECTS: TeachingSubject[] = ['Toán Học', 'Vật Lý', 'Hóa Học'];
 
+export function resolveTeacherSubject(role: UserRole, subject?: string): TeachingSubject | null {
+  if (role !== 'teacher') return null;
+  const normalized = (subject || '').trim().toLowerCase();
+  if (normalized.includes('hóa') || normalized.includes('hoa')) return 'Hóa Học';
+  if (normalized.includes('lý') || normalized.includes('ly')) return 'Vật Lý';
+  return 'Toán Học';
+}
+
+export function getTeacherSubjectTab(subject?: string): 'geometry' | 'physics_sim' | 'chemistry_lab' {
+  const resolved = resolveTeacherSubject('teacher', subject);
+  if (resolved === 'Hóa Học') return 'chemistry_lab';
+  if (resolved === 'Vật Lý') return 'physics_sim';
+  return 'geometry';
+}
+
+export function canAccessSubjectTab(tab: string, role: UserRole, subject?: string): boolean {
+  if (role !== 'teacher') return true;
+  const teacherSubject = resolveTeacherSubject(role, subject);
+  if (tab === 'geometry' || tab === 'three_3d') {
+    return teacherSubject === 'Toán Học';
+  }
+  if (tab === 'physics_sim') {
+    return teacherSubject === 'Vật Lý';
+  }
+  if (tab === 'chemistry_lab') {
+    return teacherSubject === 'Hóa Học';
+  }
+  return true;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
