@@ -67,7 +67,7 @@ const PHYSICS_CATEGORIES: PhysicsCategoryMeta[] = [
     id: 'mechanics',
     title: 'Cơ Học & Chuyển Động',
     grades: 'Lớp 10 · 11',
-    description: 'Dao động điều hòa & bảo toàn cơ năng, ném xiên, chuyển động tròn đều và bảo toàn động lượng.',
+    description: 'Gia tốc & Định luật II Newton, bảo toàn động lượng, ném xiên, chuyển động tròn đều và dao động điều hòa.',
     icon: Activity,
   },
   {
@@ -254,6 +254,15 @@ const PHYSICS_EXPERIMENTS: PhysicsExperimentMeta[] = [
     icon: Atom,
   },
   {
+    id: 'accelerationNewton',
+    title: 'Gia Tốc & Định Luật II Newton (a = F/m)',
+    category: 'mechanics',
+    categoryLabel: 'Cơ học',
+    grade: 'Lớp 10',
+    summary: 'Thí nghiệm xe kéo mặt ngang có ma sát và mặt phẳng nghiêng với cổng quang điện, đồ thị v(t) và s(t).',
+    icon: Gauge,
+  },
+  {
     id: 'circularMotion',
     title: 'Chuyển Động Tròn Đều & Lực Hướng Tâm',
     category: 'mechanics',
@@ -264,11 +273,11 @@ const PHYSICS_EXPERIMENTS: PhysicsExperimentMeta[] = [
   },
   {
     id: 'momentumCollision',
-    title: 'Va Chạm Đàn Hồi & Bảo Toàn Động Lượng',
+    title: 'Định Luật Bảo Toàn Động Lượng (Va Chạm & Tách Vật)',
     category: 'mechanics',
     categoryLabel: 'Cơ học',
     grade: 'Lớp 10',
-    summary: 'Mô phỏng va chạm trực diện đàn hồi và va chạm mềm trên đệm khí, kiểm chứng định luật bảo toàn động lượng.',
+    summary: 'Kiểm chứng định luật bảo toàn động lượng qua 3 chế độ: va chạm đàn hồi, va chạm mềm và tách 2 vật phản lực.',
     icon: ArrowLeftRight,
   },
   {
@@ -1873,7 +1882,8 @@ export const PhysicsSimulationLabView: React.FC = () => {
       </div>
 
       {/* Render Selected Experiment Module */}
-      {activeModule === 'circularMotion' ||
+      {activeModule === 'accelerationNewton' ||
+      activeModule === 'circularMotion' ||
       activeModule === 'momentumCollision' ||
       activeModule === 'dopplerEffect' ||
       activeModule === 'refractionDispersion' ||

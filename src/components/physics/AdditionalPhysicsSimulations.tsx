@@ -3,6 +3,7 @@ import katex from 'katex';
 import { Play, Pause, RotateCcw, SlidersHorizontal, Volume2, VolumeX } from 'lucide-react';
 
 export type AdditionalPhysicsModuleId =
+  | 'accelerationNewton'
   | 'circularMotion'
   | 'momentumCollision'
   | 'dopplerEffect'
@@ -150,13 +151,93 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
   }, [circRadius, circOmega, circMass]);
 
   // ===========================================================================
-  // 2. VA CHẠM ĐÀN HỒI & MỀM — BẢO TOÀN ĐỘNG LƯỢNG
+  // 0. GIA TỐC & ĐỊNH LUẬT II NEWTON (MẶT NGANG & MẶT NGHIÊNG)
   // ===========================================================================
-  const [colElastic, setColElastic] = useState<boolean>(true);
+  const [accMode, setAccMode] = useState<'horizontal' | 'incline'>('horizontal');
+  const [accForceN, setAccForceN] = useState<number>(12); // N (kéo ngang)
+  const [accMassKg, setAccMassKg] = useState<number>(2.0); // kg
+  const [accMu, setAccMu] = useState<number>(0.15); // hệ số ma sát trượt
+  const [accAngleDeg, setAccAngleDeg] = useState<number>(28); // góc nghiêng mặt phẳng
+  const accG = 9.81;
+
+  const accCalc = useMemo(() => {
+    if (accMode === 'horizontal') {
+      const normalN = accMassKg * accG;
+      const fFrictionMax = accMu * normalN;
+      const netForce = Math.max(0, accForceN - fFrictionMax);
+      const a = netForce / accMassKg;
+      return {
+        normalN,
+        fFriction: accForceN <= fFrictionMax ? accForceN : fFrictionMax,
+        drivingForce: accForceN,
+        netForce,
+        a,
+        isMoving: accForceN > fFrictionMax,
+      };
+    }
+    const rad = (accAngleDeg * Math.PI) / 180;
+    const px = accMassKg * accG * Math.sin(rad);
+    const normalN = accMassKg * accG * Math.cos(rad);
+    const fFrictionMax = accMu * normalN;
+    const netForce = Math.max(0, px - fFrictionMax);
+    const a = netForce / accMassKg;
+    return {
+      normalN,
+      fFriction: px <= fFrictionMax ? px : fFrictionMax,
+      drivingForce: px,
+      netForce,
+      a,
+      isMoving: px > fFrictionMax,
+    };
+  }, [accMode, accForceN, accMassKg, accMu, accAngleDeg]);
+
+  const accStateRef = useRef({
+    s: 0, // m (0..10)
+    v: 0, // m/s
+    t: 0, // s
+    gate1T: null as number | null,
+    gate2T: null as number | null,
+    finished: false,
+    dots: [0] as number[],
+    lastDotT: 0,
+    history: [{ t: 0, v: 0, s: 0 }] as { t: number; v: number; s: number }[],
+  });
+  const [accReadout, setAccReadout] = useState({
+    s: 0,
+    v: 0,
+    t: 0,
+    gate1T: null as number | null,
+    gate2T: null as number | null,
+  });
+
+  const resetAcceleration = () => {
+    accStateRef.current = {
+      s: 0,
+      v: 0,
+      t: 0,
+      gate1T: null,
+      gate2T: null,
+      finished: false,
+      dots: [0],
+      lastDotT: 0,
+      history: [{ t: 0, v: 0, s: 0 }],
+    };
+    setAccReadout({ s: 0, v: 0, t: 0, gate1T: null, gate2T: null });
+  };
+
+  useEffect(() => {
+    resetAcceleration();
+  }, [accMode, accForceN, accMassKg, accMu, accAngleDeg]);
+
+  // ===========================================================================
+  // 2. ĐỊNH LUẬT BẢO TOÀN ĐỘNG LƯỢNG (VA CHẠM & TÁCH VẬT PHẢN LỰC)
+  // ===========================================================================
+  const [colMode, setColMode] = useState<'elastic' | 'inelastic' | 'recoil'>('elastic');
   const [colM1, setColM1] = useState<number>(2.0); // kg
   const [colV1Init, setColV1Init] = useState<number>(4.0); // m/s
   const [colM2, setColM2] = useState<number>(3.0); // kg
   const [colV2Init, setColV2Init] = useState<number>(-1.5); // m/s
+  const [colImpulse, setColImpulse] = useState<number>(10); // N.s cho chế độ tách vật
   const colStateRef = useRef({
     x1: -3.6,
     x2: 2.8,
@@ -173,31 +254,56 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
   });
 
   const resetCollision = (
+    mode: 'elastic' | 'inelastic' | 'recoil' = colMode,
     m1 = colM1,
     v1 = colV1Init,
     m2 = colM2,
-    v2 = colV2Init
+    v2 = colV2Init,
+    impulse = colImpulse
   ) => {
     void m1;
     void m2;
-    colStateRef.current = {
-      x1: -3.8,
-      x2: 3.0,
-      v1,
-      v2,
-      collided: false,
-      t: 0,
-      flash: 0,
-    };
-    setColReadout({ v1, v2, collided: false });
+    void impulse;
+    if (mode === 'recoil') {
+      colStateRef.current = {
+        x1: -0.45,
+        x2: 0.45,
+        v1: 0,
+        v2: 0,
+        collided: false,
+        t: 0,
+        flash: 0,
+      };
+      setColReadout({ v1: 0, v2: 0, collided: false });
+    } else {
+      colStateRef.current = {
+        x1: -3.8,
+        x2: 3.0,
+        v1,
+        v2,
+        collided: false,
+        t: 0,
+        flash: 0,
+      };
+      setColReadout({ v1, v2, collided: false });
+    }
   };
 
   const colCalc = useMemo(() => {
+    if (colMode === 'recoil') {
+      const pBefore = 0;
+      const ekBefore = 0;
+      const v1After = -colImpulse / colM1;
+      const v2After = colImpulse / colM2;
+      const pAfter = colM1 * v1After + colM2 * v2After;
+      const ekAfter = 0.5 * colM1 * v1After * v1After + 0.5 * colM2 * v2After * v2After;
+      return { pBefore, pAfter, ekBefore, ekAfter, v1After, v2After, heatLoss: 0 };
+    }
     const pBefore = colM1 * colV1Init + colM2 * colV2Init;
     const ekBefore = 0.5 * colM1 * colV1Init * colV1Init + 0.5 * colM2 * colV2Init * colV2Init;
     let v1After = 0;
     let v2After = 0;
-    if (colElastic) {
+    if (colMode === 'elastic') {
       v1After = ((colM1 - colM2) * colV1Init + 2 * colM2 * colV2Init) / (colM1 + colM2);
       v2After = ((colM2 - colM1) * colV2Init + 2 * colM1 * colV1Init) / (colM1 + colM2);
     } else {
@@ -209,7 +315,7 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
     const ekAfter = 0.5 * colM1 * v1After * v1After + 0.5 * colM2 * v2After * v2After;
     const heatLoss = Math.max(0, ekBefore - ekAfter);
     return { pBefore, pAfter, ekBefore, ekAfter, v1After, v2After, heatLoss };
-  }, [colElastic, colM1, colV1Init, colM2, colV2Init]);
+  }, [colMode, colM1, colV1Init, colM2, colV2Init, colImpulse]);
 
   // ===========================================================================
   // 3. HIỆU ỨNG DOPPLER
@@ -443,6 +549,45 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
       lastTs = now;
       const dt = isRunning ? rawDt * timeScale : 0;
 
+      // 0. Acceleration & Newton's 2nd Law
+      if (moduleId === 'accelerationNewton' && canvasRef.current) {
+        const st = accStateRef.current;
+        if (dt > 0 && !st.finished && accCalc.a > 0) {
+          const sub = 5;
+          const h = dt / sub;
+          for (let i = 0; i < sub; i++) {
+            st.t += h;
+            st.v += accCalc.a * h;
+            st.s += st.v * h;
+            if (st.gate1T === null && st.s >= 2.5) st.gate1T = st.t;
+            if (st.gate2T === null && st.s >= 7.5) st.gate2T = st.t;
+            if (st.s >= 10) {
+              st.s = 10;
+              st.finished = true;
+              break;
+            }
+          }
+          if (st.t - st.lastDotT >= 0.32 || st.finished) {
+            st.dots.push(st.s);
+            st.lastDotT = st.t;
+          }
+          st.history.push({ t: st.t, v: st.v, s: st.s });
+          if (st.history.length > 220) st.history.shift();
+        }
+        drawAccelerationCanvas(canvasRef.current);
+        uiTimer += rawDt;
+        if (uiTimer >= 0.06) {
+          uiTimer = 0;
+          setAccReadout({
+            s: st.s,
+            v: st.v,
+            t: st.t,
+            gate1T: st.gate1T,
+            gate2T: st.gate2T,
+          });
+        }
+      }
+
       // 1. Circular motion
       if (moduleId === 'circularMotion' && canvasRef.current) {
         const st = circStateRef.current;
@@ -461,43 +606,62 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
         }
       }
 
-      // 2. Momentum collision
+      // 2. Momentum conservation (Elastic, Inelastic, Recoil)
       if (moduleId === 'momentumCollision' && canvasRef.current) {
         const st = colStateRef.current;
         if (dt > 0) {
           st.t += dt;
-          st.x1 += st.v1 * dt;
-          st.x2 += st.v2 * dt;
-          if (st.flash > 0) st.flash = Math.max(0, st.flash - dt * 3);
-
-          const rSum = 0.85;
-          if (!st.collided && st.x2 - st.x1 <= rSum && st.v1 > st.v2) {
-            st.collided = true;
-            st.flash = 1;
-            const mid = (st.x1 + st.x2) / 2;
-            st.x1 = mid - rSum / 2;
-            st.x2 = mid + rSum / 2;
-            if (colElastic) {
-              const u1 = st.v1;
-              const u2 = st.v2;
-              st.v1 = ((colM1 - colM2) * u1 + 2 * colM2 * u2) / (colM1 + colM2);
-              st.v2 = ((colM2 - colM1) * u2 + 2 * colM1 * u1) / (colM1 + colM2);
-            } else {
-              const vCommon = (colM1 * st.v1 + colM2 * st.v2) / (colM1 + colM2);
-              st.v1 = vCommon;
-              st.v2 = vCommon;
+          if (colMode === 'recoil') {
+            if (!st.collided && st.t >= 0.65) {
+              st.collided = true;
+              st.flash = 1;
+              st.v1 = -colImpulse / colM1;
+              st.v2 = colImpulse / colM2;
             }
-          }
-          // Wall bounce gently or keep visible inside track [-5.5, 5.5]
-          if (st.x1 < -5.3) {
-            st.x1 = -5.3;
-            st.v1 = Math.abs(st.v1);
-            if (!colElastic && st.collided) st.v2 = st.v1;
-          }
-          if (st.x2 > 5.3) {
-            st.x2 = 5.3;
-            st.v2 = -Math.abs(st.v2);
-            if (!colElastic && st.collided) st.v1 = st.v2;
+            st.x1 += st.v1 * dt;
+            st.x2 += st.v2 * dt;
+            if (st.flash > 0) st.flash = Math.max(0, st.flash - dt * 3);
+            if (st.x1 < -5.3) {
+              st.x1 = -5.3;
+              st.v1 = Math.abs(st.v1);
+            }
+            if (st.x2 > 5.3) {
+              st.x2 = 5.3;
+              st.v2 = -Math.abs(st.v2);
+            }
+          } else {
+            st.x1 += st.v1 * dt;
+            st.x2 += st.v2 * dt;
+            if (st.flash > 0) st.flash = Math.max(0, st.flash - dt * 3);
+
+            const rSum = 0.85;
+            if (!st.collided && st.x2 - st.x1 <= rSum && st.v1 > st.v2) {
+              st.collided = true;
+              st.flash = 1;
+              const mid = (st.x1 + st.x2) / 2;
+              st.x1 = mid - rSum / 2;
+              st.x2 = mid + rSum / 2;
+              if (colMode === 'elastic') {
+                const u1 = st.v1;
+                const u2 = st.v2;
+                st.v1 = ((colM1 - colM2) * u1 + 2 * colM2 * u2) / (colM1 + colM2);
+                st.v2 = ((colM2 - colM1) * u2 + 2 * colM1 * u1) / (colM1 + colM2);
+              } else {
+                const vCommon = (colM1 * st.v1 + colM2 * st.v2) / (colM1 + colM2);
+                st.v1 = vCommon;
+                st.v2 = vCommon;
+              }
+            }
+            if (st.x1 < -5.3) {
+              st.x1 = -5.3;
+              st.v1 = Math.abs(st.v1);
+              if (colMode === 'inelastic' && st.collided) st.v2 = st.v1;
+            }
+            if (st.x2 > 5.3) {
+              st.x2 = 5.3;
+              st.v2 = -Math.abs(st.v2);
+              if (colMode === 'inelastic' && st.collided) st.v1 = st.v2;
+            }
           }
         }
         drawCollisionCanvas(canvasRef.current);
@@ -673,6 +837,194 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
     return { ctx, w, h };
   };
 
+  const drawAccelerationCanvas = (canvas: HTMLCanvasElement) => {
+    const setup = setupCanvas(canvas);
+    if (!setup) return;
+    const { ctx, w, h } = setup;
+    ctx.fillStyle = '#F8FAFC';
+    ctx.fillRect(0, 0, w, h);
+
+    const stageH = Math.floor(h * 0.58);
+    const graphH = h - stageH;
+    const st = accStateRef.current;
+
+    if (accMode === 'horizontal') {
+      const railY = stageH * 0.68;
+      const padX = 48;
+      const trackPx = w - padX * 2;
+      const toX = (sMeters: number) => padX + (sMeters / 10) * trackPx;
+
+      // Ground & ruler ticks
+      ctx.fillStyle = '#E2E8F0';
+      ctx.fillRect(padX - 10, railY, trackPx + 20, 12);
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(padX - 10, railY);
+      ctx.lineTo(padX + trackPx + 10, railY);
+      ctx.stroke();
+
+      ctx.fillStyle = '#64748B';
+      ctx.font = '500 10px ui-monospace, monospace';
+      for (let m = 0; m <= 10; m += 1) {
+        const tx = toX(m);
+        ctx.beginPath();
+        ctx.moveTo(tx, railY);
+        ctx.lineTo(tx, railY + 6);
+        ctx.stroke();
+        ctx.fillText(`${m}m`, tx - 7, railY + 23);
+      }
+
+      // Photogates at 2.5m & 7.5m
+      [2.5, 7.5].forEach((gm, idx) => {
+        const gx = toX(gm);
+        ctx.strokeStyle = '#0EA5E9';
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(gx, railY - 64);
+        ctx.lineTo(gx, railY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#0369A1';
+        ctx.font = '700 10px ui-sans-serif, sans-serif';
+        ctx.fillText(`Cổng ${idx + 1} (${gm}m)`, gx - 28, railY - 68);
+      });
+
+      // Strobe position markers
+      st.dots.forEach((dm) => {
+        const dx = toX(dm);
+        ctx.fillStyle = 'rgba(2, 132, 199, 0.35)';
+        ctx.beginPath();
+        ctx.arc(dx, railY - 5, 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Block
+      const bx = toX(st.s);
+      const boxW = 54;
+      const boxH = 38;
+      ctx.fillStyle = '#0284C7';
+      ctx.beginPath();
+      ctx.roundRect(bx - boxW / 2, railY - boxH, boxW, boxH, 7);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${accMassKg.toFixed(1)}kg`, bx, railY - 15);
+      ctx.textAlign = 'left';
+
+      const cy = railY - boxH / 2;
+      drawArrow(ctx, bx + boxW / 2, cy, bx + boxW / 2 + Math.min(85, accForceN * 2.5), cy, '#DC2626', `F=${accForceN}N`);
+      if (accCalc.fFriction > 0.05) {
+        drawArrow(ctx, bx - boxW / 2, cy + 8, bx - boxW / 2 - Math.min(65, accCalc.fFriction * 2.5), cy + 8, '#D97706', `Fms=${accCalc.fFriction.toFixed(1)}N`);
+      }
+      if (accCalc.a > 0) {
+        drawArrow(ctx, bx, railY - boxH - 12, bx + Math.min(75, accCalc.a * 12), railY - boxH - 12, '#059669', `a=${accCalc.a.toFixed(2)}`);
+      }
+    } else {
+      // Inclined plane mode
+      const rad = (accAngleDeg * Math.PI) / 180;
+      const baseLeft = 72;
+      const baseY = stageH - 26;
+      const rampLenPx = Math.min(w - 150, (stageH - 60) / Math.max(0.25, Math.sin(rad)));
+      const topX = baseLeft;
+      const topY = baseY - rampLenPx * Math.sin(rad);
+      const endX = baseLeft + rampLenPx * Math.cos(rad);
+      const endY = baseY;
+
+      // Ramp triangle
+      ctx.fillStyle = '#E2E8F0';
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(topX, topY);
+      ctx.lineTo(topX, endY);
+      ctx.lineTo(endX, endY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Angle label
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.fillText(`α = ${accAngleDeg}°`, endX - 58, endY - 8);
+
+      const dirX = Math.cos(rad);
+      const dirY = Math.sin(rad);
+      const normX = Math.sin(rad);
+      const normY = -Math.cos(rad);
+      const frac = st.s / 10;
+      const cx = topX + dirX * (frac * rampLenPx) + normX * 18;
+      const cy = topY + dirY * (frac * rampLenPx) + normY * 18;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rad);
+      ctx.fillStyle = '#0284C7';
+      ctx.beginPath();
+      ctx.roundRect(-24, -16, 48, 32, 6);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${accMassKg.toFixed(1)}kg`, 0, 4);
+      ctx.restore();
+      ctx.textAlign = 'left';
+
+      // Force vectors P, N, Fms
+      drawArrow(ctx, cx, cy, cx, cy + 48, '#475569', 'P');
+      drawArrow(ctx, cx, cy, cx + normX * 42, cy + normY * 42, '#0284C7', 'N');
+      if (accCalc.fFriction > 0.05) {
+        drawArrow(ctx, cx, cy, cx - dirX * 32, cy - dirY * 32, '#D97706', 'Fms');
+      }
+      if (accCalc.a > 0) {
+        drawArrow(ctx, cx + normX * 22, cy + normY * 22, cx + normX * 22 + dirX * 48, cy + normY * 22 + dirY * 48, '#059669', `a=${accCalc.a.toFixed(2)}`);
+      }
+    }
+
+    // Bottom subplots: v(t) and s(t)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, stageH, w, graphH);
+    ctx.strokeStyle = '#CBD5E1';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, stageH);
+    ctx.lineTo(w, stageH);
+    ctx.stroke();
+
+    const halfW = Math.floor(w / 2);
+    const drawMiniGraph = (leftX: number, subW: number, title: string, color: string, getY: (p: { t: number; v: number; s: number }) => number, maxY: number) => {
+      const gx = leftX + 24;
+      const gy = stageH + 28;
+      const gw = subW - 40;
+      const gh = graphH - 42;
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.strokeRect(gx, gy, gw, gh);
+      ctx.fillStyle = '#334155';
+      ctx.font = '600 11px ui-sans-serif, sans-serif';
+      ctx.fillText(title, leftX + 14, stageH + 18);
+
+      const hist = st.history;
+      if (hist.length > 1) {
+        const maxT = Math.max(2.5, hist[hist.length - 1].t);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        hist.forEach((pt, idx) => {
+          const px = gx + (pt.t / maxT) * gw;
+          const py = gy + gh - Math.min(1, getY(pt) / Math.max(0.5, maxY)) * gh;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      }
+    };
+
+    const maxVRef = Math.max(4, Math.sqrt(2 * Math.max(0.5, accCalc.a) * 10));
+    drawMiniGraph(0, halfW, 'Đồ thị vận tốc v(t) = at (đường thẳng)', '#059669', (p) => p.v, maxVRef);
+    drawMiniGraph(halfW, w - halfW, 'Đồ thị quãng đường s(t) = ½at² (parabol)', '#0284C7', (p) => p.s, 10);
+  };
+
   const drawCircularCanvas = (canvas: HTMLCanvasElement) => {
     const setup = setupCanvas(canvas);
     if (!setup) return;
@@ -829,6 +1181,16 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
     ctx.fillText(`m₂=${colM2.toFixed(1)}kg`, x2Px, trackY + 4);
     ctx.textAlign = 'left';
 
+    // Show recoil spring at center before separation
+    if (colMode === 'recoil' && !st.collided) {
+      ctx.strokeStyle = '#059669';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x1Px + r1, trackY);
+      ctx.lineTo(x2Px - r2, trackY);
+      ctx.stroke();
+    }
+
     // Momentum & velocity arrows above carts
     if (Math.abs(st.v1) > 0.05) {
       drawArrow(ctx, x1Px, trackY - r1 - 12, x1Px + st.v1 * 18, trackY - r1 - 12, '#0284C7', `v₁=${st.v1.toFixed(2)}`);
@@ -855,10 +1217,18 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
     );
     ctx.fillStyle = '#475569';
     ctx.font = '600 11px ui-monospace, monospace';
+    const modeStatusText =
+      colMode === 'recoil'
+        ? st.collided
+          ? 'Đã tách vật: p₁ + p₂ = 0 (ngược chiều nhau)'
+          : 'Đang nén lò xo (p₀ = 0, chuẩn bị bung)'
+        : st.collided
+        ? colMode === 'elastic'
+          ? 'Sau va chạm đàn hồi'
+          : 'Sau va chạm mềm (dính vào nhau)'
+        : 'Trước va chạm';
     ctx.fillText(
-      `Trước va chạm: p₀ = ${colCalc.pBefore.toFixed(2)} kg·m/s   |   Trạng thái: ${
-        st.collided ? (colElastic ? 'Sau va chạm đàn hồi' : 'Sau va chạm mềm (dính vào nhau)') : 'Trước va chạm'
-      }`,
+      `Ban đầu: p₀ = ${colCalc.pBefore.toFixed(2)} kg·m/s   |   ${modeStatusText}`,
       38,
       66
     );
@@ -1434,7 +1804,8 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
             <button
               type="button"
               onClick={() => {
-                if (moduleId === 'circularMotion') circStateRef.current = { angle: 0, t: 0 };
+                if (moduleId === 'accelerationNewton') resetAcceleration();
+                else if (moduleId === 'circularMotion') circStateRef.current = { angle: 0, t: 0 };
                 else if (moduleId === 'momentumCollision') resetCollision();
                 else if (moduleId === 'dopplerEffect') dopplerStateRef.current = { sourceX: -0.78, t: 0, lastEmitT: 0, rings: [] };
                 else if (moduleId === 'electromagneticInduction') emStateRef.current = { t: 0, magPos: -1, angle: 0, history: [] };
@@ -1487,6 +1858,35 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
         </div>
 
         <div className="p-4 border-t border-slate-200 bg-white grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          {moduleId === 'accelerationNewton' && (
+            <>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
+                <span className="text-[11px] text-slate-500 block">Gia tốc lý thuyết a</span>
+                <span className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5 block">
+                  {accCalc.a.toFixed(2)} m/s²
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
+                <span className="text-[11px] text-slate-500 block">Hợp lực Fhl / Lực ma sát</span>
+                <span className="font-mono tabular-nums font-bold text-slate-900 mt-0.5 block">
+                  {accCalc.netForce.toFixed(1)} N · {accCalc.fFriction.toFixed(1)} N
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
+                <span className="text-[11px] text-slate-500 block">Vận tốc / Quãng đường</span>
+                <span className="font-mono tabular-nums font-bold text-sky-700 mt-0.5 block">
+                  {accReadout.v.toFixed(2)} m/s · {accReadout.s.toFixed(2)} m
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
+                <span className="text-[11px] text-slate-500 block">Cổng quang 1 (2.5m) / 2 (7.5m)</span>
+                <span className="font-mono tabular-nums font-bold text-slate-900 mt-0.5 block">
+                  {accReadout.gate1T !== null ? `${accReadout.gate1T.toFixed(2)}s` : '--'} · {accReadout.gate2T !== null ? `${accReadout.gate2T.toFixed(2)}s` : '--'}
+                </span>
+              </div>
+            </>
+          )}
+
           {moduleId === 'circularMotion' && (
             <>
               <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
@@ -1725,6 +2125,75 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
             <h2 className="text-sm font-extrabold text-slate-900">Bảng Tham Số Thí Nghiệm</h2>
           </div>
 
+          {moduleId === 'accelerationNewton' && (
+            <>
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setAccMode('horizontal')}
+                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
+                    accMode === 'horizontal' ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
+                  }`}
+                >
+                  Kéo mặt ngang
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccMode('incline')}
+                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
+                    accMode === 'incline' ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
+                  }`}
+                >
+                  Mặt phẳng nghiêng
+                </button>
+              </div>
+              {accMode === 'horizontal' ? (
+                <SliderControl
+                  label="Lực kéo F"
+                  valueDisplay={`${accForceN} N`}
+                  min={2}
+                  max={35}
+                  step={1}
+                  value={accForceN}
+                  onChange={setAccForceN}
+                />
+              ) : (
+                <SliderControl
+                  label="Góc nghiêng α"
+                  valueDisplay={`${accAngleDeg}°`}
+                  min={8}
+                  max={55}
+                  step={1}
+                  value={accAngleDeg}
+                  onChange={setAccAngleDeg}
+                />
+              )}
+              <SliderControl
+                label="Khối lượng vật m"
+                valueDisplay={`${accMassKg.toFixed(1)} kg`}
+                min={0.5}
+                max={6.0}
+                step={0.5}
+                value={accMassKg}
+                onChange={setAccMassKg}
+              />
+              <SliderControl
+                label="Hệ số ma sát trượt μ"
+                valueDisplay={`${accMu.toFixed(2)}`}
+                min={0}
+                max={0.5}
+                step={0.02}
+                value={accMu}
+                onChange={setAccMu}
+              />
+              {!accCalc.isMoving && (
+                <div className="p-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 font-semibold">
+                  Lực kéo chưa thắng nổi ma sát tối đa nên vật đứng yên (a = 0 m/s²).
+                </div>
+              )}
+            </>
+          )}
+
           {moduleId === 'circularMotion' && (
             <>
               <SliderControl
@@ -1768,31 +2237,26 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
 
           {moduleId === 'momentumCollision' && (
             <>
-              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setColElastic(true);
-                    resetCollision(colM1, colV1Init, colM2, colV2Init);
-                  }}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    colElastic ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Va chạm đàn hồi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setColElastic(false);
-                    resetCollision(colM1, colV1Init, colM2, colV2Init);
-                  }}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    !colElastic ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Va chạm mềm
-                </button>
+              <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg">
+                {[
+                  { id: 'elastic' as const, label: 'Đàn hồi' },
+                  { id: 'inelastic' as const, label: 'Va chạm mềm' },
+                  { id: 'recoil' as const, label: 'Tách 2 vật' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setColMode(m.id);
+                      resetCollision(m.id, colM1, colV1Init, colM2, colV2Init, colImpulse);
+                    }}
+                    className={`py-1.5 rounded-md font-bold text-[11px] cursor-pointer ${
+                      colMode === m.id ? 'bg-white text-sky-700 shadow-xs' : 'text-slate-600'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
               <SliderControl
                 label="Khối lượng xe 1 (m₁)"
@@ -1803,19 +2267,7 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
                 value={colM1}
                 onChange={(v) => {
                   setColM1(v);
-                  resetCollision(v, colV1Init, colM2, colV2Init);
-                }}
-              />
-              <SliderControl
-                label="Vận tốc ban đầu v₁"
-                valueDisplay={`${colV1Init.toFixed(1)} m/s`}
-                min={0.5}
-                max={6.0}
-                step={0.5}
-                value={colV1Init}
-                onChange={(v) => {
-                  setColV1Init(v);
-                  resetCollision(colM1, v, colM2, colV2Init);
+                  resetCollision(colMode, v, colV1Init, colM2, colV2Init, colImpulse);
                 }}
               />
               <SliderControl
@@ -1827,21 +2279,50 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
                 value={colM2}
                 onChange={(v) => {
                   setColM2(v);
-                  resetCollision(colM1, colV1Init, v, colV2Init);
+                  resetCollision(colMode, colM1, colV1Init, v, colV2Init, colImpulse);
                 }}
               />
-              <SliderControl
-                label="Vận tốc ban đầu v₂"
-                valueDisplay={`${colV2Init.toFixed(1)} m/s`}
-                min={-5.0}
-                max={2.0}
-                step={0.5}
-                value={colV2Init}
-                onChange={(v) => {
-                  setColV2Init(v);
-                  resetCollision(colM1, colV1Init, colM2, v);
-                }}
-              />
+              {colMode === 'recoil' ? (
+                <SliderControl
+                  label="Xung lực bung lò xo"
+                  valueDisplay={`${colImpulse.toFixed(1)} N·s`}
+                  min={4}
+                  max={20}
+                  step={1}
+                  value={colImpulse}
+                  onChange={(imp) => {
+                    setColImpulse(imp);
+                    resetCollision('recoil', colM1, colV1Init, colM2, colV2Init, imp);
+                  }}
+                />
+              ) : (
+                <>
+                  <SliderControl
+                    label="Vận tốc ban đầu v₁"
+                    valueDisplay={`${colV1Init.toFixed(1)} m/s`}
+                    min={0.5}
+                    max={6.0}
+                    step={0.5}
+                    value={colV1Init}
+                    onChange={(v) => {
+                      setColV1Init(v);
+                      resetCollision(colMode, colM1, v, colM2, colV2Init, colImpulse);
+                    }}
+                  />
+                  <SliderControl
+                    label="Vận tốc ban đầu v₂"
+                    valueDisplay={`${colV2Init.toFixed(1)} m/s`}
+                    min={-5.0}
+                    max={2.0}
+                    step={0.5}
+                    value={colV2Init}
+                    onChange={(v) => {
+                      setColV2Init(v);
+                      resetCollision(colMode, colM1, colV1Init, colM2, v, colImpulse);
+                    }}
+                  />
+                </>
+              )}
             </>
           )}
 
@@ -2135,6 +2616,18 @@ export const AdditionalPhysicsSimulations: React.FC<AdditionalPhysicsSimulations
         <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2.5 text-xs">
           <h3 className="font-extrabold text-slate-900">Công Thức Trọng Tâm</h3>
           <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 overflow-x-auto text-slate-800 space-y-2">
+            {moduleId === 'accelerationNewton' && (
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: renderLatex(
+                    accMode === 'horizontal'
+                      ? String.raw`\vec{a} = \frac{\vec{F}_{hl}}{m} = \frac{F - \mu mg}{m},\quad v = at,\quad s = \frac{1}{2}at^2`
+                      : String.raw`a = g(\sin\alpha - \mu\cos\alpha),\quad v^2 - v_0^2 = 2as`,
+                    false
+                  ),
+                }}
+              />
+            )}
             {moduleId === 'circularMotion' && (
               <div
                 dangerouslySetInnerHTML={{
