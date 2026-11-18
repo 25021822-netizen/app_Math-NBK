@@ -12,7 +12,6 @@ import {
   BookOpen,
   Flame,
   Zap,
-  Sparkles,
   UserCheck,
   Users,
   Compass,
@@ -147,9 +146,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               href="#"
               onClick={(e) => {
                 e.preventDefault();
-                if (userRole === 'teacher') handleMobileTabSelect('classroom');
-                else if (userRole === 'admin') handleMobileTabSelect('admin_dashboard');
-                else handleMobileTabSelect('ask_ai');
+                if (userRole === 'admin') handleMobileTabSelect('admin_dashboard');
+                else handleMobileTabSelect('classroom');
               }}
               className="flex items-center gap-2 sm:gap-2.5 group"
             >
@@ -171,17 +169,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           <nav className="hidden md:flex items-center gap-2.5 lg:gap-3.5 text-xs lg:text-[13px] font-medium text-slate-600 overflow-x-auto no-scrollbar">
             {userRole === 'student' && (
               <>
-                <button
-                  onClick={() => onSelectTab('ask_ai')}
-                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1.5 ${
-                    currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                      : 'hover:text-slate-900'
-                  }`}
-                >
-                  <Sparkles size={15} className="text-blue-600" />
-                  <span>Hỏi AI (Liki)</span>
-                </button>
                 <button
                   onClick={() => onSelectTab('classroom')}
                   className={`whitespace-nowrap transition-colors py-1 ${
@@ -345,17 +332,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span>Thí Nghiệm (Hóa Học)</span>
                   </button>
                 )}
-                <button
-                  onClick={() => onSelectTab('ask_ai')}
-                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
-                    currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
-                      : 'hover:text-slate-900'
-                  }`}
-                >
-                  <Sparkles size={14} className="text-blue-600" />
-                  <span>Hỏi AI (Liki)</span>
-                </button>
                 <button
                   onClick={() => onSelectTab('profile')}
                   className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
@@ -733,30 +709,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {userRole === 'student' && (
                   <>
                     <button
-                      onClick={() => handleMobileTabSelect('ask_ai')}
-                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
-                        currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                          ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                          currentTab === 'ask_ai' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'
-                        }`}>
-                          <Sparkles size={18} />
-                        </div>
-                        <div>
-                          <div className="text-xs font-extrabold">Hỏi AI (Liki)</div>
-                          <div className={`text-[10px] ${currentTab === 'ask_ai' ? 'text-blue-100' : 'text-slate-400'}`}>
-                            Gia sư Socratic, 3D Three.js, Tạo ảnh toán & Quét OCR
-                          </div>
-                        </div>
-                      </div>
-                      <ChevronRight size={16} className="opacity-60" />
-                    </button>
-
-                    <button
                       onClick={() => handleMobileTabSelect('classroom')}
                       className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
                         currentTab === 'classroom'
@@ -996,26 +948,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <ChevronRight size={16} className="opacity-60" />
                     </button>
 
-                    <button
-                      onClick={() => handleMobileTabSelect('ask_ai')}
-                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
-                        currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                          ? 'bg-blue-600 text-white font-bold shadow-md'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                          <Sparkles size={18} />
-                        </div>
-                        <div>
-                          <div className="text-xs font-extrabold">Hỏi AI (Liki)</div>
-                          <div className="text-[10px] text-slate-400">Trợ lý toán học, 3D Three.js & tạo ảnh</div>
-                        </div>
-                      </div>
-                      <ChevronRight size={16} className="opacity-60" />
-                    </button>
-
                     {canAccessSubjectTab('geometry', userRole, userSubject) && (
                       <button
                         onClick={() => handleMobileTabSelect('geometry')}
@@ -1182,19 +1114,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <>
               <button
                 type="button"
-                onClick={() => handleMobileTabSelect('ask_ai')}
-                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
-                  currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                    ? 'text-blue-600 font-bold scale-105'
-                    : 'text-slate-400 hover:text-slate-700'
-                }`}
-              >
-                <Sparkles size={19} className={currentTab === 'ask_ai' ? 'stroke-[2.5]' : ''} />
-                <span className="text-[10px] mt-0.5">Hỏi AI</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => handleMobileTabSelect('classroom')}
                 className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
                   currentTab === 'classroom'
@@ -1303,19 +1222,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <FileText size={19} className={currentTab === 'teacher_portal' ? 'stroke-[2.5]' : ''} />
                 <span className="text-[10px] mt-0.5">Tạo Đề</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleMobileTabSelect('ask_ai')}
-                className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
-                  currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                    ? 'text-blue-600 font-bold scale-105'
-                    : 'text-slate-400'
-                }`}
-              >
-                <Sparkles size={19} />
-                <span className="text-[10px] mt-0.5">Hỏi AI</span>
               </button>
 
               <button

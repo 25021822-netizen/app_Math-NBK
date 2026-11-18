@@ -59,9 +59,6 @@ import {
   markExamRecentlySaved,
 } from './services/dbSyncService';
 import { Navbar } from './components/Navbar';
-const AIMathStudioView = lazy(() =>
-  import('./components/student/AIMathStudioView').then((m) => ({ default: m.AIMathStudioView }))
-);
 const ExamEngineView = lazy(() =>
   import('./components/student/ExamEngineView').then((m) => ({ default: m.ExamEngineView }))
 );
@@ -109,7 +106,6 @@ import {
   FileCheck,
   BarChart3,
   FileText,
-  Sparkles,
   Compass,
   User,
   Bell,
@@ -149,7 +145,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(initialSession.isAuth);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
   const [currentTab, setCurrentTab] = useState<string>(
-    initialSession.isAuth && initialSession.user.role === 'teacher' ? 'classroom' : 'ask_ai'
+    initialSession.isAuth && initialSession.user.role === 'admin' ? 'admin_dashboard' : 'classroom'
   );
   const [userRole, setUserRole] = useState<UserRole>(
     initialSession.isAuth ? initialSession.user.role : 'student'
@@ -953,18 +949,18 @@ export default function App() {
         setCurrentTab('admin_dashboard');
       }
     } else if (userRole === 'teacher') {
-      const baseTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'ask_ai', 'profile', 'exam', 'image_studio'];
+      const baseTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'profile', 'exam'];
       const isAllowedBase = baseTeacherTabs.includes(currentTab);
       const isAllowedSubject =
-        ['geometry', 'physics_sim', 'chemistry_lab', 'three_3d'].includes(currentTab) &&
+        ['geometry', 'physics_sim', 'chemistry_lab'].includes(currentTab) &&
         canAccessSubjectTab(currentTab, userRole, userProfile.subject);
       if (!isAllowedBase && !isAllowedSubject) {
         setCurrentTab('classroom');
       }
     } else if (userRole === 'student') {
-      const allowedStudentTabs = ['ask_ai', 'classroom', 'student_history', 'geometry', 'physics_sim', 'chemistry_lab', 'profile', 'exam', 'three_3d', 'image_studio'];
+      const allowedStudentTabs = ['classroom', 'student_history', 'geometry', 'physics_sim', 'chemistry_lab', 'profile', 'exam'];
       if (!allowedStudentTabs.includes(currentTab)) {
-        setCurrentTab('ask_ai');
+        setCurrentTab('classroom');
       }
     }
   }, [userRole, userProfile.subject, currentTab, isAuthenticated]);
@@ -990,8 +986,7 @@ export default function App() {
         sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(user));
         localStorage.removeItem('math_nbk_auth_user');
       }
-      if (user.role === 'teacher') setCurrentTab('classroom');
-      else setCurrentTab('ask_ai');
+      setCurrentTab('classroom');
     }
   };
 
@@ -1006,7 +1001,7 @@ export default function App() {
     setIsAuthenticated(false);
     setUserProfile(INITIAL_USER_PROFILE);
     setUserRole('student');
-    setCurrentTab('ask_ai');
+    setCurrentTab('classroom');
     localStorage.removeItem('math_nbk_auth_user');
     sessionStorage.removeItem('math_nbk_auth_session');
     sessionStorage.removeItem('math_nbk_admin_session');
@@ -1458,13 +1453,6 @@ export default function App() {
     dbToggleMessageReaction(classId, messageId, emoji, userProfile.id).catch(console.error);
   };
 
-  const handleIncrementScan = () => {
-    setUserProfile((prev) => ({
-      ...prev,
-      dailyScanCount: prev.dailyScanCount + 1,
-    }));
-  };
-
   const handleRecordCheatLog = (log: CheatLog) => {
     setCheatLogs((prev) => [log, ...prev]);
     dbSaveCheatLog(log).catch(console.error);
@@ -1751,57 +1739,6 @@ export default function App() {
         );
       }
 
-      if (currentTab === 'three_3d' && canAccessSubjectTab('three_3d', userRole, userProfile.subject)) {
-        return (
-          <AIMathStudioView
-            initialTab="three_3d"
-            allowThree3D={true}
-            dailyScanCount={userProfile.dailyScanCount}
-            onIncrementScan={handleIncrementScan}
-            onStartExam={(newExam) => {
-              if (newExam) {
-                handlePublishExam(newExam);
-              }
-              setCurrentTab('exam');
-            }}
-          />
-        );
-      }
-
-      if (currentTab === 'image_studio') {
-        return (
-          <AIMathStudioView
-            initialTab="image_studio"
-            allowThree3D={canAccessSubjectTab('three_3d', userRole, userProfile.subject)}
-            dailyScanCount={userProfile.dailyScanCount}
-            onIncrementScan={handleIncrementScan}
-            onStartExam={(newExam) => {
-              if (newExam) {
-                handlePublishExam(newExam);
-              }
-              setCurrentTab('exam');
-            }}
-          />
-        );
-      }
-
-      if (currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor') {
-        return (
-          <AIMathStudioView
-            initialTab="tutor"
-            allowThree3D={canAccessSubjectTab('three_3d', userRole, userProfile.subject)}
-            dailyScanCount={userProfile.dailyScanCount}
-            onIncrementScan={handleIncrementScan}
-            onStartExam={(newExam) => {
-              if (newExam) {
-                handlePublishExam(newExam);
-              }
-              setCurrentTab('exam');
-            }}
-          />
-        );
-      }
-
       if (currentTab === 'exam_repository') {
         return (
           <TeacherPortalView
@@ -1908,49 +1845,33 @@ export default function App() {
             submissions={submissions}
           />
         );
-      case 'three_3d':
-        return (
-          <AIMathStudioView
-            initialTab="three_3d"
-            dailyScanCount={userProfile.dailyScanCount}
-            onIncrementScan={handleIncrementScan}
-            onStartExam={(newExam) => {
-              if (newExam) {
-                handlePublishExam(newExam);
-              }
-              setCurrentTab('exam');
-            }}
-          />
-        );
-      case 'image_studio':
-        return (
-          <AIMathStudioView
-            initialTab="image_studio"
-            dailyScanCount={userProfile.dailyScanCount}
-            onIncrementScan={handleIncrementScan}
-            onStartExam={(newExam) => {
-              if (newExam) {
-                handlePublishExam(newExam);
-              }
-              setCurrentTab('exam');
-            }}
-          />
-        );
-      case 'ask_ai':
-      case 'scanner':
-      case 'tutor':
       default:
         return (
-          <AIMathStudioView
-            initialTab="tutor"
-            dailyScanCount={userProfile.dailyScanCount}
-            onIncrementScan={handleIncrementScan}
-            onStartExam={(newExam) => {
-              if (newExam) {
-                handlePublishExam(newExam);
-              }
+          <ClassroomManagerView
+            userRole={userRole}
+            currentUserId={userProfile.id}
+            currentUserName={userProfile.name}
+            currentUserAvatar={userProfile.avatar}
+            currentUserEmail={userProfile.email}
+            classrooms={classrooms}
+            onUpdateClassrooms={handleUpdateClassrooms}
+            examsList={examsList}
+            onUpdateExamsList={handleUpdateExamsList}
+            onSelectExamToTake={(examId) => {
+              setActiveExamId(examId);
               setCurrentTab('exam');
             }}
+            allUsers={allUsers}
+            classroomMessages={classroomMessages}
+            onSendChatMessage={handleSendChatMessage}
+            onDeleteChatMessage={handleDeleteChatMessage}
+            onToggleReaction={handleToggleReaction}
+            classroomLessons={classroomLessons}
+            onUpdateLessons={handleUpdateLessons}
+            onSaveLesson={handleSaveLesson}
+            onDeleteLesson={handleDeleteLesson}
+            onDisbandClassroom={handleDisbandClassroom}
+            externalClassJump={externalClassJump}
           />
         );
     }
@@ -2120,17 +2041,6 @@ export default function App() {
           ) : (
             // 3. Học Sinh
             <>
-              <button
-                onClick={() => setCurrentTab('ask_ai')}
-                className={`flex flex-col items-center gap-0.5 ${
-                  currentTab === 'ask_ai' || currentTab === 'scanner' || currentTab === 'tutor'
-                    ? 'text-blue-600 font-bold'
-                    : 'text-slate-400'
-                }`}
-              >
-                <Sparkles size={18} />
-                <span className="text-[10px]">Hỏi AI</span>
-              </button>
               <button
                 onClick={() => setCurrentTab('classroom')}
                 className={`flex flex-col items-center gap-0.5 ${
