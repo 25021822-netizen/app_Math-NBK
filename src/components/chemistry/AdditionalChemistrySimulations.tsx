@@ -16,7 +16,8 @@ export type AdditionalChemModuleId =
   | 'reaction_rate'
   | 'redox_flame'
   | 'ester_lab'
-  | 'thermochemistry';
+  | 'thermochemistry'
+  | 'oxygen_prep';
 
 interface ChemSliderProps {
   label: string;
@@ -463,6 +464,66 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
   }, [thermoId]);
 
   // ===========================================================================
+  // 7. ĐIỀU CHẾ KHÍ OXI (O2) TRONG PHÒNG THÍ NGHIỆM
+  // ===========================================================================
+  const [o2Method, setO2Method] = useState<'kmno4' | 'kclo3' | 'h2o2'>('kmno4');
+  const [o2CollectMethod, setO2CollectMethod] = useState<'water' | 'air'>('water');
+  const [o2BurnerOn, setO2BurnerOn] = useState<boolean>(true);
+  const [o2CatalystMnO2, setO2CatalystMnO2] = useState<boolean>(true);
+  const [o2ReactantMassG, setO2ReactantMassG] = useState<number>(15.8); // g (hoặc g chất tan)
+  const [o2TestSplint, setO2TestSplint] = useState<boolean>(false);
+
+  const o2Calc = useMemo(() => {
+    let nO2Max = 0;
+    let eq = '';
+    let note = '';
+    let rateMul = 1.0;
+
+    if (o2Method === 'kmno4') {
+      // 2 KMnO4 (158) -> K2MnO4 + MnO2 + O2
+      nO2Max = (o2ReactantMassG / 158) * 0.5;
+      eq = '2KMnO₄ —(t°)→ K₂MnO₄ + MnO₂ + O₂ ↑';
+      note = 'Ống nghiệm hơi chúc miệng xuống để tránh hơi nước đọng làm vỡ ống; bông gòn ngăn bụi KMnO₄.';
+      rateMul = o2BurnerOn ? 1.0 : 0;
+    } else if (o2Method === 'kclo3') {
+      // 2 KClO3 (122.5) -> 2 KCl + 3 O2
+      nO2Max = (o2ReactantMassG / 122.5) * 1.5;
+      eq = o2CatalystMnO2
+        ? '2KClO₃ —(MnO₂, t°)→ 2KCl + 3O₂ ↑'
+        : '2KClO₃ —(t° cao)→ 2KCl + 3O₂ ↑';
+      note = o2CatalystMnO2
+        ? 'Xúc tác MnO₂ hạ nhiệt độ phân hủy KClO₃ từ ~400°C xuống ~200°C, khí O₂ thoát ra rất nhanh.'
+        : 'Không có xúc tác MnO₂, KClO₃ phân hủy rất chậm và cần nhiệt độ cao hơn.';
+      rateMul = o2BurnerOn ? (o2CatalystMnO2 ? 1.45 : 0.35) : 0;
+    } else {
+      // 2 H2O2 (34) -> 2 H2O + O2
+      nO2Max = (o2ReactantMassG / 34) * 0.5;
+      eq = '2H₂O₂ —(MnO₂)→ 2H₂O + O₂ ↑';
+      note = 'Không cần đun nóng! Nhỏ dung dịch H₂O₂ lên bột xúc tác MnO₂, khí O₂ thoát ra ngay ở nhiệt độ phòng.';
+      rateMul = o2CatalystMnO2 ? 1.3 : 0.08;
+    }
+
+    const vO2MaxL = nO2Max * 24.79; // đkc
+    return { nO2Max, vO2MaxL, eq, note, rateMul };
+  }, [o2Method, o2ReactantMassG, o2BurnerOn, o2CatalystMnO2]);
+
+  const o2StateRef = useRef({
+    t: 0,
+    progress: 0, // 0..1
+  });
+  const [o2Readout, setO2Readout] = useState({ progressPct: 0, collectedL: 0 });
+
+  const resetOxygenPrep = () => {
+    setO2TestSplint(false);
+    o2StateRef.current = { t: 0, progress: 0 };
+    setO2Readout({ progressPct: 0, collectedL: 0 });
+  };
+
+  useEffect(() => {
+    resetOxygenPrep();
+  }, [o2Method, o2CollectMethod, o2ReactantMassG]);
+
+  // ===========================================================================
   // MAIN ANIMATION LOOP
   // ===========================================================================
   useEffect(() => {
@@ -610,6 +671,27 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         }
         const setup = setupCanvas(canvasRef.current);
         if (setup) drawThermoCanvas(setup.ctx, setup.w, setup.h, st);
+      }
+
+      // 7. OXYGEN LAB PREPARATION
+      if (moduleId === 'oxygen_prep' && canvasRef.current) {
+        const st = o2StateRef.current;
+        if (dt > 0) {
+          st.t += dt;
+          if (o2Calc.rateMul > 0 && st.progress < 1) {
+            st.progress = Math.min(1, st.progress + dt * 0.095 * o2Calc.rateMul);
+          }
+          uiTimer += rawDt;
+          if (uiTimer >= 0.08) {
+            uiTimer = 0;
+            setO2Readout({
+              progressPct: Math.round(st.progress * 100),
+              collectedL: o2Calc.vO2MaxL * st.progress,
+            });
+          }
+        }
+        const setup = setupCanvas(canvasRef.current);
+        if (setup) drawOxygenPrep(setup.ctx, setup.w, setup.h, st);
       }
 
       rafId = requestAnimationFrame(tick);
@@ -1321,6 +1403,258 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     }
   };
 
+  const drawOxygenPrep = (
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    st: typeof o2StateRef.current
+  ) => {
+    ctx.fillStyle = '#F8FAFC';
+    ctx.fillRect(0, 0, w, h);
+
+    const genX = w * 0.28;
+    const genY = h * 0.46;
+    const isActive = o2Calc.rateMul > 0.1 && st.progress < 1;
+
+    if (o2Method === 'h2o2') {
+      // Conical flask with MnO2 + Dropping funnel for H2O2
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(genX - 18, genY - 25);
+      ctx.lineTo(genX - 54, genY + 75);
+      ctx.lineTo(genX + 54, genY + 75);
+      ctx.lineTo(genX + 18, genY - 25);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(224, 242, 254, 0.7)';
+      ctx.fill();
+      ctx.stroke();
+
+      // MnO2 black powder at bottom
+      if (o2CatalystMnO2) {
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(genX - 36, genY + 62, 72, 11);
+      }
+
+      // Effervescing O2 bubbles inside H2O2 flask
+      if (isActive) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.strokeStyle = '#0284C7';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 6; i++) {
+          const by = genY + 60 - ((st.t * 48 + i * 14) % 58);
+          ctx.beginPath();
+          ctx.arc(genX - 18 + (i % 4) * 12, by, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      // Dropping funnel & stem above flask
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.7)';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.fillRect(genX - 14, genY - 96, 28, 42);
+      ctx.strokeRect(genX - 14, genY - 96, 28, 42);
+      ctx.beginPath();
+      ctx.moveTo(genX, genY - 54);
+      ctx.lineTo(genX, genY - 10);
+      ctx.stroke();
+
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 11px ui-sans-serif, sans-serif';
+      ctx.fillText('H₂O₂', genX - 16, genY - 102);
+      ctx.fillText(o2CatalystMnO2 ? 'MnO₂ (xúc tác)' : 'Không MnO₂', genX - 36, genY + 95);
+    } else {
+      // Tilted hard-glass test tube + alcohol burner for KMnO4 / KClO3
+      ctx.save();
+      ctx.translate(genX, genY);
+      ctx.rotate(0.18); // mouth slightly tilted down
+
+      // Test tube body
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.roundRect(-84, -18, 140, 36, [18, 4, 4, 18]);
+      ctx.fill();
+      ctx.stroke();
+
+      // Solid reagent at closed end (-76..-25)
+      ctx.fillStyle = o2Method === 'kmno4' ? '#581C87' : o2CatalystMnO2 ? '#475569' : '#F1F5F9';
+      ctx.beginPath();
+      ctx.roundRect(-80, -4, 58, 19, [10, 4, 4, 10]);
+      ctx.fill();
+
+      // Cotton plug at mouth for KMnO4
+      if (o2Method === 'kmno4') {
+        ctx.fillStyle = '#E2E8F0';
+        ctx.fillRect(30, -14, 14, 28);
+      }
+
+      // Rubber stopper
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(50, -16, 12, 32);
+      ctx.restore();
+
+      // Lab clamp stand
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(genX - 115, genY + 95, 70, 8);
+      ctx.fillRect(genX - 102, genY - 60, 6, 155);
+      ctx.fillRect(genX - 96, genY - 8, 60, 5);
+
+      // Alcohol burner under closed end of tube
+      const bX = genX - 48;
+      const bY = genY + 62;
+      ctx.fillStyle = '#CBD5E1';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1.8;
+      ctx.fillRect(bX - 20, bY, 40, 32);
+      ctx.strokeRect(bX - 20, bY, 40, 32);
+      if (o2BurnerOn) {
+        const flick = Math.sin(st.t * 14) * 3;
+        ctx.fillStyle = '#F97316';
+        ctx.beginPath();
+        ctx.moveTo(bX - 9, bY);
+        ctx.quadraticCurveTo(bX, bY - 38 + flick, bX + 9, bY);
+        ctx.fill();
+        ctx.fillStyle = '#38BDF8';
+        ctx.beginPath();
+        ctx.moveTo(bX - 4, bY);
+        ctx.quadraticCurveTo(bX, bY - 18, bX + 4, bY);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 11px ui-sans-serif, sans-serif';
+      ctx.fillText(
+        o2Method === 'kmno4' ? 'Tinh thể KMnO₄' : o2CatalystMnO2 ? 'KClO₃ + MnO₂' : 'KClO₃ nguyên chất',
+        genX - 78,
+        genY - 32
+      );
+    }
+
+    // Collection side (Right)
+    const colX = w * 0.72;
+    const tubeOutX = o2Method === 'h2o2' ? genX + 14 : genX + 56;
+    const tubeOutY = o2Method === 'h2o2' ? genY - 12 : genY + 10;
+
+    if (o2CollectMethod === 'water') {
+      // Water trough + inverted gas jar
+      const troughTop = h * 0.62;
+      const troughH = h * 0.26;
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.55)';
+      ctx.fillRect(colX - 88, troughTop, 176, troughH);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(colX - 88, troughTop, 176, troughH);
+
+      const jarW = 68;
+      const jarH = 178;
+      const jarTop = troughTop - jarH + 34;
+      const gasH = st.progress * (jarH - 36);
+
+      // Water inside jar (pushed down as O2 collects)
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.65)';
+      ctx.fillRect(colX - jarW / 2, jarTop + gasH, jarW, jarH - gasH);
+      // O2 gas pocket at top
+      ctx.fillStyle = 'rgba(241, 245, 249, 0.94)';
+      ctx.fillRect(colX - jarW / 2, jarTop, jarW, gasH);
+
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(colX - jarW / 2, jarTop, jarW, jarH);
+
+      // Delivery tube routing into jar mouth under water
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(tubeOutX, tubeOutY);
+      ctx.lineTo(colX - 110, tubeOutY - 10);
+      ctx.lineTo(colX - 110, troughTop + 44);
+      ctx.lineTo(colX, troughTop + 44);
+      ctx.lineTo(colX, troughTop + 26);
+      ctx.stroke();
+
+      // Rising O2 bubbles inside jar
+      if (isActive) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.strokeStyle = '#0284C7';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 6; i++) {
+          const yPos = troughTop + 20 - ((st.t * 75 + i * 28) % Math.max(24, jarH - 25));
+          ctx.beginPath();
+          ctx.arc(colX + Math.sin(st.t * 4 + i) * 12, yPos, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 12px ui-sans-serif, sans-serif';
+      ctx.fillText(`Thu khí O₂ đẩy nước (${Math.round(st.progress * 100)}%)`, colX - 80, jarTop - 12);
+    } else {
+      // Upward air displacement (upright jar because O2 M=32 > Air M=29)
+      const jarW = 74;
+      const jarH = 175;
+      const jarTop = h * 0.34;
+      const fillH = st.progress * (jarH - 12);
+
+      ctx.fillStyle = 'rgba(224, 242, 254, 0.45)';
+      ctx.fillRect(colX - jarW / 2, jarTop + jarH - fillH, jarW, fillH);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(colX - jarW / 2, jarTop, jarW, jarH);
+
+      // Delivery tube dipping near bottom of upright jar
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(tubeOutX, tubeOutY);
+      ctx.lineTo(colX, jarTop - 28);
+      ctx.lineTo(colX, jarTop + jarH - 16);
+      ctx.stroke();
+
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '700 12px ui-sans-serif, sans-serif';
+      ctx.fillText(`Đặt ngửa bình (M_O₂ = 32 > 29)`, colX - 88, jarTop + jarH + 22);
+    }
+
+    // Glowing splint test at jar mouth
+    if (o2TestSplint) {
+      const spX = o2CollectMethod === 'water' ? colX : colX + 18;
+      const spY = o2CollectMethod === 'water' ? h * 0.22 : h * 0.34;
+      ctx.strokeStyle = '#92400E';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(spX + 52, spY - 38);
+      ctx.lineTo(spX + 4, spY + 4);
+      ctx.stroke();
+
+      if (st.progress > 0.25) {
+        // Bright re-ignited flame!
+        ctx.fillStyle = '#FACC15';
+        ctx.beginPath();
+        ctx.arc(spX + 2, spY + 4, 14 + Math.sin(st.t * 16) * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#F97316';
+        ctx.beginPath();
+        ctx.arc(spX + 2, spY + 4, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#059669';
+        ctx.font = '800 12px ui-sans-serif, sans-serif';
+        ctx.fillText('🔥 Tàn đóm bùng cháy sáng rực! (Xác nhận khí O₂)', colX - 135, 32);
+      } else {
+        ctx.fillStyle = '#EF4444';
+        ctx.beginPath();
+        ctx.arc(spX + 2, spY + 4, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#64748B';
+        ctx.font = '700 12px ui-sans-serif, sans-serif';
+        ctx.fillText('Chưa đủ khí O₂ — tiếp tục thu khí để thử tàn đóm!', colX - 135, 32);
+      }
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
       {/* LEFT STAGE */}
@@ -1352,6 +1686,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                   redoxStateRef.current.progress = 0;
                 } else if (moduleId === 'ester_lab') esterStateRef.current.yieldFrac = 0;
                 else if (moduleId === 'thermochemistry') resetThermo();
+                else if (moduleId === 'oxygen_prep') resetOxygenPrep();
               }}
               className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
             >
@@ -1381,6 +1716,21 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               >
                 <Thermometer size={14} />
                 <span>{thermoStarted ? 'Đang đo nhiệt...' : 'Trộn chất & Bấm đo'}</span>
+              </button>
+            )}
+
+            {moduleId === 'oxygen_prep' && (
+              <button
+                type="button"
+                onClick={() => setO2TestSplint((v) => !v)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                  o2TestSplint
+                    ? 'bg-orange-100 text-orange-800 border border-orange-300 hover:bg-orange-200'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                <Flame size={14} />
+                <span>{o2TestSplint ? 'Rút que đóm ra' : 'Thử bằng tàn đóm đỏ'}</span>
               </button>
             )}
           </div>
@@ -1539,6 +1889,35 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 <div className="text-slate-500">Nhiệt lượng Q (100g dd)</div>
                 <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
                   {Math.abs(thermoReadout.qKj).toFixed(2)} kJ
+                </div>
+              </div>
+            </>
+          )}
+
+          {moduleId === 'oxygen_prep' && (
+            <>
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                <div className="text-slate-500">Số mol O₂ tối đa</div>
+                <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
+                  {o2Calc.nO2Max.toFixed(3)} mol
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                <div className="text-slate-500">Thể tích O₂ đã thu (đkc)</div>
+                <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
+                  {o2Readout.collectedL.toFixed(2)} / {o2Calc.vO2MaxL.toFixed(2)} L
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                <div className="text-slate-500">Mức đầy bình thu</div>
+                <div className="font-mono tabular-nums font-bold text-sky-700 mt-0.5">
+                  {o2Readout.progressPct} %
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                <div className="text-slate-500">Cách thu khí</div>
+                <div className="font-bold text-slate-800 mt-0.5">
+                  {o2CollectMethod === 'water' ? 'Đẩy nước (ít tan)' : 'Đẩy không khí (nặng hơn KK)'}
                 </div>
               </div>
             </>
@@ -1891,6 +2270,90 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               ))}
             </div>
           )}
+
+          {moduleId === 'oxygen_prep' && (
+            <>
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-700 block">Phương pháp điều chế O₂</label>
+                {[
+                  { id: 'kmno4', label: 'Nhiệt phân KMnO₄ (Thuốc tím)' },
+                  { id: 'kclo3', label: 'Nhiệt phân KClO₃ (có/không MnO₂)' },
+                  { id: 'h2o2', label: 'Phân hủy H₂O₂ (xúc tác MnO₂, không đun)' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setO2Method(m.id as 'kmno4' | 'kclo3' | 'h2o2')}
+                    className={`w-full px-3 py-2 rounded-xl border text-left font-bold cursor-pointer ${
+                      o2Method === m.id
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : 'bg-white border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-700 block">Cách thu khí O₂</label>
+                <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setO2CollectMethod('water')}
+                    className={`py-1.5 rounded-md font-bold cursor-pointer ${
+                      o2CollectMethod === 'water' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
+                    }`}
+                  >
+                    Đẩy nước
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setO2CollectMethod('air')}
+                    className={`py-1.5 rounded-md font-bold cursor-pointer ${
+                      o2CollectMethod === 'air' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
+                    }`}
+                  >
+                    Đẩy không khí
+                  </button>
+                </div>
+              </div>
+
+              <ChemSlider
+                label="Khối lượng hóa chất ban đầu"
+                valueDisplay={`${o2ReactantMassG.toFixed(1)} g`}
+                min={5}
+                max={35}
+                step={0.5}
+                value={o2ReactantMassG}
+                onChange={setO2ReactantMassG}
+              />
+
+              {o2Method !== 'h2o2' && (
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={o2BurnerOn}
+                    onChange={(e) => setO2BurnerOn(e.target.checked)}
+                    className="rounded accent-emerald-600"
+                  />
+                  <span className="font-semibold text-slate-700">Đốt đèn cồn cung cấp nhiệt</span>
+                </label>
+              )}
+
+              {(o2Method === 'kclo3' || o2Method === 'h2o2') && (
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={o2CatalystMnO2}
+                    onChange={(e) => setO2CatalystMnO2(e.target.checked)}
+                    className="rounded accent-emerald-600"
+                  />
+                  <span className="font-semibold text-slate-700">Dùng chất xúc tác bột MnO₂</span>
+                </label>
+              )}
+            </>
+          )}
         </div>
 
         {/* Equation Card */}
@@ -1956,6 +2419,12 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               <>
                 <p className="font-mono font-bold text-slate-900">{activeThermo.equation}</p>
                 <p className="text-slate-600">{activeThermo.explanation}</p>
+              </>
+            )}
+            {moduleId === 'oxygen_prep' && (
+              <>
+                <p className="font-mono font-bold text-slate-900">{o2Calc.eq}</p>
+                <p className="text-slate-600">{o2Calc.note}</p>
               </>
             )}
           </div>
