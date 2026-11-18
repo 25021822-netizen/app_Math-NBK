@@ -4,7 +4,6 @@ import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
 import { cleanPdfNoiseAndOcr } from '../../lib/ocrNoiseCleaner';
-import { autoCropWordDocxToQuestions } from '../../lib/wordExamUtils';
 import { autoCropPdfDocument, autoCropImagePages } from '../../lib/pdfAutoCrop';
 import {
   Scissors,
@@ -683,6 +682,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
           for (let i = 0; i < binary.length; i++) {
             bytes[i] = binary.charCodeAt(i);
           }
+          const { autoCropWordDocxToQuestions } = await import('../../lib/wordExamUtils');
           const wordResult = await autoCropWordDocxToQuestions(bytes.buffer, {
             onProgress: (msg) => setStatusMessage(msg),
           });

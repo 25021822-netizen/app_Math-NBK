@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import {
   Compass,
   Box,
@@ -30,9 +30,15 @@ import {
   CheckCircle2,
   LineChart,
 } from 'lucide-react';
-import { FunctionGrapher } from '../FunctionGrapher';
-import { Geometry3DStudio } from './Geometry3DStudio';
-import { Three3DSceneView } from './Three3DSceneView';
+const FunctionGrapher = lazy(() =>
+  import('../FunctionGrapher').then((m) => ({ default: m.FunctionGrapher }))
+);
+const Geometry3DStudio = lazy(() =>
+  import('./Geometry3DStudio').then((m) => ({ default: m.Geometry3DStudio }))
+);
+const Three3DSceneView = lazy(() =>
+  import('./Three3DSceneView').then((m) => ({ default: m.Three3DSceneView }))
+);
 
 export interface CustomPoint3D {
   id: string;
@@ -895,15 +901,31 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
               <span>Bản Vẽ Kỹ Thuật Dựng Hình Oxyz</span>
             </button>
           </div>
-          {subMode3D === 'threejs' ? (
-            <Three3DSceneView onExportSnapshot={onExportImageToExam} />
-          ) : (
-            <Geometry3DStudio onExportImage={onExportImageToExam} />
-          )}
+          <Suspense
+            fallback={
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+                Đang tải không gian dựng hình 3D...
+              </div>
+            }
+          >
+            {subMode3D === 'threejs' ? (
+              <Three3DSceneView onExportSnapshot={onExportImageToExam} />
+            ) : (
+              <Geometry3DStudio onExportImage={onExportImageToExam} />
+            )}
+          </Suspense>
         </div>
       ) : geometryMode === '2d' && subMode2D === 'function' ? (
         <div className="w-full">
-          <FunctionGrapher initialFormula="y = 3x - 2" onExportImage={onExportImageToExam} />
+          <Suspense
+            fallback={
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+                Đang tải đồ thị hàm số...
+              </div>
+            }
+          >
+            <FunctionGrapher initialFormula="y = 3x - 2" onExportImage={onExportImageToExam} />
+          </Suspense>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

@@ -3,7 +3,7 @@
  * Bản Quyền: Math&NBK Education Platform
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import {
   UserProfile,
   UserRole,
@@ -57,18 +57,42 @@ import {
   markExamRecentlySaved,
 } from './services/dbSyncService';
 import { Navbar } from './components/Navbar';
-import { AIMathStudioView } from './components/student/AIMathStudioView';
-import { ExamEngineView } from './components/student/ExamEngineView';
-import { StudentHistoryView } from './components/student/StudentHistoryView';
-import { UserProfileView } from './components/student/UserProfileView';
-import { ClassroomManagerView } from './components/classroom/ClassroomManagerView';
-import { TeacherPortalView } from './components/teacher/TeacherPortalView';
-import { TeacherGradebookView } from './components/teacher/TeacherGradebookView';
-import { GeometryCanvasView } from './components/geometry/GeometryCanvasView';
-import { PhysicsSimulationLabView } from './components/physics/PhysicsSimulationLabView';
-import { ChemistryExperimentLabView } from './components/chemistry/ChemistryExperimentLabView';
-import { AdminDashboardView } from './components/admin/AdminDashboardView';
-import { AuthLoginView } from './components/auth/AuthLoginView';
+const AIMathStudioView = lazy(() =>
+  import('./components/student/AIMathStudioView').then((m) => ({ default: m.AIMathStudioView }))
+);
+const ExamEngineView = lazy(() =>
+  import('./components/student/ExamEngineView').then((m) => ({ default: m.ExamEngineView }))
+);
+const StudentHistoryView = lazy(() =>
+  import('./components/student/StudentHistoryView').then((m) => ({ default: m.StudentHistoryView }))
+);
+const UserProfileView = lazy(() =>
+  import('./components/student/UserProfileView').then((m) => ({ default: m.UserProfileView }))
+);
+const ClassroomManagerView = lazy(() =>
+  import('./components/classroom/ClassroomManagerView').then((m) => ({ default: m.ClassroomManagerView }))
+);
+const TeacherPortalView = lazy(() =>
+  import('./components/teacher/TeacherPortalView').then((m) => ({ default: m.TeacherPortalView }))
+);
+const TeacherGradebookView = lazy(() =>
+  import('./components/teacher/TeacherGradebookView').then((m) => ({ default: m.TeacherGradebookView }))
+);
+const GeometryCanvasView = lazy(() =>
+  import('./components/geometry/GeometryCanvasView').then((m) => ({ default: m.GeometryCanvasView }))
+);
+const PhysicsSimulationLabView = lazy(() =>
+  import('./components/physics/PhysicsSimulationLabView').then((m) => ({ default: m.PhysicsSimulationLabView }))
+);
+const ChemistryExperimentLabView = lazy(() =>
+  import('./components/chemistry/ChemistryExperimentLabView').then((m) => ({ default: m.ChemistryExperimentLabView }))
+);
+const AdminDashboardView = lazy(() =>
+  import('./components/admin/AdminDashboardView').then((m) => ({ default: m.AdminDashboardView }))
+);
+const AuthLoginView = lazy(() =>
+  import('./components/auth/AuthLoginView').then((m) => ({ default: m.AuthLoginView }))
+);
 import {
   triggerPushNotification,
   requestNotificationPermission,
@@ -1925,12 +1949,22 @@ export default function App() {
   // Nếu chưa đăng nhập, hiển thị Giao diện Đăng nhập / Đăng ký
   if (!isAuthenticated) {
     return (
-      <AuthLoginView
-        allUsers={allUsers}
-        onLoginSuccess={handleLoginSuccess}
-        onRegisterUser={handleCreateUser}
-        autoApprovalSettings={autoApprovalSettings}
-      />
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+            <div className="bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-semibold text-slate-600 shadow-xs">
+              Đang tải giao diện đăng nhập...
+            </div>
+          </div>
+        }
+      >
+        <AuthLoginView
+          allUsers={allUsers}
+          onLoginSuccess={handleLoginSuccess}
+          onRegisterUser={handleCreateUser}
+          autoApprovalSettings={autoApprovalSettings}
+        />
+      </Suspense>
     );
   }
 
@@ -1958,7 +1992,19 @@ export default function App() {
 
       {/* Main Content Area (Hoàn toàn tự nhiên, co giãn responsive mượt mà trên mọi thiết bị: PC, iPad, Điện thoại) */}
       <main className={`flex-1 flex justify-center ${isExamMode ? 'w-full p-0' : 'py-3 sm:py-8 px-2 sm:px-4 pb-20 md:pb-8'}`}>
-        <div className="w-full">{renderCurrentView()}</div>
+        <div className="w-full">
+          <Suspense
+            fallback={
+              <div className="max-w-5xl mx-auto px-4 py-12 flex justify-center">
+                <div className="bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-semibold text-slate-600 shadow-xs">
+                  Đang tải phân hệ học tập...
+                </div>
+              </div>
+            }
+          >
+            {renderCurrentView()}
+          </Suspense>
+        </div>
       </main>
 
       {/* Mobile Bottom Tab Bar (Thanh điều hướng tiện dụng ở chân trang trên điện thoại di động thực tế) */}

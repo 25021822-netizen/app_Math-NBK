@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import katex from 'katex';
 import { Play, Pause, RotateCcw, SlidersHorizontal } from 'lucide-react';
-import { IdealGasSimulation } from './IdealGasSimulation';
+
+const IdealGasSimulation = lazy(() =>
+  import('./IdealGasSimulation').then((m) => ({ default: m.IdealGasSimulation }))
+);
 
 export type ExtraPhysicsModuleId =
   | 'standingWave'
@@ -100,7 +103,17 @@ function nmToPhotonColor(nm: number): string {
 
 export const ExtraPhysicsSimulations: React.FC<ExtraPhysicsSimulationsProps> = ({ moduleId }) => {
   if (moduleId === 'idealGas') {
-    return <IdealGasSimulation />;
+    return (
+      <Suspense
+        fallback={
+          <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+            Đang tải mô phỏng Khí Lý Tưởng...
+          </div>
+        }
+      >
+        <IdealGasSimulation />
+      </Suspense>
+    );
   }
   return <ExtraPhysicsSimulationsInner moduleId={moduleId} />;
 };

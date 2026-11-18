@@ -41,7 +41,6 @@ import {
 } from 'lucide-react';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
 import { parseExamFromLatexOrText } from '../../lib/latexExamParser';
-import { renderPlainTextToPageImages, renderWordDocxToPageImages } from '../../lib/wordExamUtils';
 import { QuestionCropStudioView } from './QuestionCropStudioView';
 import { examNeedsImageCloudSync, persistExamImagesEverywhere } from '../../services/examImageService';
 
@@ -396,6 +395,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
 
         if (isDocx) {
           const arrayBuffer = await file.arrayBuffer();
+          const { renderWordDocxToPageImages } = await import('../../lib/wordExamUtils');
           const rendered = await renderWordDocxToPageImages(arrayBuffer);
           pageImages = rendered.pageDataUrls;
           extractedText = rendered.extractedText;
@@ -421,6 +421,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         }
 
         if (pageImages.length === 0 && extractedText) {
+          const { renderPlainTextToPageImages } = await import('../../lib/wordExamUtils');
           pageImages = await renderPlainTextToPageImages(extractedText, cleanTitle);
         }
 

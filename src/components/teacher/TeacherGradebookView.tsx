@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, lazy, Suspense } from 'react';
 import { Classroom, StudentExamSubmission, Exam, UserRole } from '../../types/math';
 import { SAMPLE_STUDENTS } from '../../data/mockData';
 import { MathView } from '../MathView';
@@ -23,7 +23,9 @@ import {
   FileText,
   Trash2,
 } from 'lucide-react';
-import { GradebookPdfReportModal } from './GradebookPdfReportModal';
+const GradebookPdfReportModal = lazy(() =>
+  import('./GradebookPdfReportModal').then((m) => ({ default: m.GradebookPdfReportModal }))
+);
 
 interface TeacherGradebookViewProps {
   classrooms: Classroom[];
@@ -1078,20 +1080,24 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
       {/* ========================================================================= */}
       {/* MODAL: XUẤT BÁO CÁO KẾT QUẢ / PHIẾU ĐIỂM DẠNG PDF                         */}
       {/* ========================================================================= */}
-      <GradebookPdfReportModal
-        isOpen={showPdfExportModal}
-        onClose={() => {
-          setShowPdfExportModal(false);
-          setPdfPreselectedStudent(null);
-        }}
-        classrooms={classrooms}
-        selectedClassId={selectedClassId}
-        selectedExamId={selectedExamId}
-        examsList={examsList}
-        submissions={filteredSubmissions}
-        analytics={analytics}
-        initialStudentSubmission={pdfPreselectedStudent}
-      />
+      {showPdfExportModal && (
+        <Suspense fallback={null}>
+          <GradebookPdfReportModal
+            isOpen={showPdfExportModal}
+            onClose={() => {
+              setShowPdfExportModal(false);
+              setPdfPreselectedStudent(null);
+            }}
+            classrooms={classrooms}
+            selectedClassId={selectedClassId}
+            selectedExamId={selectedExamId}
+            examsList={examsList}
+            submissions={filteredSubmissions}
+            analytics={analytics}
+            initialStudentSubmission={pdfPreselectedStudent}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import katex from 'katex';
 import {
   Activity,
@@ -23,11 +23,15 @@ import {
   ArrowLeft,
   ArrowRight,
 } from 'lucide-react';
-import { ExtraPhysicsSimulations, ExtraPhysicsModuleId } from './ExtraPhysicsSimulations';
-import {
-  ModernAndThermalSimulations,
-  ModernThermalModuleId,
-} from './ModernAndThermalSimulations';
+import type { ExtraPhysicsModuleId } from './ExtraPhysicsSimulations';
+import type { ModernThermalModuleId } from './ModernAndThermalSimulations';
+
+const ExtraPhysicsSimulations = lazy(() =>
+  import('./ExtraPhysicsSimulations').then((m) => ({ default: m.ExtraPhysicsSimulations }))
+);
+const ModernAndThermalSimulations = lazy(() =>
+  import('./ModernAndThermalSimulations').then((m) => ({ default: m.ModernAndThermalSimulations }))
+);
 
 type PhysicsModuleId =
   | 'oscillation'
@@ -1679,13 +1683,29 @@ export const PhysicsSimulationLabView: React.FC = () => {
       activeModule === 'nuclearFusion' ||
       activeModule === 'nuclearFission' ||
       activeModule === 'thermalLab' ? (
-        <ModernAndThermalSimulations moduleId={activeModule} />
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+              Đang tải mô phỏng thí nghiệm...
+            </div>
+          }
+        >
+          <ModernAndThermalSimulations moduleId={activeModule} />
+        </Suspense>
       ) : activeModule === 'standingWave' ||
         activeModule === 'optics' ||
         activeModule === 'dcCircuit' ||
         activeModule === 'photoelectric' ||
         activeModule === 'idealGas' ? (
-        <ExtraPhysicsSimulations moduleId={activeModule} />
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+              Đang tải mô phỏng thí nghiệm...
+            </div>
+          }
+        >
+          <ExtraPhysicsSimulations moduleId={activeModule} />
+        </Suspense>
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* LEFT ZONE: INTERACTIVE CANVAS STAGE */}
