@@ -100,7 +100,6 @@ interface ClassroomManagerViewProps {
   onUpdateLessons?: (updated: ClassroomLesson[]) => void;
   onSaveLesson?: (lesson: ClassroomLesson) => void;
   onDeleteLesson?: (lessonId: string) => void;
-  onDeleteExam?: (examId: string) => void;
   currentUserEmail?: string;
   onDeleteChatMessage?: (messageId: string, classId: string) => void;
   onDisbandClassroom?: (classId: string) => void | Promise<void>;
@@ -134,7 +133,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onUpdateLessons,
   onSaveLesson,
   onDeleteLesson,
-  onDeleteExam,
   currentUserEmail,
   onDeleteChatMessage,
   onDisbandClassroom,
@@ -215,9 +213,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [selectedLessonDetail, setSelectedLessonDetail] = useState<ClassroomLesson | null>(null);
   const [lessonActionSuccess, setLessonActionSuccess] = useState<string | null>(null);
 
-  // Modal xác nhận xóa bài học & xóa đề thi vĩnh viễn (kèm cảnh báo dữ liệu liên quan bị xóa)
+  // Modal xác nhận xóa bài học (kèm cảnh báo dữ liệu liên quan bị xóa)
   const [lessonToDelete, setLessonToDelete] = useState<ClassroomLesson | null>(null);
-  const [examToDeletePermanently, setExamToDeletePermanently] = useState<Exam | null>(null);
   const [isDeletingItem, setIsDeletingItem] = useState<boolean>(false);
   const [deletedMessageIds, setDeletedMessageIds] = useState<Set<string>>(() => new Set());
   const [pdfPreviewError, setPdfPreviewError] = useState<string | null>(null);
@@ -813,7 +810,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       }
     }
 
-    setExamActionSuccess(`Đã xóa đề "${examToRemoveFromClass.title}" khỏi danh sách giao cho lớp ${currentClass.name}!`);
+    setExamActionSuccess(`Đã gỡ đề "${examToRemoveFromClass.title}" khỏi lớp ${currentClass.name} (đề thi vẫn được giữ trong Kho đề)!`);
     setTimeout(() => setExamActionSuccess(null), 4000);
     setExamToRemoveFromClass(null);
   };
@@ -1502,38 +1499,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       setLessonToDelete(null);
     } catch (err) {
       console.error('Lỗi khi xóa bài học:', err);
-    } finally {
-      setIsDeletingItem(false);
-    }
-  };
-
-  // 3d-2. Xác nhận xóa vĩnh viễn đề thi và TOÀN BỘ dữ liệu liên quan (Bài nộp, Bảng điểm, Cheat Logs, Giao đề)
-  const handleConfirmDeleteExamPermanently = async () => {
-    if (!examToDeletePermanently) return;
-    setIsDeletingItem(true);
-    try {
-      const id = examToDeletePermanently.id;
-      const title = examToDeletePermanently.title;
-      if (onDeleteExam) {
-        // onDeleteExam đã tự cập nhật examsList, classrooms, submissions, cheatLogs, localStorage và xóa trên Firestore/Server
-        await onDeleteExam(id);
-      } else {
-        const updatedClassrooms = classrooms.map((cls) => ({
-          ...cls,
-          assignedExamIds: (cls.assignedExamIds || []).filter((eid) => eid !== id),
-        }));
-        onUpdateClassrooms(updatedClassrooms);
-        if (onUpdateExamsList) {
-          onUpdateExamsList(examsList.filter((e) => e.id !== id));
-        }
-      }
-
-      setExamActionSuccess(`Đã xóa vĩnh viễn đề thi "${title}" cùng toàn bộ kết quả nộp bài của học sinh!`);
-      setTimeout(() => setExamActionSuccess(null), 4000);
-      setExamToDeletePermanently(null);
-      setExamToRemoveFromClass(null);
-    } catch (err) {
-      console.error('Lỗi khi xóa đề thi:', err);
     } finally {
       setIsDeletingItem(false);
     }
@@ -2475,20 +2440,11 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => setExamToRemoveFromClass(examObj)}
-                                        className="px-2 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
+                                        className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
                                         title="Gỡ đề thi này khỏi danh sách đề đã giao cho nhóm lớp"
                                       >
                                         <X size={12} />
                                         <span>Gỡ khỏi lớp</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setExamToDeletePermanently(examObj)}
-                                        className="px-2 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-[11px] flex items-center gap-1 shadow-xs transition-colors whitespace-nowrap"
-                                        title="Xóa vĩnh viễn đề thi và toàn bộ dữ liệu bài nộp liên quan"
-                                      >
-                                        <Trash2 size={12} />
-                                        <span>Xóa đề thi</span>
                                       </button>
                                     </div>
                                   )}
@@ -4189,48 +4145,34 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
       {examToRemoveFromClass && currentClass && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-              <Trash2 size={24} />
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+              <X size={24} />
             </div>
 
             <div className="text-center space-y-1.5">
-              <h4 className="text-base font-black text-slate-900">Xóa Đề Thi Đã Giao Khỏi Lớp?</h4>
+              <h4 className="text-base font-black text-slate-900">Gỡ Đề Thi Khỏi Nhóm Lớp?</h4>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Thầy/Cô có chắc chắn muốn xóa đề thi{' '}
+                Thầy/Cô có chắc chắn muốn gỡ đề thi{' '}
                 <strong className="text-slate-900 font-bold">"{examToRemoveFromClass.title}"</strong>{' '}
-                khỏi nhóm lớp <strong className="text-blue-600 font-bold">{currentClass.name}</strong> không?
+                khỏi nhóm lớp <strong className="text-blue-600 font-bold">{currentClass.name}</strong> không? Đề thi vẫn được giữ nguyên trong Kho đề.
               </p>
-
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setExamToRemoveFromClass(null)}
-                className="py-2.5 px-4 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 order-3 sm:order-1"
+                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 Hủy Bỏ
               </button>
               <button
                 type="button"
                 onClick={handleConfirmRemoveExamFromClass}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs order-1 sm:order-2 flex items-center justify-center gap-1"
+                className="flex-1 py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1"
               >
                 <X size={13} />
-                <span>Chỉ Gỡ Khỏi Lớp Này</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const target = examToRemoveFromClass;
-                  setExamToRemoveFromClass(null);
-                  setExamToDeletePermanently(target);
-                }}
-                className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs order-2 sm:order-3 flex items-center justify-center gap-1"
-                title="Xóa đề thi vĩnh viễn khỏi toàn bộ hệ thống"
-              >
-                <Trash2 size={13} />
-                <span>Xóa Vĩnh Viễn Đề</span>
+                <span>Gỡ Khỏi Lớp Này</span>
               </button>
             </div>
           </div>
@@ -4249,20 +4191,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         isDeleting={isDeletingItem}
         onConfirm={handleConfirmDeleteLesson}
         onCancel={() => setLessonToDelete(null)}
-      />
-
-      {/* ========================================================================= */}
-      {/* MODAL HỎI LẠI KHI XÓA ĐỀ THI VÀ TOÀN BỘ DỮ LIỆU LIÊN QUAN                */}
-      {/* ========================================================================= */}
-      <DeleteConfirmationModal
-        isOpen={Boolean(examToDeletePermanently)}
-        itemType="exam"
-        title="Xác Nhận Xóa Đề Thi Vĩnh Viễn"
-        itemName={examToDeletePermanently?.title || ''}
-        itemSubtitle={`Khối ${examToDeletePermanently?.grade || 12} · ${examToDeletePermanently?.durationMinutes || 90} phút · ${examToDeletePermanently?.questions?.length || 0} câu hỏi`}
-        isDeleting={isDeletingItem}
-        onConfirm={handleConfirmDeleteExamPermanently}
-        onCancel={() => setExamToDeletePermanently(null)}
       />
 
       {/* ========================================================================= */}

@@ -1703,7 +1703,6 @@ export default function App() {
             onUpdateLessons={handleUpdateLessons}
             onSaveLesson={handleSaveLesson}
             onDeleteLesson={handleDeleteLesson}
-            onDeleteExam={handleDeleteExam}
             onDisbandClassroom={handleDisbandClassroom}
             externalClassJump={externalClassJump}
           />

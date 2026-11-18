@@ -22,15 +22,24 @@ import {
   Orbit,
   ArrowLeft,
   ArrowRight,
+  RefreshCw,
+  ArrowLeftRight,
+  Triangle,
+  Magnet,
+  Compass,
 } from 'lucide-react';
 import type { ExtraPhysicsModuleId } from './ExtraPhysicsSimulations';
 import type { ModernThermalModuleId } from './ModernAndThermalSimulations';
+import type { AdditionalPhysicsModuleId } from './AdditionalPhysicsSimulations';
 
 const ExtraPhysicsSimulations = lazy(() =>
   import('./ExtraPhysicsSimulations').then((m) => ({ default: m.ExtraPhysicsSimulations }))
 );
 const ModernAndThermalSimulations = lazy(() =>
   import('./ModernAndThermalSimulations').then((m) => ({ default: m.ModernAndThermalSimulations }))
+);
+const AdditionalPhysicsSimulations = lazy(() =>
+  import('./AdditionalPhysicsSimulations').then((m) => ({ default: m.AdditionalPhysicsSimulations }))
 );
 
 type PhysicsModuleId =
@@ -39,15 +48,69 @@ type PhysicsModuleId =
   | 'waves'
   | 'rlc'
   | ExtraPhysicsModuleId
-  | ModernThermalModuleId;
+  | ModernThermalModuleId
+  | AdditionalPhysicsModuleId;
 type OscillationType = 'pendulum' | 'spring';
 type WaveType = 'ripple' | 'young';
-type PhysicsCategoryId = 'all' | 'mechanics' | 'waves' | 'optics' | 'electricity' | 'thermal' | 'nuclear';
+type PhysicsCategoryId = 'mechanics' | 'waves' | 'optics' | 'electricity' | 'thermal' | 'nuclear';
+
+interface PhysicsCategoryMeta {
+  id: PhysicsCategoryId;
+  title: string;
+  grades: string;
+  description: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
+const PHYSICS_CATEGORIES: PhysicsCategoryMeta[] = [
+  {
+    id: 'mechanics',
+    title: 'Cơ Học & Chuyển Động',
+    grades: 'Lớp 10 · 11',
+    description: 'Dao động điều hòa & bảo toàn cơ năng, ném xiên, chuyển động tròn đều và bảo toàn động lượng.',
+    icon: Activity,
+  },
+  {
+    id: 'waves',
+    title: 'Sóng Cơ & Sóng Âm',
+    grades: 'Lớp 11',
+    description: 'Giao thoa sóng nước 2 nguồn, sóng dừng trên dây, dao động ký sóng âm và hiệu ứng Doppler.',
+    icon: Waves,
+  },
+  {
+    id: 'optics',
+    title: 'Quang Học & Lượng Tử',
+    grades: 'Lớp 11 · 12',
+    description: 'Giao thoa khe Y-âng, khúc xạ & tán sắc lăng kính, thấu kính quang hình và hiệu ứng quang điện.',
+    icon: Eye,
+  },
+  {
+    id: 'electricity',
+    title: 'Điện Học & Từ Trường',
+    grades: 'Lớp 11 · 12',
+    description: 'Định luật Ôm toàn mạch, mạch xoay chiều RLC, cảm ứng điện từ Faraday và lực Lo-ren-xơ.',
+    icon: Zap,
+  },
+  {
+    id: 'thermal',
+    title: 'Nhiệt Học & Khí Lý Tưởng',
+    grades: 'Lớp 12',
+    description: 'Khí lý tưởng p-V-T, nhiệt lượng kế đo nhiệt dung riêng, nhiệt nóng chảy và nhiệt hóa hơi.',
+    icon: Thermometer,
+  },
+  {
+    id: 'nuclear',
+    title: 'Vật Lý Hạt Nhân',
+    grades: 'Lớp 12',
+    description: 'Tán xạ Rutherford, định luật phóng xạ bán rã, phản ứng nhiệt hạch và phân hạch dây chuyền.',
+    icon: Atom,
+  },
+];
 
 interface PhysicsExperimentMeta {
   id: PhysicsModuleId;
   title: string;
-  category: Exclude<PhysicsCategoryId, 'all'>;
+  category: PhysicsCategoryId;
   categoryLabel: string;
   grade: string;
   summary: string;
@@ -190,6 +253,69 @@ const PHYSICS_EXPERIMENTS: PhysicsExperimentMeta[] = [
     summary: 'Phân hạch hạt nhân U-235 và điều chỉnh thanh hấp thụ Boron kiểm soát hệ số nhân k.',
     icon: Atom,
   },
+  {
+    id: 'circularMotion',
+    title: 'Chuyển Động Tròn Đều & Lực Hướng Tâm',
+    category: 'mechanics',
+    categoryLabel: 'Cơ học',
+    grade: 'Lớp 10',
+    summary: 'Khảo sát tốc độ dài v, gia tốc hướng tâm aht và lực hướng tâm Fht theo bán kính R và tốc độ góc ω.',
+    icon: RefreshCw,
+  },
+  {
+    id: 'momentumCollision',
+    title: 'Va Chạm Đàn Hồi & Bảo Toàn Động Lượng',
+    category: 'mechanics',
+    categoryLabel: 'Cơ học',
+    grade: 'Lớp 10',
+    summary: 'Mô phỏng va chạm trực diện đàn hồi và va chạm mềm trên đệm khí, kiểm chứng định luật bảo toàn động lượng.',
+    icon: ArrowLeftRight,
+  },
+  {
+    id: 'dopplerEffect',
+    title: 'Hiệu Ứng Doppler (Nguồn Âm Chuyển Động)',
+    category: 'waves',
+    categoryLabel: 'Sóng & Âm',
+    grade: 'Lớp 11',
+    summary: 'Quan sát sự nén/giãn mặt sóng cầu, tính tần số thu được f\' và nghe sự biến đổi cao độ thực tế.',
+    icon: Radio,
+  },
+  {
+    id: 'refractionDispersion',
+    title: 'Khúc Xạ Ánh Sáng & Tán Sắc Lăng Kính',
+    category: 'optics',
+    categoryLabel: 'Quang học',
+    grade: 'Lớp 11',
+    summary: 'Kiểm chứng định luật khúc xạ Snell, góc giới hạn phản xạ toàn phần và tán sắc ánh sáng trắng qua lăng kính.',
+    icon: Triangle,
+  },
+  {
+    id: 'electromagneticInduction',
+    title: 'Cảm Ứng Điện Từ & Máy Phát Xoay Chiều',
+    category: 'electricity',
+    categoryLabel: 'Điện & Từ',
+    grade: 'Lớp 12',
+    summary: 'Thí nghiệm Faraday nam châm - ống dây, kim điện kế và đồ thị từ thông Φ(t), suất điện động e(t).',
+    icon: Magnet,
+  },
+  {
+    id: 'lorentzForce',
+    title: 'Lực Lo-ren-xơ (Hạt Mang Điện Trong Từ Trường)',
+    category: 'electricity',
+    categoryLabel: 'Điện & Từ',
+    grade: 'Lớp 12',
+    summary: 'Quỹ đạo tròn của electron, proton, hạt alpha khi bay vuông góc vào từ trường đều và quy tắc bàn tay trái.',
+    icon: Compass,
+  },
+  {
+    id: 'radioactiveDecay',
+    title: 'Định Luật Phóng Xạ & Chu Kỳ Bán Rã',
+    category: 'nuclear',
+    categoryLabel: 'Hạt nhân',
+    grade: 'Lớp 12',
+    summary: 'Mô phỏng phân rã ngẫu nhiên 400 hạt nhân theo thời gian thực và đường cong hàm mũ N(t) = N₀·2^(-t/T).',
+    icon: Orbit,
+  },
 ];
 
 function renderLatex(tex: string, displayMode = false): string {
@@ -237,7 +363,7 @@ function wavelengthToRgb(nm: number): [number, number, number] {
 
 export const PhysicsSimulationLabView: React.FC = () => {
   const [activeModule, setActiveModule] = useState<PhysicsModuleId | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<PhysicsCategoryId>('all');
+  const [selectedCategory, setSelectedCategory] = useState<PhysicsCategoryId | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(true);
   const [timeScale, setTimeScale] = useState<number>(1);
 
@@ -1534,9 +1660,14 @@ export const PhysicsSimulationLabView: React.FC = () => {
 
   const filteredExperiments = useMemo(
     () =>
-      selectedCategory === 'all'
-        ? PHYSICS_EXPERIMENTS
+      selectedCategory === null
+        ? []
         : PHYSICS_EXPERIMENTS.filter((exp) => exp.category === selectedCategory),
+    [selectedCategory]
+  );
+
+  const activeCategoryMeta = useMemo(
+    () => PHYSICS_CATEGORIES.find((cat) => cat.id === selectedCategory) || null,
     [selectedCategory]
   );
 
@@ -1545,50 +1676,92 @@ export const PhysicsSimulationLabView: React.FC = () => {
     [activeModule]
   );
 
-  if (activeModule === null) {
+  // CẤP 1: KHI VỪA VÀO CHỈ HIỆN CÁC MỤC THÍ NGHIỆM (ĐƠN GIẢN, GỌN GÀNG)
+  if (activeModule === null && selectedCategory === null) {
     return (
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 space-y-5">
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold text-sky-700">
-                Phòng Thí Nghiệm Vật Lý Tương Tác · Lớp 10 · 11 · 12
-              </p>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-                Chọn Thí Nghiệm Mô Phỏng Vật Lý
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Nhấn vào một mục thí nghiệm bên dưới để mở không gian mô phỏng trực quan và bảng điều khiển thông số.
-              </p>
-            </div>
-            <span className="text-xs font-mono tabular-nums text-slate-500 shrink-0">
-              {filteredExperiments.length} / {PHYSICS_EXPERIMENTS.length} thí nghiệm
-            </span>
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 space-y-5">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-sky-700">
+              Phòng Thí Nghiệm Vật Lý · Lớp 10 · 11 · 12
+            </p>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+              Chọn Mục Thí Nghiệm Vật Lý
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Nhấn vào từng mục bên dưới để xem danh sách các thí nghiệm mô phỏng bên trong.
+            </p>
           </div>
+          <span className="text-xs font-mono tabular-nums text-slate-500 shrink-0">
+            {PHYSICS_CATEGORIES.length} mục · {PHYSICS_EXPERIMENTS.length} thí nghiệm
+          </span>
+        </div>
 
-          <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-            {[
-              { id: 'all' as PhysicsCategoryId, label: 'Tất cả' },
-              { id: 'mechanics' as PhysicsCategoryId, label: 'Cơ học' },
-              { id: 'waves' as PhysicsCategoryId, label: 'Sóng & Âm' },
-              { id: 'optics' as PhysicsCategoryId, label: 'Quang & Lượng tử' },
-              { id: 'electricity' as PhysicsCategoryId, label: 'Điện học' },
-              { id: 'thermal' as PhysicsCategoryId, label: 'Nhiệt học' },
-              { id: 'nuclear' as PhysicsCategoryId, label: 'Hạt nhân' },
-            ].map((cat) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {PHYSICS_CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
+            const count = PHYSICS_EXPERIMENTS.filter((e) => e.category === cat.id).length;
+            return (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  selectedCategory === cat.id
-                    ? 'bg-white text-sky-700 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className="group text-left bg-white border border-slate-200 hover:border-sky-400 hover:shadow-sm rounded-2xl p-5 flex flex-col justify-between gap-4 transition-all cursor-pointer"
               >
-                {cat.label}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-slate-500">
+                      {cat.grades} · {count} thí nghiệm
+                    </span>
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 group-hover:bg-sky-50 group-hover:border-sky-200 flex items-center justify-center text-sky-700 shrink-0 transition-colors">
+                      <Icon size={20} />
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-900 group-hover:text-sky-700 transition-colors">
+                      {cat.title}
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      {cat.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-sky-700">
+                  <span>Xem các thí nghiệm</span>
+                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                </div>
               </button>
-            ))}
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // CẤP 2: KHI ĐÃ ẤN VÀO 1 MỤC THÍ NGHIỆM -> HIỂN THỊ CÁC THÍ NGHIỆM TRONG MỤC ĐÓ
+  if (activeModule === null && selectedCategory !== null) {
+    return (
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 space-y-5">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory(null)}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors cursor-pointer"
+            >
+              <ArrowLeft size={15} />
+              <span>Các mục thí nghiệm</span>
+            </button>
+
+            <div className="min-w-0">
+              <div className="text-[11px] font-medium text-slate-500 truncate">
+                {activeCategoryMeta?.grades} · {filteredExperiments.length} thí nghiệm
+              </div>
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 truncate">
+                {activeCategoryMeta?.title}
+              </h1>
+            </div>
           </div>
         </div>
 
@@ -1622,7 +1795,7 @@ export const PhysicsSimulationLabView: React.FC = () => {
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-sky-700">
-                  <span>Mở thí nghiệm</span>
+                  <span>Mở mô phỏng</span>
                   <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </button>
@@ -1637,17 +1810,31 @@ export const PhysicsSimulationLabView: React.FC = () => {
     <div className="max-w-7xl mx-auto px-3 sm:px-6 space-y-5">
       {/* Focused Experiment Top Bar */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button
             type="button"
-            onClick={() => setActiveModule(null)}
+            onClick={() => {
+              setSelectedCategory(activeExperimentMeta?.category || selectedCategory);
+              setActiveModule(null);
+            }}
             className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors cursor-pointer"
           >
             <ArrowLeft size={15} />
-            <span>Danh sách thí nghiệm</span>
+            <span>Quay lại mục</span>
           </button>
 
-          <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveModule(null);
+              setSelectedCategory(null);
+            }}
+            className="px-2.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold shrink-0 whitespace-nowrap transition-colors cursor-pointer"
+          >
+            Tất cả mục
+          </button>
+
+          <div className="min-w-0 pl-1">
             <div className="text-[11px] font-medium text-slate-500 truncate">
               {activeExperimentMeta?.grade} · {activeExperimentMeta?.categoryLabel}
             </div>
@@ -1663,21 +1850,46 @@ export const PhysicsSimulationLabView: React.FC = () => {
           </label>
           <select
             id="quick-physics-select"
-            value={activeModule}
-            onChange={(e) => setActiveModule(e.target.value as PhysicsModuleId)}
+            value={activeModule || ''}
+            onChange={(e) => {
+              const nextId = e.target.value as PhysicsModuleId;
+              const nextMeta = PHYSICS_EXPERIMENTS.find((x) => x.id === nextId);
+              if (nextMeta) setSelectedCategory(nextMeta.category);
+              setActiveModule(nextId);
+            }}
             className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
           >
-            {PHYSICS_EXPERIMENTS.map((exp) => (
-              <option key={exp.id} value={exp.id}>
-                {exp.title}
-              </option>
+            {PHYSICS_CATEGORIES.map((cat) => (
+              <optgroup key={cat.id} label={cat.title}>
+                {PHYSICS_EXPERIMENTS.filter((exp) => exp.category === cat.id).map((exp) => (
+                  <option key={exp.id} value={exp.id}>
+                    {exp.title}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
       </div>
 
       {/* Render Selected Experiment Module */}
-      {activeModule === 'rutherford' ||
+      {activeModule === 'circularMotion' ||
+      activeModule === 'momentumCollision' ||
+      activeModule === 'dopplerEffect' ||
+      activeModule === 'refractionDispersion' ||
+      activeModule === 'electromagneticInduction' ||
+      activeModule === 'lorentzForce' ||
+      activeModule === 'radioactiveDecay' ? (
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+              Đang tải mô phỏng thí nghiệm...
+            </div>
+          }
+        >
+          <AdditionalPhysicsSimulations moduleId={activeModule} />
+        </Suspense>
+      ) : activeModule === 'rutherford' ||
       activeModule === 'lightInterference' ||
       activeModule === 'soundWave' ||
       activeModule === 'nuclearFusion' ||
