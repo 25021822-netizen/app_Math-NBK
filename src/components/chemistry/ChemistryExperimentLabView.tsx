@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import {
   FlaskConical,
   Droplets,
@@ -11,9 +11,168 @@ import {
   Plus,
   SlidersHorizontal,
   Info,
+  ArrowLeft,
+  ArrowRight,
+  Zap,
+  Thermometer,
+  Gauge,
 } from 'lucide-react';
+import type { AdditionalChemModuleId } from './AdditionalChemistrySimulations';
 
-type ChemModuleId = 'titration' | 'metal_acid' | 'precipitate' | 'equilibrium';
+const AdditionalChemistrySimulations = lazy(() =>
+  import('./AdditionalChemistrySimulations').then((m) => ({ default: m.AdditionalChemistrySimulations }))
+);
+
+type ChemModuleId =
+  | 'titration'
+  | 'metal_acid'
+  | 'precipitate'
+  | 'equilibrium'
+  | AdditionalChemModuleId;
+type ChemCategoryId = 'general' | 'solution' | 'electrochem' | 'organic';
+
+interface ChemCategoryMeta {
+  id: ChemCategoryId;
+  title: string;
+  grades: string;
+  description: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
+const CHEM_CATEGORIES: ChemCategoryMeta[] = [
+  {
+    id: 'general',
+    title: 'Hóa Đại Cương & Nhiệt Hóa',
+    grades: 'Lớp 10 · 11',
+    description: 'Tốc độ phản ứng & xúc tác, cân bằng hóa học Le Chatelier, phản ứng tỏa nhiệt & thu nhiệt.',
+    icon: Gauge,
+  },
+  {
+    id: 'solution',
+    title: 'Dung Dịch, Acid – Base & Kết Tủa',
+    grades: 'Lớp 11',
+    description: 'Chuẩn độ Acid – Base với đường cong pH, phản ứng trao đổi ion tạo kết tủa và tạo phức.',
+    icon: Droplets,
+  },
+  {
+    id: 'electrochem',
+    title: 'Điện Hóa & Oxi Hóa – Khử',
+    grades: 'Lớp 10 · 12',
+    description: 'Pin điện hóa Galvani, điện phân dung dịch & mạ điện, kim loại tác dụng acid và thử ngọn lửa.',
+    icon: Zap,
+  },
+  {
+    id: 'organic',
+    title: 'Hóa Học Hữu Cơ',
+    grades: 'Lớp 12',
+    description: 'Tổng hợp Etyl Axetat (phản ứng este hóa thuận nghịch) và phản ứng xà phòng hóa chất béo.',
+    icon: FlaskConical,
+  },
+];
+
+interface ChemExperimentMeta {
+  id: ChemModuleId;
+  title: string;
+  category: ChemCategoryId;
+  categoryLabel: string;
+  grade: string;
+  summary: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
+const CHEM_EXPERIMENTS: ChemExperimentMeta[] = [
+  {
+    id: 'reaction_rate',
+    title: 'Tốc Độ Phản Ứng & Chất Xúc Tác',
+    category: 'general',
+    categoryLabel: 'Hóa đại cương',
+    grade: 'Lớp 10',
+    summary: 'Thí nghiệm dấu chữ X với Na₂S₂O₃ + H₂SO₄, mô hình va chạm phân tử và giản đồ năng lượng hoạt hóa Ea.',
+    icon: Gauge,
+  },
+  {
+    id: 'equilibrium',
+    title: 'Cân Bằng Hóa Học Le Chatelier',
+    category: 'general',
+    categoryLabel: 'Hóa đại cương',
+    grade: 'Lớp 11',
+    summary: 'Hệ khí 2NO₂ (nâu đỏ) ⇌ N₂O₄ (không màu) dịch chuyển cân bằng khi thay đổi nhiệt độ và áp suất.',
+    icon: Atom,
+  },
+  {
+    id: 'thermochemistry',
+    title: 'Nhiệt Hóa Học: Tỏa Nhiệt & Thu Nhiệt',
+    category: 'general',
+    categoryLabel: 'Nhiệt hóa học',
+    grade: 'Lớp 10',
+    summary: 'Nhiệt lượng kế đo biến thiên nhiệt độ ΔT và nhiệt lượng Q của các phản ứng trung hòa, tôi vôi, hòa tan muối.',
+    icon: Thermometer,
+  },
+  {
+    id: 'titration',
+    title: 'Chuẩn Độ Acid – Base (HCl + NaOH)',
+    category: 'solution',
+    categoryLabel: 'Dung dịch',
+    grade: 'Lớp 11',
+    summary: 'Ống buret chuẩn độ từng giọt, đổi màu chất chỉ thị Phenolphtalein/Quỳ tím và đồ thị pH trực tiếp.',
+    icon: Droplets,
+  },
+  {
+    id: 'precipitate',
+    title: 'Phản Ứng Kết Tủa & Tạo Phức Chất',
+    category: 'solution',
+    categoryLabel: 'Dung dịch',
+    grade: 'Lớp 11',
+    summary: 'Nhận biết ion Ag⁺, Cu²⁺, Fe³⁺, Fe²⁺, Ba²⁺ qua màu sắc kết tủa đặc trưng và phức [Cu(NH₃)₄]²⁺.',
+    icon: Beaker,
+  },
+  {
+    id: 'galvanic_cell',
+    title: 'Pin Điện Hóa (Pin Galvani & Thế Điện Cực)',
+    category: 'electrochem',
+    categoryLabel: 'Điện hóa học',
+    grade: 'Lớp 12',
+    summary: 'Ghép cặp kim loại Mg, Zn, Fe, Pb, Cu, Ag nối cầu muối, đo suất điện động E_pin theo nồng độ ion.',
+    icon: Zap,
+  },
+  {
+    id: 'electrolysis',
+    title: 'Điện Phân Dung Dịch & Mạ Điện',
+    category: 'electrochem',
+    categoryLabel: 'Điện hóa học',
+    grade: 'Lớp 12',
+    summary: 'Điện phân CuSO₄ (điện cực trơ / Anot tan), NaCl có màng ngăn, AgNO₃ và định luật Faraday.',
+    icon: Zap,
+  },
+  {
+    id: 'metal_acid',
+    title: 'Kim Loại Tác Dụng Với Acid (HCl / H₂SO₄)',
+    category: 'electrochem',
+    categoryLabel: 'Vô cơ',
+    grade: 'Lớp 10 · 12',
+    summary: 'So sánh tốc độ sủi bọt khí H₂ của Mg, Zn, Fe, Cu theo nồng độ acid và nhiệt độ, tính thể tích khí đkc.',
+    icon: Flame,
+  },
+  {
+    id: 'redox_flame',
+    title: 'Thử Màu Ngọn Lửa & Oxi Hóa – Khử',
+    category: 'electrochem',
+    categoryLabel: 'Nhận biết & Khử',
+    grade: 'Lớp 10 · 12',
+    summary: 'Đốt muối Li⁺, Na⁺, K⁺, Ca²⁺, Cu²⁺, Ba²⁺ trên đèn Bunsen và thí nghiệm Fe + CuSO₄, Cu + HNO₃, KMnO₄.',
+    icon: Flame,
+  },
+  {
+    id: 'ester_lab',
+    title: 'Tổng Hợp Este & Phản Ứng Xà Phòng Hóa',
+    category: 'organic',
+    categoryLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    summary: 'Điều chế Etyl Axetat cách thủy với H₂SO₄ đặc, tách lớp este và xà phòng hóa chất béo trong kiềm.',
+    icon: FlaskConical,
+  },
+];
+
 type IndicatorType = 'phenolphthalein' | 'litmus';
 type MetalType = 'Mg' | 'Zn' | 'Fe' | 'Cu';
 type AcidType = 'HCl' | 'H2SO4';
@@ -129,7 +288,8 @@ const PRECIPITATE_REACTIONS: PrecipitateReaction[] = [
 ];
 
 export const ChemistryExperimentLabView: React.FC = () => {
-  const [activeModule, setActiveModule] = useState<ChemModuleId>('titration');
+  const [selectedCategory, setSelectedCategory] = useState<ChemCategoryId | null>(null);
+  const [activeModule, setActiveModule] = useState<ChemModuleId | null>(null);
 
   // ===========================================================================
   // 1. CHUẨN ĐỘ ACID - BASE (HCl + NaOH)
@@ -703,53 +863,237 @@ export const ChemistryExperimentLabView: React.FC = () => {
     return () => cancelAnimationFrame(raf);
   }, [activeModule, eqState, eqTempC, eqPressureAtm]);
 
-  return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 space-y-5">
-      {/* Header Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-            Phòng Thí Nghiệm Hóa Học Ảo
-          </p>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-0.5">
-            Thí Nghiệm Hóa Học THPT Trực Quan
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Thực hành chuẩn độ Acid - Base, phản ứng kim loại, nhận biết kết tủa &amp; dịch chuyển cân bằng Le Chatelier
-          </p>
+  const filteredExperiments = useMemo(
+    () =>
+      selectedCategory === null
+        ? []
+        : CHEM_EXPERIMENTS.filter((exp) => exp.category === selectedCategory),
+    [selectedCategory]
+  );
+
+  const activeCategoryMeta = useMemo(
+    () => CHEM_CATEGORIES.find((cat) => cat.id === selectedCategory) || null,
+    [selectedCategory]
+  );
+
+  const activeExperimentMeta = useMemo(
+    () => CHEM_EXPERIMENTS.find((exp) => exp.id === activeModule) || null,
+    [activeModule]
+  );
+
+  // CẤP 1: CHỈ HIỆN CÁC MỤC THÍ NGHIỆM HÓA HỌC
+  if (activeModule === null && selectedCategory === null) {
+    return (
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 space-y-5">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-emerald-700">
+              Phòng Thí Nghiệm Hóa Học · Lớp 10 · 11 · 12
+            </p>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+              Chọn Mục Thí Nghiệm Hóa Học
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Nhấn vào từng mục bên dưới để xem danh sách các thí nghiệm mô phỏng bên trong.
+            </p>
+          </div>
+          <span className="text-xs font-mono tabular-nums text-slate-500 shrink-0">
+            {CHEM_CATEGORIES.length} mục · {CHEM_EXPERIMENTS.length} thí nghiệm
+          </span>
         </div>
 
-        {/* Experiment Module Switcher */}
-        <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-          {[
-            { id: 'titration' as ChemModuleId, label: 'Chuẩn Độ Acid - Base', icon: Droplets },
-            { id: 'metal_acid' as ChemModuleId, label: 'Kim Loại + Acid', icon: Flame },
-            { id: 'precipitate' as ChemModuleId, label: 'Kết Tủa & Tạo Phức', icon: Beaker },
-            { id: 'equilibrium' as ChemModuleId, label: 'Cân Bằng Le Chatelier', icon: Atom },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeModule === tab.id;
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {CHEM_CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
+            const count = CHEM_EXPERIMENTS.filter((e) => e.category === cat.id).length;
             return (
               <button
-                key={tab.id}
+                key={cat.id}
                 type="button"
-                onClick={() => setActiveModule(tab.id)}
-                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  active
-                    ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={() => setSelectedCategory(cat.id)}
+                className="group text-left bg-white border border-slate-200 hover:border-emerald-400 hover:shadow-sm rounded-2xl p-5 flex flex-col justify-between gap-4 transition-all cursor-pointer"
               >
-                <Icon size={14} />
-                <span>{tab.label}</span>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-slate-500">
+                      {cat.grades} · {count} thí nghiệm
+                    </span>
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 group-hover:bg-emerald-50 group-hover:border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0 transition-colors">
+                      <Icon size={20} />
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                      {cat.title}
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      {cat.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-700">
+                  <span>Xem các thí nghiệm</span>
+                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                </div>
               </button>
             );
           })}
         </div>
       </div>
+    );
+  }
 
-      {/* Two-Zone Sandbox Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+  // CẤP 2: HIỆN CÁC THÍ NGHIỆM TRONG MỤC ĐÃ CHỌN
+  if (activeModule === null && selectedCategory !== null) {
+    return (
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 space-y-5">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory(null)}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors cursor-pointer"
+            >
+              <ArrowLeft size={15} />
+              <span>Các mục thí nghiệm</span>
+            </button>
+
+            <div className="min-w-0">
+              <div className="text-[11px] font-medium text-slate-500 truncate">
+                {activeCategoryMeta?.grades} · {filteredExperiments.length} thí nghiệm
+              </div>
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 truncate">
+                {activeCategoryMeta?.title}
+              </h1>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredExperiments.map((exp) => {
+            const Icon = exp.icon;
+            return (
+              <button
+                key={exp.id}
+                type="button"
+                onClick={() => setActiveModule(exp.id)}
+                className="group text-left bg-white border border-slate-200 hover:border-emerald-400 hover:shadow-sm rounded-2xl p-5 flex flex-col justify-between gap-4 transition-all cursor-pointer"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-slate-500">
+                      {exp.grade} · {exp.categoryLabel}
+                    </span>
+                    <div className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200 group-hover:bg-emerald-50 group-hover:border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0 transition-colors">
+                      <Icon size={18} />
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                      {exp.title}
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      {exp.summary}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-700">
+                  <span>Mở mô phỏng</span>
+                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 space-y-5">
+      {/* Focused Experiment Top Bar */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedCategory(activeExperimentMeta?.category || selectedCategory);
+              setActiveModule(null);
+            }}
+            className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={15} />
+            <span>Quay lại mục</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveModule(null);
+              setSelectedCategory(null);
+            }}
+            className="px-2.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold shrink-0 whitespace-nowrap transition-colors cursor-pointer"
+          >
+            Tất cả mục
+          </button>
+
+          <div className="min-w-0 pl-1">
+            <div className="text-[11px] font-medium text-slate-500 truncate">
+              {activeExperimentMeta?.grade} · {activeExperimentMeta?.categoryLabel}
+            </div>
+            <h1 className="text-base sm:text-lg font-extrabold text-slate-900 truncate">
+              {activeExperimentMeta?.title}
+            </h1>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <label htmlFor="quick-chem-select" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+            Chuyển nhanh:
+          </label>
+          <select
+            id="quick-chem-select"
+            value={activeModule || ''}
+            onChange={(e) => {
+              const nextId = e.target.value as ChemModuleId;
+              const nextMeta = CHEM_EXPERIMENTS.find((x) => x.id === nextId);
+              if (nextMeta) setSelectedCategory(nextMeta.category);
+              setActiveModule(nextId);
+            }}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer"
+          >
+            {CHEM_CATEGORIES.map((cat) => (
+              <optgroup key={cat.id} label={cat.title}>
+                {CHEM_EXPERIMENTS.filter((exp) => exp.category === cat.id).map((exp) => (
+                  <option key={exp.id} value={exp.id}>
+                    {exp.title}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {activeModule === 'electrolysis' ||
+      activeModule === 'galvanic_cell' ||
+      activeModule === 'reaction_rate' ||
+      activeModule === 'redox_flame' ||
+      activeModule === 'ester_lab' ||
+      activeModule === 'thermochemistry' ? (
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+              Đang tải mô phỏng thí nghiệm hóa học...
+            </div>
+          }
+        >
+          <AdditionalChemistrySimulations moduleId={activeModule} />
+        </Suspense>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* LEFT STAGE: VISUAL APPARATUS */}
         <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col">
           {activeModule === 'titration' && (
@@ -1378,6 +1722,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
