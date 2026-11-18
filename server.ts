@@ -2215,6 +2215,19 @@ app.get('/api/files/:filename', (req, res) => {
   }
 });
 
+// 15. Cung cấp runtime Firebase Web API Key từ Secrets (không cần hardcode trong bundle)
+app.get('/api/firebase-env.js', (_req, res) => {
+  const runtimeKey = (process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || '').trim();
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(`window.__RUNTIME_FIREBASE_API_KEY__ = ${JSON.stringify(runtimeKey)};`);
+});
+
+app.get('/api/firebase-secret-status', (_req, res) => {
+  const runtimeKey = (process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || '').trim();
+  res.json({ configured: Boolean(runtimeKey) });
+});
+
 // Khởi chạy Vite Server Middleware
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
