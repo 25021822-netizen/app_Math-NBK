@@ -2,7 +2,6 @@ import {
   UserProfile,
   SkillNode,
   Exam,
-  ScanResult,
   CheatLog,
   Classroom,
   ClassroomLesson,
@@ -10,7 +9,6 @@ import {
   ClassroomChatMessage,
   FriendRequest,
   FriendRelation,
-  SocraticMessage,
 } from '../types/math';
 
 export const SAMPLE_ADMIN: UserProfile = {
@@ -207,132 +205,6 @@ export const SAMPLE_SKILL_TREES: Record<10 | 11 | 12, SkillNode[]> = {
     },
   ],
 };
-
-export const SAMPLE_OCR_PROBLEMS: {
-  id: string;
-  title: string;
-  category: string;
-  imagePreviewText: string;
-  latex: string;
-  difficulty: 'Nhận biết' | 'Thông hiểu' | 'Vận dụng' | 'Vận dụng cao';
-  solution: ScanResult;
-}[] = [
-  {
-    id: 'sample_1',
-    title: 'Tích phân từng phần',
-    category: 'Giải tích 12',
-    imagePreviewText: '∫ [0 → π/2] x · sin(x) dx',
-    latex: '\\int_{0}^{\\frac{\\pi}{2}} x \\sin(x) \\, dx',
-    difficulty: 'Thông hiểu',
-    solution: {
-      problemText: 'Tính tích phân xác định: I = ∫_0^(π/2) x sin(x) dx',
-      latexFormula: '\\int_{0}^{\\frac{\\pi}{2}} x \\sin(x) \\, dx',
-      topic: 'calculus',
-      difficulty: 'Thông hiểu',
-      stepByStepSolution: [
-        {
-          stepNumber: 1,
-          title: 'Đặt biến tích phân từng phần',
-          description: 'Sử dụng quy tắc ưu tiên Lôgarit - Đa thức - Lượng giác - Mũ.',
-          latex: 'u = x \\implies du = dx; \\quad dv = \\sin(x)dx \\implies v = -\\cos(x)',
-        },
-        {
-          stepNumber: 2,
-          title: 'Áp dụng công thức I = u·v - ∫ v du',
-          description: 'Thay các đại lượng đã tính vào biểu thức tích phân từng phần.',
-          latex: 'I = \\left[ -x \\cos(x) \\right]_0^{\\frac{\\pi}{2}} - \\int_0^{\\frac{\\pi}{2}} (-\\cos(x)) dx',
-        },
-        {
-          stepNumber: 3,
-          title: 'Thế cận và tính tích phân còn lại',
-          description: 'Vì cos(π/2) = 0 và cos(0) = 1 nên hạng tử đầu bằng 0.',
-          latex: 'I = 0 + \\left[ \\sin(x) \\right]_0^{\\frac{\\pi}{2}} = \\sin\\left(\\frac{\\pi}{2}\\right) - \\sin(0) = 1',
-        },
-      ],
-      finalAnswer: 'I = 1',
-      source: 'cache',
-      processingTimeMs: 42,
-    },
-  },
-  {
-    id: 'sample_2',
-    title: 'Cực trị hàm phân thức bậc 2 trên bậc 1',
-    category: 'Đại số & Giải tích 12',
-    imagePreviewText: 'y = (x² - 2x + 2) / (x - 1)',
-    latex: 'y = \\frac{x^2 - 2x + 2}{x - 1}',
-    difficulty: 'Vận dụng',
-    solution: {
-      problemText: 'Tìm điểm cực trị của đồ thị hàm số y = (x² - 2x + 2) / (x - 1)',
-      latexFormula: 'y = \\frac{x^2 - 2x + 2}{x - 1}',
-      topic: 'calculus',
-      difficulty: 'Vận dụng',
-      stepByStepSolution: [
-        {
-          stepNumber: 1,
-          title: 'Tập xác định & tính đạo hàm y\'',
-          description: 'Điều kiện xác định x ≠ 1. Áp dụng công thức (u/v)\' = (u\'v - uv\') / v².',
-          latex: 'y\' = \\frac{(2x - 2)(x - 1) - (x^2 - 2x + 2)}{(x - 1)^2} = \\frac{x^2 - 2x}{(x - 1)^2}',
-        },
-        {
-          stepNumber: 2,
-          title: 'Giải phương trình đạo hàm y\' = 0',
-          description: 'Tử thức x² - 2x = 0 cho hai nghiệm phân biệt.',
-          latex: 'y\' = 0 \\iff x(x - 2) = 0 \\iff \\begin{cases} x = 0 \\implies y = -2 \\\\ x = 2 \\implies y = 2 \\end{cases}',
-        },
-        {
-          stepNumber: 3,
-          title: 'Lập bảng xét dấu & kết luận',
-          description: 'Qua x = 0 đạo hàm đổi dấu từ + sang - (cực đại), qua x = 2 đạo hàm đổi dấu từ - sang + (cực tiểu).',
-          latex: 'A(0; -2) \\text{ là điểm cực đại}, \\quad B(2; 2) \\text{ là điểm cực tiểu}',
-        },
-      ],
-      finalAnswer: 'Điểm CĐ: (0; -2), Điểm CT: (2; 2)',
-      source: 'gemini_vision',
-      processingTimeMs: 1420,
-    },
-  },
-  {
-    id: 'sample_3',
-    title: 'Khoảng cách điểm đến mặt phẳng (Oxyz)',
-    category: 'Hình học không gian Oxyz',
-    imagePreviewText: 'd(M, (P)) với M(1; 2; -1), (P): 2x - 2y + z + 5 = 0',
-    latex: 'd(M, (P)) = \\frac{|2(1) - 2(2) + (-1) + 5|}{\\sqrt{2^2 + (-2)^2 + 1^2}}',
-    difficulty: 'Thông hiểu',
-    solution: {
-      problemText: 'Trong không gian Oxyz, tính khoảng cách từ điểm M(1; 2; -1) đến mặt phẳng (P): 2x - 2y + z + 5 = 0.',
-      latexFormula: 'd(M, (P)) = \\frac{|Ax_M + By_M + Cz_M + D|}{\\sqrt{A^2 + B^2 + C^2}}',
-      topic: 'geometry_spatial',
-      difficulty: 'Thông hiểu',
-      stepByStepSolution: [
-        {
-          stepNumber: 1,
-          title: 'Nhận dạng tọa độ điểm và hệ số mặt phẳng',
-          description: 'M(1; 2; -1), mặt phẳng (P) có pháp tuyến n = (2; -2; 1) và D = 5.',
-          latex: 'A = 2, B = -2, C = 1, D = 5',
-        },
-        {
-          stepNumber: 2,
-          title: 'Thay vào công thức khoảng cách',
-          description: 'Tính tử số (trị tuyệt đối) và mẫu số (độ dài vectơ pháp tuyến).',
-          latex: 'd(M, (P)) = \\frac{|2 \\cdot 1 - 2 \\cdot 2 + 1 \\cdot (-1) + 5|}{\\sqrt{2^2 + (-2)^2 + 1^2}} = \\frac{|2 - 4 - 1 + 5|}{\\sqrt{4 + 4 + 1}}',
-        },
-        {
-          stepNumber: 3,
-          title: 'Rút gọn kết quả',
-          description: 'Tử số là |2| = 2, mẫu số là căn bậc hai của 9 = 3.',
-          latex: 'd(M, (P)) = \\frac{2}{3}',
-        },
-      ],
-      finalAnswer: 'd(M, (P)) = 2/3',
-      source: 'cache',
-      processingTimeMs: 35,
-    },
-  },
-];
-
-export const SAMPLE_SCAN_RESULTS: ScanResult[] = SAMPLE_OCR_PROBLEMS.map((p) => p.solution);
-
-export const SAMPLE_SOCRATIC_MESSAGES: SocraticMessage[] = [];
 
 export const SAMPLE_EXAMS: Exam[] = [];
 

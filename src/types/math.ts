@@ -22,7 +22,7 @@ export function getTeacherSubjectTab(subject?: string): 'geometry' | 'physics_si
 export function canAccessSubjectTab(tab: string, role: UserRole, subject?: string): boolean {
   if (role !== 'teacher') return true;
   const teacherSubject = resolveTeacherSubject(role, subject);
-  if (tab === 'geometry' || tab === 'three_3d') {
+  if (tab === 'geometry') {
     return teacherSubject === 'Toán Học';
   }
   if (tab === 'physics_sim') {
@@ -235,44 +235,6 @@ export interface CheatLog {
   event: 'app_state_blur' | 'visibility_hidden' | 'window_unfocus' | 'screen_capture';
   reason: string;
   actionTaken: 'warning_1' | 'warning_2' | 'auto_submitted_disqualified';
-}
-
-export interface SocraticMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  latex?: string;
-  imageUrl?: string;
-  isError?: boolean;
-  graphHint?: {
-    equation: string;
-    rangeX?: [number, number];
-    label?: string;
-  };
-  hintsRemaining?: number;
-  timestamp: string;
-  groundingChunks?: {
-    web?: {
-      uri: string;
-      title: string;
-    };
-  }[];
-}
-
-export interface ScanResult {
-  problemText: string;
-  latexFormula: string;
-  topic: MathTopic;
-  difficulty: 'Nhận biết' | 'Thông hiểu' | 'Vận dụng' | 'Vận dụng cao';
-  stepByStepSolution: {
-    stepNumber: number;
-    title: string;
-    description: string;
-    latex: string;
-  }[];
-  finalAnswer: string;
-  source: 'cache' | 'gemini_vision';
-  processingTimeMs: number;
 }
 
 export interface Classroom {

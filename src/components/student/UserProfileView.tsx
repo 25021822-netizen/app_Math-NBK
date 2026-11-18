@@ -289,11 +289,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               <span className="text-[10px] text-indigo-500 font-semibold">Mục tiêu thi THPT</span>
             </div>
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Quét Bài Tập AI</span>
+              <span className="text-[11px] font-bold text-slate-400 block uppercase">Nhóm Lớp Tham Gia</span>
               <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block">
-                {userProfile.dailyScanCount}
+                {myClassrooms.length}
               </span>
-              <span className="text-[10px] text-emerald-700 font-semibold">Lượt đã dùng · Không giới hạn</span>
+              <span className="text-[10px] text-emerald-700 font-semibold">Đang học & làm bài</span>
             </div>
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
               <span className="text-[11px] font-bold text-slate-400 block uppercase">Hồ Sơ Học Tập</span>
