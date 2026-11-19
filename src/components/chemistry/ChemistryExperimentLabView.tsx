@@ -87,7 +87,7 @@ const CHEM_EXPERIMENTS: ChemExperimentMeta[] = [
     categoryLabel: 'Hóa 12 · Pin điện hóa',
     grade: 'Lớp 12',
     summary:
-      'Ghép cặp Mg, Zn, Fe, Pb, Cu, Ag nối cầu muối KNO₃; quan sát điện cực Anot (−) tan dần (Δm < 0), Catot (+) bồi đắp kim loại dày lên (Δm > 0) và sức điện động Nernst.',
+      'Ghép 8 kim loại Mg, Al, Zn, Fe, Ni, Pb, Cu, Ag nối cầu muối KNO₃; quan sát rõ nét đứt kích thước Anot (−) tan dần, Catot (+) bồi đắp dày lên và dòng ion cầu muối.',
     icon: Zap,
   },
   {
@@ -97,7 +97,7 @@ const CHEM_EXPERIMENTS: ChemExperimentMeta[] = [
     categoryLabel: 'Hóa 12 · Điện phân & Tinh chế',
     grade: 'Lớp 12',
     summary:
-      'Tinh chế đồng thô (Anot Cu bẩn tan dần, bùn Ag/Au lắng đáy, Catot Cu tinh khiết dày lên), mạ bạc (Anot Ag tan), mạ niken (Anot Ni tan) và điện phân CuSO₄ điện cực trơ.',
+      'Tinh chế đồng thô (bùn anot Ag/Au), mạ đồng (Anot Cu tan), mạ bạc (Anot Ag tan), mạ niken (Anot Ni tan) và điện phân CuSO₄, AgNO₃ điện cực trơ.',
     icon: Zap,
   },
   {
@@ -107,17 +107,17 @@ const CHEM_EXPERIMENTS: ChemExperimentMeta[] = [
     categoryLabel: 'Hóa 12 · Luyện kim & Al',
     grade: 'Lớp 12',
     summary:
-      'Quy trình Hall–Héroult ở 950°C với chất chảy Criolit (Na₃AlF₆), bể lót graphit Catot (−) thu Al lỏng lắng đáy và các khối Anot (+) than chì bị đốt cháy mòn dần.',
+      'Quy trình Hall–Héroult ở 950°C với Criolit (Na₃AlF₆), bể lót graphit Catot (−) thu Al lỏng lắng đáy và các khối Anot (+) than chì cháy mòn dần.',
     icon: Factory,
   },
   {
     id: 'industrial_prod',
-    title: 'Mô Hình Sản Xuất H₂SO₄, NH₃, Xút–Clo & Luyện Gang',
+    title: 'Mô Hình Sản Xuất H₂SO₄, NH₃, HNO₃, Xút–Clo, Gang & Thép',
     category: 'industrial',
     categoryLabel: 'Hóa 10 · 11 · 12 · Công nghiệp hóa chất',
     grade: 'Lớp 10 · 11 · 12',
     summary:
-      '4 dây chuyền trọng tâm THPT: Sản xuất H₂SO₄ (tiếp xúc V₂O₅ tạo Oleum), NH₃ (Haber–Bosch tuần hoàn khí), điện phân NaCl màng ngăn (NaOH/Cl₂/Javel) và Lò cao luyện gang.',
+      '6 dây chuyền THPT: Sản xuất H₂SO₄ (tiếp xúc V₂O₅), NH₃ (Haber–Bosch), HNO₃ (Ostwald Pt–Rh), điện phân NaCl màng ngăn, Lò cao luyện gang và Lò thổi Oxygen luyện thép.',
     icon: Factory,
   },
   {
@@ -127,23 +127,23 @@ const CHEM_EXPERIMENTS: ChemExperimentMeta[] = [
     categoryLabel: 'Hóa 12 · Ester – Lipid',
     grade: 'Lớp 12',
     summary:
-      'Đun cách thủy CH₃COOH + C₂H₅OH xúc tác H₂SO₄ đặc, ngưng tụ hơi vào dung dịch NaCl bão hòa để tách lớp Ethyl Acetate nổi lên trên; mô phỏng xà phòng hóa chất béo.',
+      'Điều chế Ethyl Acetate, Isoamyl Acetate (mùi chuối), Propyl Acetate, Ethyl Butyrate ngưng tụ vào NaCl bão hòa tách lớp; xà phòng hóa Tristearin / Triolein.',
     icon: FlaskConical,
   },
   {
     id: 'titration',
-    title: 'Chuẩn Độ Acid – Base (HCl / CH₃COOH + NaOH)',
+    title: 'Chuẩn Độ Acid – Base (HCl / H₂SO₄ / CH₃COOH + NaOH)',
     category: 'organic_titration',
     categoryLabel: 'Hóa 11 · Chuẩn độ & pH',
     grade: 'Lớp 11',
     summary:
-      'Chuẩn độ acid mạnh (HCl) hoặc acid yếu (CH₃COOH) bằng dung dịch chuẩn NaOH trên buret, theo dõi máy khuấy từ, đường cong pH trực tiếp và đổi màu Phenolphthalein/Quỳ tím.',
+      'Chuẩn độ HCl, H₂SO₄ hoặc acid yếu CH₃COOH bằng NaOH trên buret, đầu dò pH số trực tiếp, bước nhảy pH và đổi màu Phenolphthalein/Quỳ tím.',
     icon: Droplets,
   },
 ];
 
 type IndicatorType = 'phenolphthalein' | 'litmus';
-type AnalyteAcidType = 'HCl' | 'CH3COOH';
+type AnalyteAcidType = 'HCl' | 'H2SO4' | 'CH3COOH';
 
 function computeTitrationPh(
   analyteAcid: AnalyteAcidType,
@@ -153,18 +153,17 @@ function computeTitrationPh(
   addedBaseMl: number
 ): number {
   const vTotal = Math.max(0.001, acidVolMl + addedBaseMl);
-  const ca = (acidConc * acidVolMl) / vTotal;
+  const normFactor = analyteAcid === 'H2SO4' ? 2 : 1;
+  const ca = (normFactor * acidConc * acidVolMl) / vTotal;
   const cb = (baseConc * addedBaseMl) / vTotal;
   const kw = 1e-14;
 
   let ph = 7.0;
-  if (analyteAcid === 'HCl') {
+  if (analyteAcid === 'HCl' || analyteAcid === 'H2SO4') {
     const delta = ca - cb;
     const hPlus = (delta + Math.sqrt(delta * delta + 4 * kw)) / 2;
     ph = -Math.log10(Math.max(1e-14, hPlus));
   } else {
-    // Exact charge balance for CH3COOH (Ka = 1.8e-5) + NaOH:
-    // f(pH) = [H+] + cb - Kw/[H+] - ca * Ka / (Ka + [H+]) = 0 (strictly decreasing on [0, 14])
     const ka = 1.8e-5;
     let lo = 0.0;
     let hi = 14.0;
@@ -198,7 +197,8 @@ export const ChemistryExperimentLabView: React.FC = () => {
 
   const titrationState = useMemo(() => {
     const pH = computeTitrationPh(analyteAcid, acidConc, acidVolMl, baseConc, addedBaseMl);
-    const equivVolMl = (acidConc * acidVolMl) / baseConc;
+    const normFactor = analyteAcid === 'H2SO4' ? 2 : 1;
+    const equivVolMl = (normFactor * acidConc * acidVolMl) / baseConc;
     const equivPh = computeTitrationPh(analyteAcid, acidConc, acidVolMl, baseConc, equivVolMl);
 
     let liquidColor = 'rgba(224, 242, 254, 0.55)';
@@ -586,6 +586,16 @@ export const ChemistryExperimentLabView: React.FC = () => {
                     {isDripping ? <Pause size={14} /> : <Play size={14} />}
                     <span>{isDripping ? 'Khóa van' : 'Mở van chảy'}</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDripping(false);
+                      setAddedBaseMl(Math.max(0, Math.min(50, Number((titrationState.equivVolMl - 0.5).toFixed(2)))));
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 text-emerald-800 font-bold text-xs cursor-pointer"
+                  >
+                    Đến sát điểm tương đương
+                  </button>
                 </div>
 
                 <button
@@ -604,37 +614,52 @@ export const ChemistryExperimentLabView: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-center">
                 {/* Burette & Erlenmeyer Flask SVG */}
                 <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col items-center">
-                  <svg viewBox="0 0 260 360" className="w-full max-w-[260px] h-[340px]">
+                  <svg viewBox="0 0 280 360" className="w-full max-w-[280px] h-[340px]">
                     {/* Stand base & rod */}
-                    <rect x="28" y="330" width="204" height="10" rx="3" fill="#334155" />
+                    <rect x="28" y="330" width="224" height="10" rx="3" fill="#334155" />
                     <rect x="44" y="24" width="8" height="308" fill="#64748B" />
                     <rect x="48" y="88" width="70" height="6" fill="#475569" />
 
                     {/* Burette tube (0..50 mL) */}
                     <rect x="118" y="22" width="24" height="168" fill="#F8FAFC" stroke="#334155" strokeWidth="2" />
-                    {/* NaOH solution inside burette */}
+                    {/* NaOH solution inside burette + meniscus */}
                     {(() => {
                       const remainRatio = Math.max(0, (50 - addedBaseMl) / 50);
                       const h = 156 * remainRatio;
+                      const topY = 188 - h;
                       return (
-                        <rect
-                          x="120"
-                          y={188 - h}
-                          width="20"
-                          height={h}
-                          fill="rgba(186, 230, 253, 0.72)"
-                        />
+                        <>
+                          <rect
+                            x="120"
+                            y={topY}
+                            width="20"
+                            height={h}
+                            fill="rgba(186, 230, 253, 0.78)"
+                          />
+                          {h > 4 && (
+                            <path
+                              d={`M120 ${topY} Q130 ${topY + 4} 140 ${topY}`}
+                              fill="none"
+                              stroke="#0284C7"
+                              strokeWidth="1.4"
+                            />
+                          )}
+                        </>
                       );
                     })()}
                     {/* Graduation ticks */}
                     {[0, 10, 20, 30, 40, 50].map((v, idx) => (
                       <g key={v}>
-                        <line x1="118" y1={34 + idx * 30} x2="127" y2={34 + idx * 30} stroke="#475569" strokeWidth="1" />
+                        <line x1="118" y1={34 + idx * 30} x2="128" y2={34 + idx * 30} stroke="#475569" strokeWidth="1.2" />
                         <text x="96" y={38 + idx * 30} fontSize="9" fill="#64748B" fontFamily="monospace">
                           {v}
                         </text>
                       </g>
                     ))}
+                    <text x="150" y="36" fontSize="9" fontWeight="700" fill="#0369A1" fontFamily="sans-serif">
+                      NaOH {baseConc.toFixed(2)}M
+                    </text>
+
                     {/* Stopcock & Tip */}
                     <rect x="126" y="190" width="8" height="28" fill="#E2E8F0" stroke="#334155" strokeWidth="1.5" />
                     <rect
@@ -648,7 +673,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
 
                     {/* Falling droplet when dripping */}
                     {isDripping && addedBaseMl < 50 && (
-                      <circle cx="130" cy="234" r="3.5" fill="#38BDF8" />
+                      <circle cx="130" cy="236" r="3.5" fill="#38BDF8" />
                     )}
 
                     {/* Magnetic Stirrer Plate */}
@@ -661,11 +686,29 @@ export const ChemistryExperimentLabView: React.FC = () => {
                       stroke="#334155"
                       strokeWidth="2.2"
                     />
-                    {/* Solution inside flask with indicator color */}
-                    <path
-                      d="M99 272 L84 301 Q83 306 90 306 L170 306 Q177 306 176 301 L161 272 Z"
-                      fill={titrationState.liquidColor}
-                    />
+                    {/* Dynamic solution height growing gently as base is added */}
+                    {(() => {
+                      const fillFrac = Math.min(1, 0.45 + (addedBaseMl / 50) * 0.45);
+                      const topY = 306 - fillFrac * 48;
+                      const halfW = 46 - fillFrac * 18;
+                      return (
+                        <path
+                          d={`M${130 - halfW} ${topY} L84 301 Q83 306 90 306 L170 306 Q177 306 176 301 L${130 + halfW} ${topY} Z`}
+                          fill={titrationState.liquidColor}
+                        />
+                      );
+                    })()}
+                    {/* Digital pH Probe & Meter */}
+                    <line x1="142" y1="228" x2="152" y2="294" stroke="#0F172A" strokeWidth="2.4" strokeLinecap="round" />
+                    <rect x="186" y="218" width="74" height="38" rx="6" fill="#0F172A" />
+                    <text x="223" y="232" textAnchor="middle" fontSize="8" fill="#94A3B8" fontFamily="sans-serif">
+                      ĐẦU DÒ pH
+                    </text>
+                    <text x="223" y="248" textAnchor="middle" fontSize="13" fontWeight="700" fill="#34D399" fontFamily="monospace">
+                      {titrationState.pH.toFixed(2)}
+                    </text>
+                    <path d="M142 228 Q166 206 186 232" fill="none" stroke="#334155" strokeWidth="1.5" />
+
                     {/* Spinning PTFE stir bar */}
                     <rect
                       x={130 - Math.max(4, Math.abs(Math.cos((stirAngle * Math.PI) / 180)) * 12)}
@@ -699,8 +742,25 @@ export const ChemistryExperimentLabView: React.FC = () => {
                     addedBaseMl={addedBaseMl}
                     currentPh={titrationState.pH}
                     equivVolMl={titrationState.equivVolMl}
+                    equivPh={titrationState.equivPh}
                   />
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                  {/* Indicator color transition legend bar */}
+                  <div className="flex items-center justify-between text-[10px] font-semibold px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                    {indicator === 'phenolphthalein' ? (
+                      <>
+                        <span className="text-slate-600">pH &lt; 8,2: Không màu</span>
+                        <span className="text-pink-500">8,2–9,2: Hồng nhạt</span>
+                        <span className="text-pink-700">&gt; 9,2: Hồng đậm</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-rose-600">pH &lt; 5,5: Đỏ</span>
+                        <span className="text-violet-600">5,5–8,0: Tím</span>
+                        <span className="text-blue-600">&gt; 8,0: Xanh</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
                     <span>pH tương đương: {titrationState.equivPh.toFixed(2)}</span>
                     <span>V_tđ = {titrationState.equivVolMl.toFixed(1)} mL</span>
                   </div>
@@ -748,7 +808,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
               <div className="space-y-4 text-xs">
                 <div className="space-y-1.5">
                   <span className="font-bold text-slate-700 block">Dung dịch acid cần chuẩn độ (trong bình tam giác)</span>
-                  <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
+                  <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-lg">
                     <button
                       type="button"
                       onClick={() => {
@@ -762,7 +822,22 @@ export const ChemistryExperimentLabView: React.FC = () => {
                           : 'text-slate-600'
                       }`}
                     >
-                      HCl (Acid mạnh)
+                      HCl
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAnalyteAcid('H2SO4');
+                        setIsDripping(false);
+                        setAddedBaseMl(0);
+                      }}
+                      className={`py-1.5 rounded-md font-bold cursor-pointer ${
+                        analyteAcid === 'H2SO4'
+                          ? 'bg-white text-emerald-700 shadow-xs'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      H₂SO₄
                     </button>
                     <button
                       type="button"
@@ -778,7 +853,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
                           : 'text-slate-600'
                       }`}
                     >
-                      CH₃COOH (Acid yếu)
+                      CH₃COOH
                     </button>
                   </div>
                 </div>
@@ -812,7 +887,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
                 </div>
 
                 <ChemSlider
-                  label={`Thể tích ${analyteAcid === 'HCl' ? 'HCl' : 'CH₃COOH'} ban đầu`}
+                  label={`Thể tích ${analyteAcid === 'H2SO4' ? 'H₂SO₄' : analyteAcid === 'HCl' ? 'HCl' : 'CH₃COOH'} ban đầu`}
                   valueDisplay={`${acidVolMl} mL`}
                   min={10}
                   max={40}
@@ -824,7 +899,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
                   }}
                 />
                 <ChemSlider
-                  label={`Nồng độ ${analyteAcid === 'HCl' ? 'HCl' : 'CH₃COOH'}`}
+                  label={`Nồng độ ${analyteAcid === 'H2SO4' ? 'H₂SO₄' : analyteAcid === 'HCl' ? 'HCl' : 'CH₃COOH'}`}
                   valueDisplay={`${acidConc.toFixed(2)} M`}
                   min={0.05}
                   max={0.2}
@@ -872,7 +947,15 @@ export const ChemistryExperimentLabView: React.FC = () => {
                     <p className="font-mono font-bold text-slate-900">HCl + NaOH → NaCl + H₂O   (H⁺ + OH⁻ → H₂O)</p>
                     <p className="text-slate-600 leading-relaxed">
                       Chuẩn độ acid mạnh bằng base mạnh (Hóa 11): tại điểm tương đương{' '}
-                      <span className="font-mono font-semibold">C_A·V_A = C_B·V_B</span> nên pH = 7,00. Bước nhảy pH rất dài (từ ≈ 3 đến 11), nên chọn Phenolphthalein (đổi màu ở pH 8,2–10) chuyển hồng nhạt bền trong 30 giây là dừng chuẩn độ.
+                      <span className="font-mono font-semibold">C_A·V_A = C_B·V_B</span> nên pH = 7,00. Bước nhảy pH rất dài (≈ 3–11), chọn Phenolphthalein chuyển hồng nhạt bền trong 30 giây là dừng chuẩn độ.
+                    </p>
+                  </>
+                ) : analyteAcid === 'H2SO4' ? (
+                  <>
+                    <p className="font-mono font-bold text-slate-900">H₂SO₄ + 2NaOH → Na₂SO₄ + 2H₂O</p>
+                    <p className="text-slate-600 leading-relaxed">
+                      Vì mỗi phân tử H₂SO₄ phân li 2 ion H⁺ nên tại điểm tương đương{' '}
+                      <span className="font-mono font-semibold">2·C(H₂SO₄)·V_A = C(NaOH)·V_B</span>, pH tương đương = 7,00.
                     </p>
                   </>
                 ) : (
@@ -938,6 +1021,7 @@ interface TitrationCurveProps {
   addedBaseMl: number;
   currentPh: number;
   equivVolMl: number;
+  equivPh: number;
 }
 
 const TitrationCurveSvg: React.FC<TitrationCurveProps> = ({
@@ -948,6 +1032,7 @@ const TitrationCurveSvg: React.FC<TitrationCurveProps> = ({
   addedBaseMl,
   currentPh,
   equivVolMl,
+  equivPh,
 }) => {
   const w = 320;
   const h = 230;
@@ -982,7 +1067,7 @@ const TitrationCurveSvg: React.FC<TitrationCurveProps> = ({
         y={toY(10.0)}
         width={pw}
         height={toY(8.2) - toY(10.0)}
-        fill="rgba(236, 72, 153, 0.10)"
+        fill="rgba(236, 72, 153, 0.12)"
       />
 
       {/* Grid */}
@@ -1014,24 +1099,36 @@ const TitrationCurveSvg: React.FC<TitrationCurveProps> = ({
         </text>
       ))}
 
-      {/* Equivalence crosshair */}
+      {/* Equivalence point crosshair */}
       {equivVolMl <= 50 && (
-        <line
-          x1={toX(equivVolMl)}
-          y1={padT}
-          x2={toX(equivVolMl)}
-          y2={h - padB}
-          stroke="#059669"
-          strokeDasharray="3 3"
-          strokeWidth="1.2"
-        />
+        <>
+          <line
+            x1={toX(equivVolMl)}
+            y1={padT}
+            x2={toX(equivVolMl)}
+            y2={h - padB}
+            stroke="#059669"
+            strokeDasharray="3 3"
+            strokeWidth="1.2"
+          />
+          <line
+            x1={padL}
+            y1={toY(equivPh)}
+            x2={toX(equivVolMl)}
+            y2={toY(equivPh)}
+            stroke="#059669"
+            strokeDasharray="3 3"
+            strokeWidth="1"
+          />
+          <circle cx={toX(equivVolMl)} cy={toY(equivPh)} r="3.2" fill="#FFFFFF" stroke="#059669" strokeWidth="1.5" />
+        </>
       )}
 
       {/* Curve polyline */}
       <polyline fill="none" stroke="#0284C7" strokeWidth="2.2" points={points.join(' ')} />
 
       {/* Current operating point */}
-      <circle cx={toX(addedBaseMl)} cy={toY(currentPh)} r="4.5" fill="#059669" stroke="#FFFFFF" strokeWidth="1.5" />
+      <circle cx={toX(addedBaseMl)} cy={toY(currentPh)} r="4.8" fill="#059669" stroke="#FFFFFF" strokeWidth="1.5" />
     </svg>
   );
 };

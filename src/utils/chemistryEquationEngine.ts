@@ -68,12 +68,15 @@ const LOWERCASE_FORMULA_ALIASES: Record<string, string> = {
   bano32: 'Ba(NO3)2', mgno32: 'Mg(NO3)2', alno33: 'Al(NO3)3', znno32: 'Zn(NO3)2',
   feno32: 'Fe(NO3)2', feno33: 'Fe(NO3)3', cuno32: 'Cu(NO3)2',
   na2co3: 'Na2CO3', nahco3: 'NaHCO3', k2co3: 'K2CO3', caco3: 'CaCO3', baco3: 'BaCO3', mgco3: 'MgCO3',
-  kmno4: 'KMnO4', k2mno4: 'K2MnO4', kclo3: 'KClO3', k2cr2o7: 'K2Cr2O7', naclo: 'NaClO',
-  fes: 'FeS', fes2: 'FeS2', cus: 'CuS', ag2s: 'Ag2S', pbs: 'PbS', naalo2: 'NaAlO2',
-  ch4: 'CH4', c2h6: 'C2H6', c2h4: 'C2H4', c2h2: 'C2H2', c6h6: 'C6H6',
-  ch3oh: 'CH3OH', c2h5oh: 'C2H5OH', ch3cho: 'CH3CHO', ch3cooh: 'CH3COOH', hcooh: 'HCOOH',
-  ch3cooc2h5: 'CH3COOC2H5', ch3coona: 'CH3COONa', c6h12o6: 'C6H12O6', c12h22o11: 'C12H22O11',
-  fe: 'Fe', cu: 'Cu', al: 'Al', mg: 'Mg', zn: 'Zn', na: 'Na', k: 'K', ca: 'Ca', ba: 'Ba', ag: 'Ag', pb: 'Pb', cr: 'Cr', mn: 'Mn',
+  kmno4: 'KMnO4', k2mno4: 'K2MnO4', kclo3: 'KClO3', k2cr2o7: 'K2Cr2O7', naclo: 'NaClO', caocl2: 'CaOCl2',
+  ki: 'KI', nabr: 'NaBr', agbr: 'AgBr', agi: 'AgI', casio3: 'CaSiO3', nahso3: 'NaHSO3', na2so3: 'Na2SO3',
+  fes: 'FeS', fes2: 'FeS2', cus: 'CuS', ag2s: 'Ag2S', pbs: 'PbS', naalo2: 'NaAlO2', na2zno2: 'Na2ZnO2',
+  cahco32: 'Ca(HCO3)2', mghco32: 'Mg(HCO3)2', khco3: 'KHCO3', nh4hco3: 'NH4HCO3',
+  ch4: 'CH4', c2h6: 'C2H6', c3h8: 'C3H8', c4h10: 'C4H10', c2h4: 'C2H4', c2h2: 'C2H2', c6h6: 'C6H6', cac2: 'CaC2',
+  ch3oh: 'CH3OH', c2h5oh: 'C2H5OH', c3h5oh3: 'C3H5(OH)3', hcho: 'HCHO', ch3cho: 'CH3CHO', ch3cooh: 'CH3COOH', hcooh: 'HCOOH',
+  ch3cooc2h5: 'CH3COOC2H5', ch3coona: 'CH3COONa', hcoona: 'HCOONa', c6h5oh: 'C6H5OH', c6h5ona: 'C6H5ONa',
+  c6h5nh2: 'C6H5NH2', ch3nh2: 'CH3NH2', c6h12o6: 'C6H12O6', c12h22o11: 'C12H22O11',
+  fe: 'Fe', cu: 'Cu', al: 'Al', mg: 'Mg', zn: 'Zn', na: 'Na', k: 'K', ca: 'Ca', ba: 'Ba', ag: 'Ag', pb: 'Pb', cr: 'Cr', mn: 'Mn', ni: 'Ni',
 };
 
 const SUB_DIGITS = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
@@ -835,6 +838,167 @@ export const CHEM_REACTIONS_DB: ChemReactionEntry[] = [
     grade: 'Lớp 12',
     phenomenon: 'Phản ứng nhiệt nhôm tỏa nhiệt rất lớn làm sắt nóng chảy (dùng hàn đường ray).',
   },
+  {
+    id: 'al2o3_dpnc',
+    reactants: ['Al2O3'],
+    products: ['Al', 'O2↑'],
+    arrow: '→',
+    condition: 'đpnc, criolit 950°C',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Sản xuất nhôm trong công nghiệp theo quy trình Hall–Héroult; Anot than chì bị đốt cháy dần.',
+  },
+  {
+    id: 'nacl_dpnc',
+    reactants: ['NaCl'],
+    products: ['Na', 'Cl2↑'],
+    arrow: '→',
+    condition: 'đpnc',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Điều chế kim loại kiềm Na ở Catot (−) và khí Cl₂ vàng lục ở Anot (+).',
+  },
+  {
+    id: 'mgcl2_dpnc',
+    reactants: ['MgCl2'],
+    products: ['Mg', 'Cl2↑'],
+    arrow: '→',
+    condition: 'đpnc',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Điều chế kim loại Magie bằng phương pháp điện phân muối nóng chảy.',
+  },
+  {
+    id: 'nacl_h2o_dpdd',
+    reactants: ['NaCl', 'H2O'],
+    products: ['NaOH', 'Cl2↑', 'H2↑'],
+    arrow: '→',
+    condition: 'đpdd có màng ngăn',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 10 · 12',
+    phenomenon: 'Công nghiệp Xút – Clo: thu được NaOH ở Catot, khí H₂ ở Catot và khí Cl₂ ở Anot.',
+  },
+  {
+    id: 'nacl_h2o_javel',
+    reactants: ['NaCl', 'H2O'],
+    products: ['NaClO', 'H2↑'],
+    arrow: '→',
+    condition: 'đpdd không màng ngăn',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 10 · 12',
+    phenomenon: 'Cl₂ sinh ra phản ứng ngay với NaOH tạo nước Javel (NaCl + NaClO) tẩy rửa, sát khuẩn.',
+  },
+  {
+    id: 'cuso4_h2o_dpdd',
+    reactants: ['CuSO4', 'H2O'],
+    products: ['Cu↓', 'O2↑', 'H2SO4'],
+    arrow: '→',
+    condition: 'đpdd cực trơ',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Đồng đỏ bám lên Catot, khí O₂ thoát ra ở Anot trơ và dung dịch nhạt màu xanh.',
+  },
+  {
+    id: 'agno3_h2o_dpdd',
+    reactants: ['AgNO3', 'H2O'],
+    products: ['Ag↓', 'O2↑', 'HNO3'],
+    arrow: '→',
+    condition: 'đpdd cực trơ',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Bạc kim loại bám lên Catot (−), khí O₂ thoát ra tại Anot (+), pH dung dịch giảm.',
+  },
+  {
+    id: 'zn_cuso4',
+    reactants: ['Zn', 'CuSO4'],
+    products: ['ZnSO4', 'Cu↓'],
+    arrow: '→',
+    topic: 'metal_acid',
+    topicLabel: 'Kim loại & Acid',
+    grade: 'Lớp 12',
+    phenomenon: 'Phản ứng gốc trong Pin Galvani Zn–Cu (E° = 1,10 V): Zn tan, Cu đỏ bám lên điện cực.',
+  },
+  {
+    id: 'fe_fecl3',
+    reactants: ['Fe', 'FeCl3'],
+    products: ['FeCl2'],
+    arrow: '→',
+    topic: 'metal_acid',
+    topicLabel: 'Kim loại & Acid',
+    grade: 'Lớp 12',
+    phenomenon: 'Sắt khử ion Fe³⁺ màu vàng nâu về Fe²⁺ màu lục nhạt.',
+  },
+  {
+    id: 'cu_fecl3',
+    reactants: ['Cu', 'FeCl3'],
+    products: ['CuCl2', 'FeCl2'],
+    arrow: '→',
+    topic: 'metal_acid',
+    topicLabel: 'Kim loại & Acid',
+    grade: 'Lớp 12',
+    phenomenon: 'Đồng tan dần trong dung dịch muối sắt(III) (E°(Fe³⁺/Fe²⁺) = +0,77 V > +0,34 V).',
+  },
+  {
+    id: 'feno32_agno3',
+    reactants: ['Fe(NO3)2', 'AgNO3'],
+    products: ['Fe(NO3)3', 'Ag↓'],
+    arrow: '→',
+    topic: 'metal_acid',
+    topicLabel: 'Kim loại & Acid',
+    grade: 'Lớp 12',
+    phenomenon: 'Ion Ag⁺ oxi hóa Fe²⁺ lên Fe³⁺, tạo kết tủa bạc kim loại trắng xám.',
+  },
+  {
+    id: 'zn_naoh_h2o',
+    reactants: ['Zn', 'NaOH'],
+    products: ['Na2ZnO2', 'H2↑'],
+    arrow: '→',
+    condition: 'dd NaOH',
+    topic: 'metal_acid',
+    topicLabel: 'Kim loại & Acid',
+    grade: 'Lớp 12',
+    phenomenon: 'Kẽm tan trong dung dịch kiềm mạnh tạo muối zincat và giải phóng khí H₂.',
+  },
+  {
+    id: 'cuo_co',
+    reactants: ['CuO', 'CO'],
+    products: ['Cu', 'CO2↑'],
+    arrow: '→',
+    condition: 't°',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Bột CuO đen chuyển thành đồng kim loại màu đỏ (phương pháp nhiệt luyện).',
+  },
+  {
+    id: 'cuo_h2',
+    reactants: ['CuO', 'H2'],
+    products: ['Cu', 'H2O'],
+    arrow: '→',
+    condition: 't°',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Khử CuO đen bằng dòng khí H₂ nóng thu được Cu đỏ và hơi nước ngưng tụ.',
+  },
+  {
+    id: 'fe3o4_co',
+    reactants: ['Fe3O4', 'CO'],
+    products: ['Fe', 'CO2↑'],
+    arrow: '→',
+    condition: 't°',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 12',
+    phenomenon: 'Khử oxide sắt từ bằng khí CO trong công nghiệp luyện gang.',
+  },
 
   // 2. TRAO ĐỔI ION TRONG DUNG DỊCH
   {
@@ -1150,6 +1314,100 @@ export const CHEM_REACTIONS_DB: ChemReactionEntry[] = [
     grade: 'Lớp 12',
     phenomenon: 'Dung dịch chuyển từ màu da cam (Cr₂O₇²⁻) sang xanh lục (Cr³⁺).',
   },
+  {
+    id: 'cl2_ki',
+    reactants: ['Cl2', 'KI'],
+    products: ['KCl', 'I2↓'],
+    arrow: '→',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 10',
+    phenomenon: 'Cl₂ đẩy I₂ ra khỏi muối KI, làm xanh hồ tinh bột (tính oxi hóa Cl₂ > I₂).',
+  },
+  {
+    id: 'cl2_koh_hot',
+    reactants: ['Cl2', 'KOH'],
+    products: ['KCl', 'KClO3', 'H2O'],
+    arrow: '→',
+    condition: 't° (80–100°C)',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 10',
+    phenomenon: 'Cl₂ tự oxi hóa – tự khử trong kiềm nóng tạo potassium chlorate KClO₃.',
+  },
+  {
+    id: 'caoh2_cl2_bleach',
+    reactants: ['Ca(OH)2', 'Cl2'],
+    products: ['CaOCl2', 'H2O'],
+    arrow: '→',
+    condition: '30°C',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 10',
+    phenomenon: 'Điều chế clorua vôi (chất tẩy trắng và khử trùng).',
+  },
+  {
+    id: 'nh3_hcl_smoke',
+    reactants: ['NH3', 'HCl'],
+    products: ['NH4Cl'],
+    arrow: '→',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 11',
+    phenomenon: 'Tạo đám khói trắng dày đặc các tinh thể NH₄Cl (nhận biết khí NH₃ / HCl).',
+  },
+  {
+    id: 'no_o2_brown',
+    reactants: ['NO', 'O2'],
+    products: ['NO2↑'],
+    arrow: '→',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 11',
+    phenomenon: 'Khí NO không màu hóa nâu đỏ ngay khi tiếp xúc với oxi không khí (giai đoạn sản xuất HNO₃).',
+  },
+  {
+    id: 'no2_o2_h2o_hno3',
+    reactants: ['NO2', 'O2', 'H2O'],
+    products: ['HNO3'],
+    arrow: '→',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 11',
+    phenomenon: 'Hấp thụ NO₂ cùng không khí vào nước trong tháp tổng hợp nitric acid HNO₃.',
+  },
+  {
+    id: 'h2s_so2',
+    reactants: ['H2S', 'SO2'],
+    products: ['S↓', 'H2O'],
+    arrow: '→',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 11',
+    phenomenon: 'Khí H₂S khử SO₂ tạo kết tủa bột lưu huỳnh màu vàng.',
+  },
+  {
+    id: 'c_h2so4_conc',
+    reactants: ['C', 'H2SO4'],
+    products: ['CO2↑', 'SO2↑', 'H2O'],
+    arrow: '→',
+    condition: 'đặc, t°',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 11',
+    phenomenon: 'H₂SO₄ đặc nóng oxi hóa phi kim carbon tạo hỗn hợp khí CO₂ và SO₂.',
+  },
+  {
+    id: 'c_hno3_conc',
+    reactants: ['C', 'HNO3'],
+    products: ['CO2↑', 'NO2↑', 'H2O'],
+    arrow: '→',
+    condition: 'đặc, t°',
+    topic: 'redox_gas',
+    topicLabel: 'Oxi hóa – Khử & Điều chế',
+    grade: 'Lớp 11',
+    phenomenon: 'HNO₃ đặc nóng oxi hóa than nóng đỏ giải phóng khí NO₂ màu nâu đỏ và CO₂.',
+  },
 
   // 4. OXIT – BASE – MUỐI – NHIỆT PHÂN
   {
@@ -1269,6 +1527,79 @@ export const CHEM_REACTIONS_DB: ChemReactionEntry[] = [
     grade: 'Lớp 11 · 12',
     phenomenon: 'Tinh thể xanh lam chuyển thành bột CuO đen, thoát khí NO₂ nâu đỏ.',
   },
+  {
+    id: 'cahco32_heat',
+    reactants: ['Ca(HCO3)2'],
+    products: ['CaCO3↓', 'CO2↑', 'H2O'],
+    arrow: '→',
+    condition: 't°',
+    topic: 'oxide_base_salt',
+    topicLabel: 'Oxide · Base · Muối',
+    grade: 'Lớp 12',
+    phenomenon: 'Đun sôi làm mất tính cứng tạm thời của nước (tạo cặn trắng CaCO₃ trong ấm đun).',
+  },
+  {
+    id: 'caco3_co2_h2o',
+    reactants: ['CaCO3', 'CO2', 'H2O'],
+    products: ['Ca(HCO3)2'],
+    arrow: '→',
+    topic: 'oxide_base_salt',
+    topicLabel: 'Oxide · Base · Muối',
+    grade: 'Lớp 12',
+    phenomenon: 'Giải thích sự xâm thực đá vôi tạo hang động và hiện tượng tạo thạch nhũ.',
+  },
+  {
+    id: 'cacl2_na2co3_soften',
+    reactants: ['CaCl2', 'Na2CO3'],
+    products: ['CaCO3↓', 'NaCl'],
+    arrow: '→',
+    topic: 'exchange',
+    topicLabel: 'Trao đổi ion',
+    grade: 'Lớp 12',
+    phenomenon: 'Làm mềm nước cứng vĩnh cửu và nước cứng toàn phần bằng soda Na₂CO₃.',
+  },
+  {
+    id: 'naalo2_co2_h2o',
+    reactants: ['NaAlO2', 'CO2', 'H2O'],
+    products: ['Al(OH)3↓', 'NaHCO3'],
+    arrow: '→',
+    condition: 'dư CO₂',
+    topic: 'exchange',
+    topicLabel: 'Trao đổi ion',
+    grade: 'Lớp 12',
+    phenomenon: 'Sục khí CO₂ dư tạo kết tủa keo trắng Al(OH)₃ không bị hòa tan lại.',
+  },
+  {
+    id: 'cao_sio2_slag',
+    reactants: ['CaO', 'SiO2'],
+    products: ['CaSiO3'],
+    arrow: '→',
+    condition: 't° (lò cao)',
+    topic: 'oxide_base_salt',
+    topicLabel: 'Oxide · Base · Muối',
+    grade: 'Lớp 12',
+    phenomenon: 'Tạo xỉ CaSiO₃ nhẹ nổi trên gang lỏng trong lò cao luyện gang.',
+  },
+  {
+    id: 'cuoh2_nh3_complex',
+    reactants: ['Cu(OH)2', 'NH3'],
+    products: ['[Cu(NH3)4](OH)2'],
+    arrow: '→',
+    topic: 'exchange',
+    topicLabel: 'Trao đổi ion',
+    grade: 'Lớp 12',
+    phenomenon: 'Kết tủa xanh lam Cu(OH)₂ tan trong NH₃ dư tạo dung dịch phức chất màu xanh thẫm.',
+  },
+  {
+    id: 'agcl_nh3_complex',
+    reactants: ['AgCl', 'NH3'],
+    products: ['[Ag(NH3)2]Cl'],
+    arrow: '→',
+    topic: 'exchange',
+    topicLabel: 'Trao đổi ion',
+    grade: 'Lớp 12',
+    phenomenon: 'Kết tủa trắng AgCl tan trong dung dịch NH₃ tạo phức bạc diamine.',
+  },
 
   // 5. HÓA HỌC HỮU CƠ THPT (Lớp 11 · 12)
   {
@@ -1377,6 +1708,175 @@ export const CHEM_REACTIONS_DB: ChemReactionEntry[] = [
     topicLabel: 'Hóa hữu cơ',
     grade: 'Lớp 11',
     phenomenon: 'Acetic acid đẩy H₂CO₃ ra khỏi muối carbonate, sủi bọt khí CO₂.',
+  },
+  {
+    id: 'cac2_h2o',
+    reactants: ['CaC2', 'H2O'],
+    products: ['C2H2↑', 'Ca(OH)2'],
+    arrow: '→',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Điều chế khí acetylene từ đất đèn (calcium carbide) trong phòng thí nghiệm.',
+  },
+  {
+    id: 'c2h4_h2o',
+    reactants: ['C2H4', 'H2O'],
+    products: ['C2H5OH'],
+    arrow: '→',
+    condition: 'H⁺, t°',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Hiđrat hóa ethylene tạo ethanol trong công nghiệp.',
+  },
+  {
+    id: 'c6h6_br2',
+    reactants: ['C6H6', 'Br2'],
+    products: ['C6H5Br', 'HBr↑'],
+    arrow: '→',
+    condition: 'bột Fe hoặc FeBr₃, t°',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Phản ứng thế bromine vào vòng benzene tạo bromobenzene lỏng nặng hơn nước.',
+  },
+  {
+    id: 'c6h6_hno3',
+    reactants: ['C6H6', 'HNO3'],
+    products: ['C6H5NO2', 'H2O'],
+    arrow: '→',
+    condition: 'H₂SO₄ đặc, t°',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Nitro hóa benzene tạo nitrobenzene màu vàng nhạt, mùi hạnh nhân chìm xuống đáy.',
+  },
+  {
+    id: 'c2h5oh_cuo',
+    reactants: ['C2H5OH', 'CuO'],
+    products: ['CH3CHO', 'Cu', 'H2O'],
+    arrow: '→',
+    condition: 't°',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Oxi hóa không hoàn toàn ancol bậc I bằng CuO đen thành aldehyde CH₃CHO và Cu đỏ.',
+  },
+  {
+    id: 'c2h5oh_o2_vinegar',
+    reactants: ['C2H5OH', 'O2'],
+    products: ['CH3COOH', 'H2O'],
+    arrow: '→',
+    condition: 'men giấm, 25–30°C',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Lên men giấm dung dịch rượu etylic loãng tạo acetic acid.',
+  },
+  {
+    id: 'phenol_br2',
+    reactants: ['C6H5OH', 'Br2'],
+    products: ['C6H2Br3OH↓', 'HBr'],
+    arrow: '→',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Nước bromine mất màu nhanh và xuất hiện kết tủa trắng 2,4,6-tribromophenol.',
+  },
+  {
+    id: 'phenol_naoh',
+    reactants: ['C6H5OH', 'NaOH'],
+    products: ['C6H5ONa', 'H2O'],
+    arrow: '→',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11',
+    phenomenon: 'Phenol ít tan tách lớp trở nên trong suốt khi phản ứng với dung dịch NaOH.',
+  },
+  {
+    id: 'ch3cooh_naoh',
+    reactants: ['CH3COOH', 'NaOH'],
+    products: ['CH3COONa', 'H2O'],
+    arrow: '→',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 11 · 12',
+    phenomenon: 'Phản ứng chuẩn độ acid yếu CH₃COOH bằng NaOH (điểm tương đương pH > 7).',
+  },
+  {
+    id: 'tristearin_naoh',
+    reactants: ['(C17H35COO)3C3H5', 'NaOH'],
+    products: ['C17H35COONa', 'C3H5(OH)3'],
+    arrow: '→',
+    condition: 't° (xà phòng hóa)',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    phenomenon: 'Xà phòng hóa chất béo tạo muối natri stearate (xà phòng) và glycerol.',
+  },
+  {
+    id: 'triolein_h2',
+    reactants: ['(C17H33COO)3C3H5', 'H2'],
+    products: ['(C17H35COO)3C3H5'],
+    arrow: '→',
+    condition: 'Ni, t°, p',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    phenomenon: 'Hiđro hóa chuyển hóa chất béo lỏng (triolein) thành chất béo rắn (tristearin — bơ thực vật).',
+  },
+  {
+    id: 'saccharose_hydrolysis',
+    reactants: ['C12H22O11', 'H2O'],
+    products: ['2C6H12O6'],
+    arrow: '→',
+    condition: 'H⁺, t°',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    phenomenon: 'Thủy phân saccharose thu được hỗn hợp glucose và fructose (tỉ lệ 1:1).',
+  },
+  {
+    id: 'glucose_tollens',
+    reactants: ['C6H12O6', 'AgNO3', 'NH3', 'H2O'],
+    products: ['C6H11O7NH4', 'Ag↓', 'NH4NO3'],
+    arrow: '→',
+    condition: 't° nhẹ',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    phenomenon: 'Tráng bạc từ glucose: kết tủa bạc trắng sáng bám đều lên thành ống nghiệm.',
+  },
+  {
+    id: 'aniline_br2',
+    reactants: ['C6H5NH2', 'Br2'],
+    products: ['C6H2Br3NH2↓', 'HBr'],
+    arrow: '→',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    phenomenon: 'Xuất hiện kết tủa trắng 2,4,6-tribromoaniline ngay khi nhỏ nước bromine vào aniline.',
+  },
+  {
+    id: 'glycine_hcl',
+    reactants: ['H2NCH2COOH', 'HCl'],
+    products: ['ClH3NCH2COOH'],
+    arrow: '→',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    phenomenon: 'Amino acid thể hiện tính base khi tác dụng với acid mạnh HCl.',
+  },
+  {
+    id: 'glycine_naoh',
+    reactants: ['H2NCH2COOH', 'NaOH'],
+    products: ['H2NCH2COONa', 'H2O'],
+    arrow: '→',
+    topic: 'organic',
+    topicLabel: 'Hóa hữu cơ',
+    grade: 'Lớp 12',
+    phenomenon: 'Amino acid thể hiện tính acid khi tác dụng với kiềm NaOH.',
   },
 ];
 
@@ -1579,6 +2079,95 @@ export function predictReactionsFromLHS(lhsInput: string): {
         }
       }
 
+      // Rule F: Metal + Salt displacement (M1 + M2Salt -> M1Salt + M2↓)
+      const dispSaltMatch = lhsB.match(/^([A-Z][a-z]?)(\d*)\(?([A-Za-z0-9]+)\)?(\d*)$/);
+      if (
+        METAL_VALENCE[lhsA] &&
+        !['K', 'Na', 'Ba', 'Ca'].includes(lhsA) &&
+        dispSaltMatch &&
+        REACTIVITY_ORDER.includes(dispSaltMatch[1])
+      ) {
+        const m1 = lhsA;
+        const m2 = dispSaltMatch[1];
+        const i1 = REACTIVITY_ORDER.indexOf(m1);
+        const i2 = REACTIVITY_ORDER.indexOf(m2);
+        if (i1 !== -1 && i2 !== -1 && i1 < i2 && i2 > REACTIVITY_ORDER.indexOf('H')) {
+          const anion = lhsB.includes('SO4') ? 'SO4' : lhsB.includes('NO3') ? 'NO3' : lhsB.includes('Cl') ? 'Cl' : '';
+          if (anion) {
+            const aChg = anion === 'SO4' ? 2 : 1;
+            const newSalt = makeSaltFormula(m1, METAL_VALENCE[m1], anion, aChg);
+            const bal = balanceChemicalEquation(`${lhsA} + ${lhsB} -> ${newSalt} + ${m2}↓`);
+            if (bal.ok) {
+              return {
+                id: `rule_disp_${lhsA}_${lhsB}`,
+                balanced: bal,
+                phenomenon: `Kim loại ${m1} khử ion ${m2} đứng sau trong dãy điện hóa tạo kim loại ${m2} bám vào điện cực.`,
+                sourceLabel: 'Quy tắc Pin & Dãy điện hóa',
+              };
+            }
+          }
+        }
+      }
+
+      // Rule G: Basic Oxide + Strong Acid -> Salt + H2O
+      const oxideMap: Record<string, { metal: string; val: number }> = {
+        CuO: { metal: 'Cu', val: 2 },
+        FeO: { metal: 'Fe', val: 2 },
+        Fe2O3: { metal: 'Fe', val: 3 },
+        Al2O3: { metal: 'Al', val: 3 },
+        MgO: { metal: 'Mg', val: 2 },
+        ZnO: { metal: 'Zn', val: 2 },
+        CaO: { metal: 'Ca', val: 2 },
+        Na2O: { metal: 'Na', val: 1 },
+        K2O: { metal: 'K', val: 1 },
+        BaO: { metal: 'Ba', val: 2 },
+      };
+      const acidMatchB =
+        lhsB === 'HCl'
+          ? { anion: 'Cl', chg: 1 }
+          : lhsB === 'HBr'
+          ? { anion: 'Br', chg: 1 }
+          : lhsB === 'HNO3'
+          ? { anion: 'NO3', chg: 1 }
+          : lhsB === 'H2SO4'
+          ? { anion: 'SO4', chg: 2 }
+          : lhsB === 'H3PO4'
+          ? { anion: 'PO4', chg: 3 }
+          : null;
+      if (oxideMap[lhsA] && acidMatchB) {
+        const { metal, val } = oxideMap[lhsA];
+        const salt = makeSaltFormula(metal, val, acidMatchB.anion, acidMatchB.chg);
+        const bal = balanceChemicalEquation(`${lhsA} + ${lhsB} -> ${salt} + H2O`);
+        if (bal.ok) {
+          return {
+            id: `rule_oxide_acid_${lhsA}_${lhsB}`,
+            balanced: bal,
+            phenomenon: `Oxide bazơ/lưỡng tính ${toUnicodeSubscripts(lhsA)} tan trong dung dịch acid tạo muối và nước.`,
+            sourceLabel: 'Quy tắc Oxide + Acid',
+          };
+        }
+      }
+
+      // Rule H: Complete Combustion of Organic Compounds (CxHy or CxHyOz + O2 -> CO2 + H2O)
+      if (lhsB === 'O2') {
+        const counts = parseFormulaCounts(lhsA);
+        if (counts && counts.C && counts.H) {
+          const keys = Object.keys(counts);
+          if (keys.every((k) => k === 'C' || k === 'H' || k === 'O')) {
+            const bal = balanceChemicalEquation(`${lhsA} + O2 -> CO2↑ + H2O`);
+            if (bal.ok) {
+              return {
+                id: `rule_combust_${lhsA}`,
+                balanced: bal,
+                condition: 't°',
+                phenomenon: `Đốt cháy hoàn toàn hợp chất hữu cơ ${toUnicodeSubscripts(lhsA)} tạo CO₂ và H₂O.`,
+                sourceLabel: 'Quy tắc Đốt cháy Hữu cơ',
+              };
+            }
+          }
+        }
+      }
+
       return null;
     };
 
@@ -1586,6 +2175,36 @@ export function predictReactionsFromLHS(lhsInput: string): {
     if (r1) {
       results.push(r1);
       return { results, normalizedInputs };
+    }
+  }
+
+  // 3. Single-reactant thermal decomposition rules
+  if (normalizedInputs.length === 1) {
+    const x = normalizedInputs[0];
+    const decompOxides: Record<string, string> = {
+      'Cu(OH)2': 'CuO + H2O',
+      'Mg(OH)2': 'MgO + H2O',
+      'Zn(OH)2': 'ZnO + H2O',
+      'Fe(OH)3': 'Fe2O3 + H2O',
+      'Al(OH)3': 'Al2O3 + H2O',
+      BaCO3: 'BaO + CO2↑',
+      MgCO3: 'MgO + CO2↑',
+      CaCO3: 'CaO + CO2↑',
+      NH4HCO3: 'NH3↑ + CO2↑ + H2O',
+      NH4NO3: 'N2O↑ + H2O',
+    };
+    if (decompOxides[x]) {
+      const bal = balanceChemicalEquation(`${x} -> ${decompOxides[x]}`);
+      if (bal.ok) {
+        results.push({
+          id: `rule_decomp_${x}`,
+          balanced: bal,
+          condition: 't°',
+          phenomenon: `Nhiệt phân hợp chất ${toUnicodeSubscripts(x)} thu được sản phẩm bền hơn ở nhiệt độ cao.`,
+          sourceLabel: 'Quy tắc Nhiệt phân',
+        });
+        return { results, normalizedInputs };
+      }
     }
   }
 

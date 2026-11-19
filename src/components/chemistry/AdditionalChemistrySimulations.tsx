@@ -52,6 +52,39 @@ const ChemSlider: React.FC<ChemSliderProps> = ({
   </div>
 );
 
+function drawPillBadge(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  text: string,
+  bg = '#FFFFFF',
+  border = '#CBD5E1',
+  textColor = '#0F172A',
+  font = '700 11px ui-sans-serif, system-ui, sans-serif'
+) {
+  ctx.save();
+  ctx.font = font;
+  const tw = ctx.measureText(text).width;
+  const padX = 10;
+  const bw = tw + padX * 2;
+  const bh = 22;
+  const rx = cx - bw / 2;
+  const ry = cy - bh / 2;
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.roundRect(rx, ry, bw, bh, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = textColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, cy + 0.5);
+  ctx.restore();
+}
+
 function drawArrow(
   ctx: CanvasRenderingContext2D,
   x1: number,
@@ -70,7 +103,7 @@ function drawArrow(
   ctx.save();
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
@@ -84,8 +117,9 @@ function drawArrow(
   ctx.fill();
 
   if (label) {
-    ctx.font = '700 11px ui-monospace, monospace';
-    ctx.fillText(label, x2 + 5, y2 - 4);
+    ctx.font = '800 11px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, (x1 + x2) / 2, y1 - 8);
   }
   ctx.restore();
 }
@@ -97,19 +131,75 @@ interface ElectrodeMetal {
   e0: number; // V
   molarMass: number;
   color: string;
+  coatColor: string;
   solColor: string;
 }
 
 const ELECTRODE_METALS: ElectrodeMetal[] = [
-  { symbol: 'Mg', ion: 'Mg²⁺', n: 2, e0: -2.37, molarMass: 24, color: '#CBD5E1', solColor: 'rgba(226,232,240,0.4)' },
-  { symbol: 'Zn', ion: 'Zn²⁺', n: 2, e0: -0.76, molarMass: 65, color: '#94A3B8', solColor: 'rgba(226,232,240,0.45)' },
-  { symbol: 'Fe', ion: 'Fe²⁺', n: 2, e0: -0.44, molarMass: 56, color: '#64748B', solColor: 'rgba(134,239,172,0.35)' },
-  { symbol: 'Pb', ion: 'Pb²⁺', n: 2, e0: -0.13, molarMass: 207, color: '#475569', solColor: 'rgba(226,232,240,0.4)' },
-  { symbol: 'Cu', ion: 'Cu²⁺', n: 2, e0: +0.34, molarMass: 64, color: '#D97706', solColor: 'rgba(56,189,248,0.42)' },
-  { symbol: 'Ag', ion: 'Ag⁺', n: 1, e0: +0.80, molarMass: 108, color: '#E2E8F0', solColor: 'rgba(241,245,249,0.5)' },
+  { symbol: 'Mg', ion: 'Mg²⁺', n: 2, e0: -2.37, molarMass: 24, color: '#CBD5E1', coatColor: '#E2E8F0', solColor: 'rgba(226,232,240,0.45)' },
+  { symbol: 'Al', ion: 'Al³⁺', n: 3, e0: -1.66, molarMass: 27, color: '#D1D5DB', coatColor: '#E5E7EB', solColor: 'rgba(226,232,240,0.45)' },
+  { symbol: 'Zn', ion: 'Zn²⁺', n: 2, e0: -0.76, molarMass: 65, color: '#94A3B8', coatColor: '#CBD5E1', solColor: 'rgba(226,232,240,0.50)' },
+  { symbol: 'Fe', ion: 'Fe²⁺', n: 2, e0: -0.44, molarMass: 56, color: '#64748B', coatColor: '#94A3B8', solColor: 'rgba(134,239,172,0.36)' },
+  { symbol: 'Ni', ion: 'Ni²⁺', n: 2, e0: -0.25, molarMass: 58.7, color: '#A3A3A3', coatColor: '#D4D4D8', solColor: 'rgba(52,211,153,0.34)' },
+  { symbol: 'Pb', ion: 'Pb²⁺', n: 2, e0: -0.13, molarMass: 207, color: '#475569', coatColor: '#64748B', solColor: 'rgba(226,232,240,0.42)' },
+  { symbol: 'Cu', ion: 'Cu²⁺', n: 2, e0: +0.34, molarMass: 64, color: '#D97706', coatColor: '#EA580C', solColor: 'rgba(56,189,248,0.45)' },
+  { symbol: 'Ag', ion: 'Ag⁺', n: 1, e0: +0.80, molarMass: 108, color: '#E2E8F0', coatColor: '#F8FAFC', solColor: 'rgba(241,245,249,0.55)' },
 ];
 
-type ElectrolysisSystem = 'cuso4_refine' | 'plating_ag' | 'plating_ni' | 'cuso4_inert';
+type ElectrolysisSystem =
+  | 'cuso4_refine'
+  | 'plating_cu'
+  | 'plating_ag'
+  | 'plating_ni'
+  | 'cuso4_inert'
+  | 'agno3_inert';
+
+type EsterPresetId = 'ethyl_acetate' | 'isoamyl_acetate' | 'propyl_acetate' | 'ethyl_butyrate';
+type SaponificationSubstrateId = 'tristearin' | 'triolein' | 'ethyl_acetate_hydro';
+
+interface EsterPreset {
+  id: EsterPresetId;
+  name: string;
+  formula: string;
+  equation: string;
+  aroma: string;
+  tint: string;
+}
+
+const ESTER_PRESETS: EsterPreset[] = [
+  {
+    id: 'ethyl_acetate',
+    name: 'Ethyl Acetate',
+    formula: 'CH₃COOC₂H₅',
+    equation: 'CH₃COOH + C₂H₅OH ⇌ CH₃COOC₂H₅ + H₂O   (H₂SO₄ đặc, t°)',
+    aroma: 'Mùi táo chín / sơn móng tay',
+    tint: 'rgba(250, 204, 21, 0.85)',
+  },
+  {
+    id: 'isoamyl_acetate',
+    name: 'Isoamyl Acetate',
+    formula: 'CH₃COOC₅H₁₁',
+    equation: 'CH₃COOH + (CH₃)₂CHCH₂CH₂OH ⇌ CH₃COOC₅H₁₁ + H₂O',
+    aroma: 'Mùi chuối chín đặc trưng (Dầu chuối)',
+    tint: 'rgba(253, 224, 71, 0.88)',
+  },
+  {
+    id: 'propyl_acetate',
+    name: 'Propyl Acetate',
+    formula: 'CH₃COOC₃H₇',
+    equation: 'CH₃COOH + CH₃CH₂CH₂OH ⇌ CH₃COOC₃H₇ + H₂O',
+    aroma: 'Mùi quả lê chín',
+    tint: 'rgba(251, 191, 36, 0.84)',
+  },
+  {
+    id: 'ethyl_butyrate',
+    name: 'Ethyl Butyrate',
+    formula: 'C₃H₇COOC₂H₅',
+    equation: 'CH₃CH₂CH₂COOH + C₂H₅OH ⇌ C₃H₇COOC₂H₅ + H₂O',
+    aroma: 'Mùi quả dứa (thơm)',
+    tint: 'rgba(245, 158, 11, 0.82)',
+  },
+];
 
 interface AdditionalChemistrySimulationsProps {
   moduleId: AdditionalChemModuleId;
@@ -131,7 +221,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
 
   const elecCalc = useMemo(() => {
     const tSec = elecTimeMin * 60;
-    const F = 96500; // Hằng số Faraday SGK Hóa 12
+    const F = 96500;
     const nMolE = (elecCurrentA * tSec) / F;
     let cathodeMassG = 0;
     let anodeDissolvedG = 0;
@@ -143,6 +233,10 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     let phenomenon = '';
     let anodeLabel = 'Anot (+)';
     let cathodeLabel = 'Catot (−)';
+    let ionSymbol = 'Cu²⁺';
+    let ionColor = '#0284C7';
+    let depositColor = '#EA580C';
+    let anodeColor = '#B45309';
 
     if (elecSystem === 'cuso4_refine') {
       cathodeMassG = (64 * nMolE) / 2;
@@ -150,45 +244,92 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
       isSolubleAnode = true;
       anodeLabel = 'Anot (+) Cu thô (tan)';
       cathodeLabel = 'Catot (−) Cu tinh khiết';
+      ionSymbol = 'Cu²⁺';
+      ionColor = '#0284C7';
+      depositColor = '#EA580C';
+      anodeColor = '#9A3412';
       cathodeEq = 'Cu²⁺ + 2e → Cu ↓ (bám đồng 99,99% lên Catot)';
       anodeEq = 'Cu (thô) → Cu²⁺ + 2e (Anot Cu tan, tạp chất Ag/Au lắng bùn)';
       overallEq = 'Tinh chế đồng: Cu (Anot thô) —(đpdd CuSO₄)→ Cu (Catot tinh khiết)';
       phenomenon =
-        'Điện cực Anot đồng thô tan dần để lại bùn anot (Ag, Au); ion Cu²⁺ di chuyển về Catot tạo lớp đồng tinh khiết dày lên.';
+        'Thanh Anot Cu thô mòn dần để lại bùn anot (Ag, Au) ở đáy; Cu²⁺ di chuyển về Catot bồi đắp lớp đồng tinh khiết.';
+    } else if (elecSystem === 'plating_cu') {
+      cathodeMassG = (64 * nMolE) / 2;
+      anodeDissolvedG = (64 * nMolE) / 2;
+      isSolubleAnode = true;
+      anodeLabel = 'Anot (+) Thanh Cu (tan)';
+      cathodeLabel = 'Catot (−) Vật cần mạ';
+      ionSymbol = 'Cu²⁺';
+      ionColor = '#0284C7';
+      depositColor = '#EA580C';
+      anodeColor = '#C2410C';
+      cathodeEq = 'Cu²⁺ + 2e → Cu ↓ (lớp đồng đỏ mịn phủ lên vật)';
+      anodeEq = 'Cu → Cu²⁺ + 2e (Anot Cu tan bù lượng ion Cu²⁺)';
+      overallEq = 'Mạ đồng: Cu (Anot tan) —(đpdd CuSO₄)→ Cu (lớp mạ Catot)';
+      phenomenon =
+        'Thanh đồng Anot tan dần giữ nồng độ Cu²⁺ ổn định; vật nối với cực âm (Catot) được mạ lớp đồng đỏ bám chắc.';
     } else if (elecSystem === 'plating_ag') {
       cathodeMassG = 108 * nMolE;
       anodeDissolvedG = 108 * nMolE;
       isSolubleAnode = true;
       anodeLabel = 'Anot (+) Thanh Ag (tan)';
       cathodeLabel = 'Catot (−) Vật cần mạ';
+      ionSymbol = 'Ag⁺';
+      ionColor = '#475569';
+      depositColor = '#F1F5F9';
+      anodeColor = '#CBD5E1';
       cathodeEq = 'Ag⁺ + 1e → Ag ↓ (lớp mạ bạc trắng bóng bám lên vật)';
       anodeEq = 'Ag → Ag⁺ + 1e (Anot Ag tan dần bù lượng Ag⁺ đã điện phân)';
       overallEq = 'Mạ bạc: Ag (Anot tan) —(đpdd muối Ag⁺)→ Ag (bám bề mặt Catot)';
       phenomenon =
-        'Thanh Anot Ag tan dần giúp duy trì ổn định nồng độ ion Ag⁺; bề mặt vật ở Catot được phủ lớp bạc trắng sáng bóng.';
+        'Thanh Anot Ag tan dần giúp duy trì nồng độ Ag⁺; bề mặt vật ở Catot phủ lớp bạc trắng sáng bóng.';
     } else if (elecSystem === 'plating_ni') {
       cathodeMassG = (58.7 * nMolE) / 2;
       anodeDissolvedG = (58.7 * nMolE) / 2;
       isSolubleAnode = true;
       anodeLabel = 'Anot (+) Thanh Ni (tan)';
       cathodeLabel = 'Catot (−) Vật thép cần mạ';
+      ionSymbol = 'Ni²⁺';
+      ionColor = '#059669';
+      depositColor = '#D4D4D8';
+      anodeColor = '#94A3B8';
       cathodeEq = 'Ni²⁺ + 2e → Ni ↓ (phủ lớp niken chống ăn mòn lên thép)';
       anodeEq = 'Ni → Ni²⁺ + 2e (Anot Ni tan dần bổ sung ion Ni²⁺)';
       overallEq = 'Mạ niken: Ni (Anot tan) —(đpdd NiSO₄)→ Ni (lớp phủ bảo vệ Catot)';
       phenomenon =
-        'Anot niken tan dần theo định luật Faraday; Catot bằng thép được mạ lớp niken sáng mịn bảo vệ chống gỉ sét.';
+        'Anot niken tan dần theo định luật Faraday; vật thép ở Catot được phủ lớp niken sáng mịn chống gỉ.';
+    } else if (elecSystem === 'agno3_inert') {
+      cathodeMassG = 108 * nMolE;
+      anodeDissolvedG = 0;
+      anodeGasL = (nMolE / 4) * 24.79;
+      isSolubleAnode = false;
+      anodeLabel = 'Anot (+) Graphit (trơ)';
+      cathodeLabel = 'Catot (−) Ag bám cực';
+      ionSymbol = 'Ag⁺';
+      ionColor = '#475569';
+      depositColor = '#F1F5F9';
+      anodeColor = '#334155';
+      cathodeEq = 'Ag⁺ + 1e → Ag ↓ (bạc trắng bám dày lên Catot)';
+      anodeEq = '2H₂O → O₂ ↑ + 4H⁺ + 4e (khí O₂ thoát ra ở Anot trơ)';
+      overallEq = '4AgNO₃ + 2H₂O —(đpdd, cực trơ)→ 4Ag ↓ + O₂ ↑ + 4HNO₃';
+      phenomenon =
+        'Anot graphit trơ không tan mà sủi bọt khí O₂; Ag bám lên Catot (−); dung dịch tạo thành HNO₃ có pH giảm mạnh.';
     } else {
       cathodeMassG = (64 * nMolE) / 2;
       anodeDissolvedG = 0;
       anodeGasL = (nMolE / 4) * 24.79;
       isSolubleAnode = false;
       anodeLabel = 'Anot (+) Graphit (trơ)';
-      cathodeLabel = 'Catot (−) Đồng bám';
+      cathodeLabel = 'Catot (−) Cu bám cực';
+      ionSymbol = 'Cu²⁺';
+      ionColor = '#0284C7';
+      depositColor = '#EA580C';
+      anodeColor = '#334155';
       cathodeEq = 'Cu²⁺ + 2e → Cu ↓ (bám đỏ lên Catot)';
       anodeEq = '2H₂O → O₂ ↑ + 4H⁺ + 4e (điện cực trơ không tan)';
       overallEq = '2CuSO₄ + 2H₂O —(đpdd, cực trơ)→ 2Cu ↓ + O₂ ↑ + 2H₂SO₄';
       phenomenon =
-        'Anot than chì trơ không tan và sủi bọt khí O₂; Catot có Cu bám vào; nồng độ Cu²⁺ giảm làm dung dịch nhạt màu xanh và pH giảm.';
+        'Anot than chì trơ không tan và sủi bọt khí O₂; Catot có Cu đỏ bám dày lên; dung dịch CuSO₄ nhạt màu xanh dần.';
     }
 
     return {
@@ -203,14 +344,18 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
       phenomenon,
       anodeLabel,
       cathodeLabel,
+      ionSymbol,
+      ionColor,
+      depositColor,
+      anodeColor,
     };
   }, [elecSystem, elecCurrentA, elecTimeMin]);
 
   // ===========================================================================
   // 2. PIN GALVANI (PIN ĐIỆN HÓA — ĐIỆN CỰC ANOT TAN & CATOT BỒI ĐẮP)
   // ===========================================================================
-  const [galvLeftIdx, setGalvLeftIdx] = useState<number>(1); // Zn
-  const [galvRightIdx, setGalvRightIdx] = useState<number>(4); // Cu
+  const [galvLeftIdx, setGalvLeftIdx] = useState<number>(2); // Zn (index 2)
+  const [galvRightIdx, setGalvRightIdx] = useState<number>(6); // Cu (index 6)
   const [galvConcLeft, setGalvConcLeft] = useState<number>(1.0); // M
   const [galvConcRight, setGalvConcRight] = useState<number>(1.0); // M
   const [galvTimeMin, setGalvTimeMin] = useState<number>(0); // 0..60 min discharge
@@ -226,7 +371,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     const cathode = leftIsAnode ? rightM : leftM;
     const eCell = Math.abs(eRight - eLeft);
 
-    // Simulate continuous discharge at nominal current proportional to E_cell (e.g. I = 2.0 * E_cell A)
     const F = 96500;
     const nominalCurrentA = eCell > 0.01 ? Math.max(0.5, 2.2 * eCell) : 0;
     const nMolE = (nominalCurrentA * galvTimeMin * 60) / F;
@@ -250,7 +394,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     };
   }, [galvLeftIdx, galvRightIdx, galvConcLeft, galvConcRight, galvTimeMin]);
 
-  // Reset discharge time when changing electrode metals
   useEffect(() => {
     galvStateRef.current.elapsedMin = 0;
     setGalvTimeMin(0);
@@ -260,13 +403,20 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
   // 3. ĐIỀU CHẾ ESTER & XÀ PHÒNG HÓA (ESTER LAB)
   // ===========================================================================
   const [esterMode, setEsterMode] = useState<'esterification' | 'saponification'>('esterification');
-  const [esterTempC, setEsterTempC] = useState<number>(70); // C
+  const [esterPresetId, setEsterPresetId] = useState<EsterPresetId>('ethyl_acetate');
+  const [saponSubstrate, setSaponSubstrate] = useState<SaponificationSubstrateId>('tristearin');
+  const [esterTempC, setEsterTempC] = useState<number>(75); // C
   const [esterCatH2SO4, setEsterCatH2SO4] = useState<boolean>(true);
-  const [esterMoleRatio, setEsterMoleRatio] = useState<number>(1.5); // Ethanol / Acetic acid
+  const [esterMoleRatio, setEsterMoleRatio] = useState<number>(1.5);
   const [soapAlkali, setSoapAlkali] = useState<'NaOH' | 'KOH'>('NaOH');
-  const [soapSaltOut, setSoapSaltOut] = useState<boolean>(false);
+  const [soapSaltOut, setSoapSaltOut] = useState<boolean>(true);
   const esterStateRef = useRef({ t: 0, yieldFrac: 0 });
   const [esterReadout, setEsterReadout] = useState({ yieldPct: 0 });
+
+  const activeEsterPreset = useMemo(
+    () => ESTER_PRESETS.find((e) => e.id === esterPresetId) || ESTER_PRESETS[0],
+    [esterPresetId]
+  );
 
   const esterMaxYield = useMemo(() => {
     if (esterMode === 'esterification') {
@@ -293,8 +443,8 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     const setupCanvas = (canvas: HTMLCanvasElement) => {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      const w = Math.max(320, Math.floor(rect.width));
-      const h = Math.max(360, Math.floor(rect.height));
+      const w = Math.max(340, Math.floor(rect.width));
+      const h = Math.max(380, Math.floor(rect.height));
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
         canvas.width = Math.floor(w * dpr);
         canvas.height = Math.floor(h * dpr);
@@ -316,7 +466,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         if (dt > 0) {
           st.t += dt;
           if (st.elapsedMin < 45) {
-            st.elapsedMin = Math.min(45, st.elapsedMin + dt * 1.45);
+            st.elapsedMin = Math.min(45, st.elapsedMin + dt * 1.15);
           }
           uiTimer += rawDt;
           if (uiTimer >= 0.08) {
@@ -328,13 +478,13 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         if (setup) drawElectrolysis(setup.ctx, setup.w, setup.h, st.t);
       }
 
-      // 2. GALVANIC CELL (DISSOLVING ANODE & DEPOSITING CATHODE)
+      // 2. GALVANIC CELL
       if (moduleId === 'galvanic_cell' && canvasRef.current) {
         const st = galvStateRef.current;
         if (dt > 0) {
           st.t += dt;
           if (galvCalc.eCell > 0.01 && st.elapsedMin < 60) {
-            st.elapsedMin = Math.min(60, st.elapsedMin + dt * 1.8);
+            st.elapsedMin = Math.min(60, st.elapsedMin + dt * 1.35);
             uiTimer += rawDt;
             if (uiTimer >= 0.08) {
               uiTimer = 0;
@@ -382,19 +532,19 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     ctx.fillRect(0, 0, w, h);
 
     const bx = w * 0.5;
-    const bBottom = h * 0.85;
-    const bW = Math.min(350, w * 0.58);
-    const bH = h * 0.54;
+    const bBottom = h * 0.83;
+    const bW = Math.min(370, w * 0.62);
+    const bH = h * 0.52;
     const liqH = bH * 0.78;
     const progress = Math.min(1, elecStateRef.current.elapsedMin / 45);
 
     // Electrolyte solution color
     let liqColor = 'rgba(56, 189, 248, 0.44)';
     if (elecSystem === 'cuso4_inert') {
-      const alpha = Math.max(0.08, 0.48 * (1 - progress * 0.8));
+      const alpha = Math.max(0.08, 0.48 * (1 - progress * 0.82));
       liqColor = `rgba(56, 189, 248, ${alpha})`;
-    } else if (elecSystem === 'plating_ag') {
-      liqColor = 'rgba(226, 232, 240, 0.45)';
+    } else if (elecSystem === 'plating_ag' || elecSystem === 'agno3_inert') {
+      liqColor = 'rgba(226, 232, 240, 0.48)';
     } else if (elecSystem === 'plating_ni') {
       liqColor = 'rgba(52, 211, 153, 0.36)';
     }
@@ -403,263 +553,353 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     ctx.fillRect(bx - bW / 2, bBottom - liqH, bW, liqH);
 
     // Cathode (left, -) and Anode (right, +)
-    const catX = bx - bW * 0.27;
-    const anoX = bx + bW * 0.27;
+    const catX = bx - bW * 0.28;
+    const anoX = bx + bW * 0.28;
     const elecTop = bBottom - bH + 10;
-    const elecBot = bBottom - 22;
+    const elecBot = bBottom - 24;
+    const liqTop = bBottom - liqH;
 
-    // Anode thickness (soluble anodes shrink cleanly!)
-    const anoThick = elecCalc.isSolubleAnode ? Math.max(6, 22 - progress * 14) : 16;
-    ctx.fillStyle =
-      elecSystem === 'cuso4_refine'
-        ? '#B45309'
-        : elecSystem === 'plating_ag'
-        ? '#CBD5E1'
-        : elecSystem === 'plating_ni'
-        ? '#94A3B8'
-        : '#334155';
+    // 1. Anode with ghost initial outline when soluble
+    const origAnoW = 24;
+    const curAnoW = elecCalc.isSolubleAnode ? Math.max(6, origAnoW - progress * 15) : 18;
+    if (elecCalc.isSolubleAnode && progress > 0.04) {
+      ctx.save();
+      ctx.strokeStyle = '#94A3B8';
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(anoX - origAnoW / 2, liqTop + 4, origAnoW, elecBot - (liqTop + 4));
+      ctx.restore();
+    }
+    // Top dry part stays original width; submerged part thins cleanly!
+    ctx.fillStyle = elecCalc.anodeColor;
     ctx.strokeStyle = '#1E293B';
     ctx.lineWidth = 1.4;
-    ctx.fillRect(anoX - anoThick / 2, elecTop, anoThick, elecBot - elecTop);
-    ctx.strokeRect(anoX - anoThick / 2, elecTop, anoThick, elecBot - elecTop);
+    ctx.fillRect(anoX - origAnoW / 2, elecTop, origAnoW, liqTop - elecTop + 4);
+    ctx.strokeRect(anoX - origAnoW / 2, elecTop, origAnoW, liqTop - elecTop + 4);
+    ctx.fillRect(anoX - curAnoW / 2, liqTop + 4, curAnoW, elecBot - (liqTop + 4));
+    ctx.strokeRect(anoX - curAnoW / 2, liqTop + 4, curAnoW, elecBot - (liqTop + 4));
 
     // Anode mud (bùn anot: Ag, Au) settling below crude Cu anode during refining
-    if (elecSystem === 'cuso4_refine' && progress > 0.05) {
-      ctx.fillStyle = '#475569';
-      const mudCount = Math.round(progress * 18);
+    if (elecSystem === 'cuso4_refine' && progress > 0.04) {
+      ctx.fillStyle = '#334155';
+      const mudCount = Math.round(progress * 22);
       for (let i = 0; i < mudCount; i++) {
-        const mx = anoX - 18 + ((i * 7) % 36);
-        const my = bBottom - 5 - (i % 3) * 2.5;
+        const mx = anoX - 24 + ((i * 11) % 48);
+        const my = bBottom - 5 - (i % 4) * 2.5;
         ctx.beginPath();
-        ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
+        ctx.arc(mx, my, 2.4, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.fillStyle = '#475569';
-      ctx.font = '600 10px ui-sans-serif, sans-serif';
-      ctx.fillText('Bùn anot (Ag, Au)', anoX - 38, bBottom - 12);
+      drawPillBadge(ctx, anoX, bBottom - 16, 'Bùn anot (Ag, Au)', '#F1F5F9', '#94A3B8', '#334155', '700 10px ui-sans-serif, sans-serif');
     }
 
-    // Cathode core + plating deposit layer
+    // 2. Cathode core + bright newly plated rim
     ctx.fillStyle = '#475569';
-    ctx.fillRect(catX - 8, elecTop, 16, elecBot - elecTop);
-    const coatW = progress * 9;
-    if (coatW > 0.3) {
-      ctx.fillStyle =
-        elecSystem === 'plating_ag'
-          ? '#F1F5F9'
-          : elecSystem === 'plating_ni'
-          ? '#CBD5E1'
-          : '#D97706';
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 1;
-      ctx.fillRect(catX - 8 - coatW, elecTop + 34, 16 + coatW * 2, elecBot - elecTop - 34);
-      ctx.strokeRect(catX - 8 - coatW, elecTop + 34, 16 + coatW * 2, elecBot - elecTop - 34);
+    ctx.fillRect(catX - 9, elecTop, 18, elecBot - elecTop);
+    const coatW = progress * 10;
+    if (coatW > 0.4) {
+      ctx.fillStyle = elecCalc.depositColor;
+      ctx.strokeStyle = '#0F172A';
+      ctx.lineWidth = 1.2;
+      ctx.fillRect(catX - 9 - coatW, liqTop + 4, 18 + coatW * 2, elecBot - (liqTop + 4));
+      ctx.strokeRect(catX - 9 - coatW, liqTop + 4, 18 + coatW * 2, elecBot - (liqTop + 4));
     }
 
-    // Animated cations migrating Anode -> Cathode for soluble-anode processes
-    if (elecCalc.isSolubleAnode) {
-      const ionLabel = elecSystem === 'plating_ag' ? 'Ag⁺' : elecSystem === 'plating_ni' ? 'Ni²⁺' : 'Cu²⁺';
-      const ionColor = elecSystem === 'plating_ag' ? '#64748B' : elecSystem === 'plating_ni' ? '#059669' : '#0284C7';
-      for (let i = 0; i < 6; i++) {
-        const frac = (t * 0.42 + i / 6) % 1;
-        const ix = anoX - frac * (anoX - catX);
-        const iy = bBottom - liqH + 35 + ((i * 29) % (liqH - 60));
-        ctx.fillStyle = ionColor;
-        ctx.beginPath();
-        ctx.arc(ix, iy, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      drawArrow(ctx, anoX - 24, bBottom - liqH + 20, catX + 24, bBottom - liqH + 20, ionColor, ionLabel);
-    } else {
-      // Bubbles O2 on inert Graphite Anode
+    // Animated cations migrating Anode -> Cathode OR O2 gas on inert anode
+    for (let i = 0; i < 6; i++) {
+      const frac = (t * 0.42 + i / 6) % 1;
+      const ix = (elecCalc.isSolubleAnode ? anoX : bx + 20) - frac * ((elecCalc.isSolubleAnode ? anoX : bx + 20) - catX);
+      const iy = liqTop + 34 + ((i * 29) % Math.max(40, liqH - 64));
+      ctx.fillStyle = elecCalc.ionColor;
+      ctx.beginPath();
+      ctx.arc(ix, iy, 4.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawArrow(
+      ctx,
+      anoX - 24,
+      liqTop + 20,
+      catX + 24,
+      liqTop + 20,
+      elecCalc.ionColor,
+      `${elecCalc.ionSymbol} → Catot`
+    );
+
+    if (!elecCalc.isSolubleAnode) {
       const bubbleCount = Math.min(18, Math.round(elecCurrentA * 1.8));
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.strokeStyle = '#64748B';
-      ctx.lineWidth = 0.8;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.strokeStyle = '#0284C7';
+      ctx.lineWidth = 1;
       for (let i = 0; i < bubbleCount; i++) {
         const yOff = (t * 55 + i * 27) % (liqH - 30);
         const by = bBottom - 26 - yOff;
-        const bxPos = anoX + Math.sin(t * 4 + i) * 14;
+        const bxPos = anoX + Math.sin(t * 4 + i) * 16;
         ctx.beginPath();
         ctx.arc(bxPos, by, 3.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
       }
+      drawPillBadge(ctx, anoX + 46, liqTop + 38, 'Khí O₂ ↑', '#ECFDF5', '#10B981', '#065F46', '700 10px ui-sans-serif, sans-serif');
     }
 
     // DC Power source & wires at top
     const topWireY = 44;
     ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.6;
     ctx.beginPath();
     ctx.moveTo(catX, elecTop);
     ctx.lineTo(catX, topWireY);
-    ctx.lineTo(bx - 26, topWireY);
+    ctx.lineTo(bx - 36, topWireY);
     ctx.moveTo(anoX, elecTop);
     ctx.lineTo(anoX, topWireY);
-    ctx.lineTo(bx + 26, topWireY);
+    ctx.lineTo(bx + 36, topWireY);
     ctx.stroke();
 
     ctx.fillStyle = '#0F172A';
-    ctx.fillRect(bx - 34, topWireY - 14, 68, 28);
+    ctx.beginPath();
+    ctx.roundRect(bx - 38, topWireY - 15, 76, 30, 8);
+    ctx.fill();
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = '700 11px ui-monospace, monospace';
-    ctx.fillText('− DC +', bx - 22, topWireY + 4);
+    ctx.font = '800 11px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`− DC ${elecCurrentA.toFixed(0)}A +`, bx, topWireY + 4);
 
-    drawArrow(ctx, bx - 68, topWireY - 14, catX + 18, topWireY - 14, '#0284C7', 'e⁻');
+    drawArrow(ctx, bx - 44, topWireY - 16, catX + 10, topWireY - 16, '#0284C7', 'e⁻');
+    drawArrow(ctx, anoX - 10, topWireY - 16, bx + 44, topWireY - 16, '#0284C7', 'e⁻');
 
     // Beaker outline
     ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.6;
     ctx.strokeRect(bx - bW / 2, bBottom - bH, bW, bH);
 
-    // Labels
-    ctx.fillStyle = '#0F172A';
-    ctx.font = '700 11px ui-sans-serif, sans-serif';
-    ctx.fillText(elecCalc.cathodeLabel, catX - 58, bBottom + 20);
-    ctx.fillText(elecCalc.anodeLabel, anoX - 54, bBottom + 20);
+    // Clean centered pill labels below electrodes (zero collision)
+    drawPillBadge(
+      ctx,
+      catX,
+      bBottom + 24,
+      `${elecCalc.cathodeLabel} (+${elecCalc.cathodeMassG.toFixed(2)}g)`,
+      '#EFF6FF',
+      '#93C5FD',
+      '#1E3A8A'
+    );
+    drawPillBadge(
+      ctx,
+      anoX,
+      bBottom + 24,
+      elecCalc.isSolubleAnode
+        ? `${elecCalc.anodeLabel} (−${elecCalc.anodeDissolvedG.toFixed(2)}g)`
+        : elecCalc.anodeLabel,
+      '#FFF1F2',
+      '#FDA4AF',
+      '#9F1239'
+    );
   };
 
   const drawGalvanicCell = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number) => {
     ctx.fillStyle = '#F8FAFC';
     ctx.fillRect(0, 0, w, h);
 
-    const b1x = w * 0.28;
-    const b2x = w * 0.72;
-    const bBottom = h * 0.85;
-    const bW = Math.min(165, w * 0.27);
-    const bH = h * 0.48;
-    const liqH = bH * 0.74;
+    const b1x = w * 0.27;
+    const b2x = w * 0.73;
+    const bBottom = h * 0.80;
+    const bW = Math.min(176, w * 0.29);
+    const bH = h * 0.45;
+    const liqH = bH * 0.75;
     const wf = galvCalc.wearFrac;
 
-    // Left & Right Beakers
+    // Left & Right Half-Cells
     [
       { x: b1x, m: galvCalc.leftM, conc: galvConcLeft, isAnode: galvCalc.leftIsAnode },
       { x: b2x, m: galvCalc.rightM, conc: galvConcRight, isAnode: !galvCalc.leftIsAnode },
     ].forEach((cell) => {
+      const liqTop = bBottom - liqH;
       ctx.fillStyle = cell.m.solColor;
-      ctx.fillRect(cell.x - bW / 2, bBottom - liqH, bW, liqH);
+      ctx.fillRect(cell.x - bW / 2, liqTop, bW, liqH);
       ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.4;
       ctx.strokeRect(cell.x - bW / 2, bBottom - bH, bW, bH);
 
-      // Soluble Anode dissolves thinner; Cathode thickens with plated deposit
-      const baseHalfW = 12;
-      const barW = cell.isAnode
-        ? Math.max(7, baseHalfW * 2 - wf * 14)
-        : baseHalfW * 2;
+      // Electrode bar: top stays full width; immersed part dissolves (Anode) or plates thicker (Cathode)
+      const baseW = 24;
+      const immersedBot = bBottom - 16;
+      const elecTop = bBottom - bH - 12;
+
+      // Original outline dashed on dissolving Anode so thickness loss is crystal clear!
+      if (cell.isAnode && wf > 0.04) {
+        ctx.save();
+        ctx.strokeStyle = '#94A3B8';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(cell.x - baseW / 2, liqTop + 3, baseW, immersedBot - (liqTop + 3));
+        ctx.restore();
+      }
+
+      const immersedW = cell.isAnode ? Math.max(7, baseW - wf * 15) : baseW;
       ctx.fillStyle = cell.m.color;
       ctx.strokeStyle = '#1E293B';
       ctx.lineWidth = 1.5;
-      ctx.fillRect(cell.x - barW / 2, bBottom - bH - 12, barW, bH - 8);
-      ctx.strokeRect(cell.x - barW / 2, bBottom - bH - 12, barW, bH - 8);
+      ctx.fillRect(cell.x - baseW / 2, elecTop, baseW, liqTop - elecTop + 3);
+      ctx.strokeRect(cell.x - baseW / 2, elecTop, baseW, liqTop - elecTop + 3);
+      ctx.fillRect(cell.x - immersedW / 2, liqTop + 3, immersedW, immersedBot - (liqTop + 3));
+      ctx.strokeRect(cell.x - immersedW / 2, liqTop + 3, immersedW, immersedBot - (liqTop + 3));
 
-      // Plated metallic deposit sleeve on immersed Cathode portion
+      // Bright newly plated metallic deposit layer on Cathode
       if (!cell.isAnode && wf > 0.02) {
-        const plateThick = wf * 6.5;
-        const immersedTop = bBottom - liqH + 4;
-        ctx.fillStyle = cell.m.color;
-        ctx.fillRect(cell.x - barW / 2 - plateThick, immersedTop, barW + plateThick * 2, liqH - 24);
+        const plateThick = wf * 7.5;
+        ctx.fillStyle = cell.m.coatColor;
         ctx.strokeStyle = '#0F172A';
-        ctx.lineWidth = 1.1;
-        ctx.strokeRect(cell.x - barW / 2 - plateThick, immersedTop, barW + plateThick * 2, liqH - 24);
+        ctx.lineWidth = 1.2;
+        ctx.fillRect(
+          cell.x - baseW / 2 - plateThick,
+          liqTop + 4,
+          baseW + plateThick * 2,
+          immersedBot - (liqTop + 4)
+        );
+        ctx.strokeRect(
+          cell.x - baseW / 2 - plateThick,
+          liqTop + 4,
+          baseW + plateThick * 2,
+          immersedBot - (liqTop + 4)
+        );
       }
 
-      // Dissolving ions off Anode vs Depositing ions onto Cathode
+      // Micro ion release / deposition dots + crisp reaction arrow
       if (galvCalc.eCell > 0.01) {
         for (let i = 0; i < 4; i++) {
           const frac = (t * 0.55 + i * 0.25) % 1;
           const ix = cell.isAnode
-            ? cell.x + barW / 2 + frac * 34
-            : cell.x - 42 + frac * (42 - barW / 2);
-          const iy = bBottom - liqH + 25 + i * 24;
+            ? cell.x + immersedW / 2 + 4 + frac * 34
+            : cell.x - 44 + frac * (44 - immersedW / 2 - 4);
+          const iy = liqTop + 26 + i * 22;
           ctx.fillStyle = cell.isAnode ? '#E11D48' : '#0284C7';
           ctx.beginPath();
-          ctx.arc(ix, iy, 3.2, 0, Math.PI * 2);
+          ctx.arc(ix, iy, 3.6, 0, Math.PI * 2);
           ctx.fill();
         }
       }
 
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '800 12px ui-sans-serif, sans-serif';
-      ctx.fillText(
-        `${cell.m.symbol} (${cell.isAnode ? 'Anot − · Tan dần' : 'Catot + · Dày lên'})`,
-        cell.x - 58,
-        bBottom + 20
+      // Centered Pill Badges below each beaker (non-overlapping!)
+      drawPillBadge(
+        ctx,
+        cell.x,
+        bBottom + 22,
+        cell.isAnode
+          ? `${cell.m.symbol} · Anot (−) tan dần`
+          : `${cell.m.symbol} · Catot (+) dày lên`,
+        cell.isAnode ? '#FFF1F2' : '#EFF6FF',
+        cell.isAnode ? '#FDA4AF' : '#93C5FD',
+        cell.isAnode ? '#9F1239' : '#1E3A8A'
       );
-      ctx.font = '600 11px ui-monospace, monospace';
       ctx.fillStyle = '#475569';
-      ctx.fillText(`[${cell.m.ion}] = ${cell.conc.toFixed(2)}M`, cell.x - 44, bBottom + 36);
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        `[${cell.m.ion}] = ${cell.conc.toFixed(2)}M  ·  Δm = ${
+          cell.isAnode
+            ? `−${galvCalc.anodeLostG.toFixed(2)}g`
+            : `+${galvCalc.cathodeGainedG.toFixed(2)}g`
+        }`,
+        cell.x,
+        bBottom + 46
+      );
     });
 
-    // Salt bridge (KNO3 U-tube)
-    ctx.strokeStyle = '#CBD5E1';
-    ctx.lineWidth = 18;
+    // Salt bridge (KNO3 U-tube) with animated K+ -> Cathode & NO3- -> Anode!
+    const sbLeft = b1x + 34;
+    const sbRight = b2x - 34;
+    const sbTopY = bBottom - bH - 14;
+    ctx.strokeStyle = '#E2E8F0';
+    ctx.lineWidth = 20;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(b1x + 28, bBottom - liqH + 45);
-    ctx.lineTo(b1x + 28, bBottom - bH - 14);
-    ctx.lineTo(b2x - 28, bBottom - bH - 14);
-    ctx.lineTo(b2x - 28, bBottom - liqH + 45);
+    ctx.moveTo(sbLeft, bBottom - liqH + 42);
+    ctx.lineTo(sbLeft, sbTopY);
+    ctx.lineTo(sbRight, sbTopY);
+    ctx.lineTo(sbRight, bBottom - liqH + 42);
     ctx.stroke();
 
     ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(b1x + 19, bBottom - liqH + 45);
-    ctx.lineTo(b1x + 19, bBottom - bH - 23);
-    ctx.lineTo(b2x - 19, bBottom - bH - 23);
-    ctx.lineTo(b2x - 19, bBottom - liqH + 45);
+    ctx.moveTo(sbLeft - 10, bBottom - liqH + 42);
+    ctx.lineTo(sbLeft - 10, sbTopY - 10);
+    ctx.lineTo(sbRight + 10, sbTopY - 10);
+    ctx.lineTo(sbRight + 10, bBottom - liqH + 42);
     ctx.stroke();
 
-    ctx.fillStyle = '#334155';
-    ctx.font = '700 11px ui-sans-serif, sans-serif';
-    ctx.fillText('Cầu muối KNO₃', w * 0.5 - 38, bBottom - bH - 28);
+    if (galvCalc.eCell > 0.01) {
+      const kDir = galvCalc.leftIsAnode ? 1 : -1;
+      for (let i = 0; i < 3; i++) {
+        const frac = (t * 0.35 + i / 3) % 1;
+        const kx = kDir > 0 ? sbLeft + frac * (sbRight - sbLeft) : sbRight - frac * (sbRight - sbLeft);
+        ctx.fillStyle = '#0284C7';
+        ctx.beginPath();
+        ctx.arc(kx, sbTopY - 3, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        const nx = kDir > 0 ? sbRight - frac * (sbRight - sbLeft) : sbLeft + frac * (sbRight - sbLeft);
+        ctx.fillStyle = '#E11D48';
+        ctx.beginPath();
+        ctx.arc(nx, sbTopY + 4, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    drawPillBadge(
+      ctx,
+      w * 0.5,
+      sbTopY - 24,
+      galvCalc.leftIsAnode ? 'Cầu muối KNO₃ (← NO₃⁻ · K⁺ →)' : 'Cầu muối KNO₃ (← K⁺ · NO₃⁻ →)',
+      '#FFFFFF',
+      '#94A3B8',
+      '#334155',
+      '700 10px ui-sans-serif, sans-serif'
+    );
 
     // Top wire + Voltmeter
     const topY = 48;
     ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(b1x, bBottom - bH - 12);
     ctx.lineTo(b1x, topY);
-    ctx.lineTo(w * 0.5 - 32, topY);
+    ctx.lineTo(w * 0.5 - 36, topY);
     ctx.moveTo(b2x, bBottom - bH - 12);
     ctx.lineTo(b2x, topY);
-    ctx.lineTo(w * 0.5 + 32, topY);
+    ctx.lineTo(w * 0.5 + 36, topY);
     ctx.stroke();
 
     ctx.fillStyle = '#FFFFFF';
     ctx.strokeStyle = '#0F172A';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.arc(w * 0.5, topY, 32, 0, Math.PI * 2);
+    ctx.arc(w * 0.5, topY, 34, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#059669';
     ctx.font = '800 13px ui-monospace, monospace';
-    ctx.fillText(`${galvCalc.eCell.toFixed(2)}V`, w * 0.5 - 20, topY + 5);
+    ctx.textAlign = 'center';
+    ctx.fillText(`${galvCalc.eCell.toFixed(2)} V`, w * 0.5, topY + 5);
 
-    // Moving electrons along wire from Anode -> Cathode
     if (galvCalc.eCell > 0.01) {
       const dir = galvCalc.leftIsAnode ? 1 : -1;
       for (let i = 0; i < 6; i++) {
         const frac = (t * 0.45 + i / 6) % 1;
         const ex = dir > 0 ? b1x + frac * (b2x - b1x) : b2x - frac * (b2x - b1x);
-        if (Math.abs(ex - w * 0.5) < 34) continue;
+        if (Math.abs(ex - w * 0.5) < 36) continue;
         ctx.fillStyle = '#0284C7';
         ctx.beginPath();
-        ctx.arc(ex, topY, 4, 0, Math.PI * 2);
+        ctx.arc(ex, topY, 4.2, 0, Math.PI * 2);
         ctx.fill();
       }
       drawArrow(
         ctx,
-        galvCalc.leftIsAnode ? b1x + 25 : b2x - 25,
-        topY - 16,
-        galvCalc.leftIsAnode ? b1x + 85 : b2x - 85,
-        topY - 16,
+        galvCalc.leftIsAnode ? b1x + 28 : b2x - 28,
+        topY - 18,
+        galvCalc.leftIsAnode ? b1x + 96 : b2x - 96,
+        topY - 18,
         '#0284C7',
-        'e⁻'
+        'Dòng e⁻'
       );
     }
   };
@@ -673,90 +913,210 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     ctx.fillStyle = '#F8FAFC';
     ctx.fillRect(0, 0, w, h);
 
-    const fX = w * 0.34;
-    const fY = h * 0.62;
-
-    // Hot water bath beaker
-    ctx.fillStyle = 'rgba(186, 230, 253, 0.4)';
-    ctx.fillRect(fX - 75, fY - 35, 150, 95);
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(fX - 75, fY - 35, 150, 95);
-
-    // Alcohol burner flame below bath
-    ctx.fillStyle = '#F97316';
-    ctx.beginPath();
-    ctx.moveTo(fX - 10, fY + 86);
-    ctx.quadraticCurveTo(fX, fY + 56, fX + 10, fY + 86);
-    ctx.fill();
-    ctx.fillStyle = '#0F172A';
-    ctx.font = '700 11px ui-sans-serif, sans-serif';
-    ctx.fillText(`Đun cách thủy ${esterTempC}°C`, fX - 52, fY + 106);
-
     if (esterMode === 'esterification') {
+      const fX = w * 0.29;
+      const fY = h * 0.62;
+
+      // Hot water bath beaker
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.42)';
+      ctx.fillRect(fX - 80, fY - 38, 160, 96);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(fX - 80, fY - 38, 160, 96);
+
+      // Tripod & Flame
+      ctx.fillStyle = '#F97316';
+      const flicker = Math.sin(st.t * 14) * 3;
+      ctx.beginPath();
+      ctx.moveTo(fX - 12, fY + 90);
+      ctx.quadraticCurveTo(fX + flicker * 0.5, fY + 56 + flicker, fX + 12, fY + 90);
+      ctx.fill();
+      drawPillBadge(ctx, fX, fY + 112, `Đun cách thủy ${esterTempC}°C`, '#FFF7ED', '#FDBA74', '#9A3412');
+
+      // Round-bottom flask body + neck + reacting mixture
       ctx.fillStyle = '#FEF3C7';
       ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
-      ctx.arc(fX, fY + 6, 36, 0, Math.PI * 2);
+      ctx.arc(fX, fY + 4, 38, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(fX - 11, fY - 58, 22, 28);
+      ctx.strokeRect(fX - 11, fY - 58, 22, 28);
+      // Rubber stopper
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(fX - 13, fY - 66, 26, 10);
 
-      const rX = w * 0.72;
-      const rY = h * 0.74;
-      ctx.strokeStyle = '#475569';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(fX, fY - 30);
-      ctx.lineTo(fX, fY - 105);
-      ctx.lineTo(rX, fY - 105);
-      ctx.lineTo(rX, rY - 95);
-      ctx.stroke();
-
-      if (esterTempC > 50) {
-        for (let i = 0; i < 4; i++) {
-          const frac = (st.t * 0.5 + i * 0.25) % 1;
-          const vx = fX + frac * (rX - fX);
-          ctx.fillStyle = 'rgba(251, 191, 36, 0.8)';
+      // Gentle boiling bubbles inside reaction flask
+      if (esterTempC >= 55) {
+        for (let b = 0; b < 5; b++) {
+          const by = fY + 24 - ((st.t * 36 + b * 11) % 34);
+          ctx.fillStyle = 'rgba(255,255,255,0.85)';
           ctx.beginPath();
-          ctx.arc(vx, fY - 105, 4, 0, Math.PI * 2);
+          ctx.arc(fX - 14 + b * 7, by, 2.5, 0, Math.PI * 2);
           ctx.fill();
         }
       }
 
-      const esterLayerH = Math.max(4, st.yieldFrac * 42);
-      ctx.fillStyle = 'rgba(186, 230, 253, 0.55)';
-      ctx.fillRect(rX - 32, rY - 70, 64, 70);
-      ctx.fillStyle = 'rgba(250, 204, 21, 0.82)';
-      ctx.fillRect(rX - 32, rY - 70 - esterLayerH, 64, esterLayerH);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
-      ctx.strokeRect(rX - 32, rY - 120, 64, 120);
+      // Delivery tube angled down into receiving test tube
+      const rX = w * 0.72;
+      const rY = h * 0.76;
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fX, fY - 66);
+      ctx.lineTo(fX, 56);
+      ctx.lineTo(rX, 56);
+      ctx.lineTo(rX, rY - 90);
+      ctx.stroke();
 
-      ctx.fillStyle = '#B45309';
-      ctx.font = '700 11px ui-sans-serif, sans-serif';
-      ctx.fillText('Lớp Ester nổi (nhẹ hơn H₂O)', rX - 58, rY - 78 - esterLayerH);
-      ctx.fillStyle = '#0369A1';
-      ctx.fillText('Dung dịch NaCl bão hòa', rX - 56, rY + 22);
-    } else {
-      const soapLayerH = Math.max(4, st.yieldFrac * (soapSaltOut ? 36 : 16));
-      ctx.fillStyle = 'rgba(226, 232, 240, 0.6)';
-      ctx.fillRect(fX - 42, fY - 22, 84, 62);
-      ctx.fillStyle = soapAlkali === 'NaOH' ? '#FDE68A' : '#FED7AA';
-      ctx.fillRect(fX - 42, fY - 22 - soapLayerH, 84, soapLayerH);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
-      ctx.strokeRect(fX - 42, fY - 62, 84, 102);
+      // Animated ester vapor droplets flowing to receiver
+      if (esterTempC > 45) {
+        for (let i = 0; i < 4; i++) {
+          const frac = (st.t * 0.45 + i * 0.25) % 1;
+          const vx = fX + frac * (rX - fX);
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+          ctx.beginPath();
+          ctx.arc(vx, 56, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
 
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 12px ui-sans-serif, sans-serif';
-      ctx.fillText(
-        soapSaltOut
-          ? `Tạo bánh xà phòng (${soapAlkali === 'NaOH' ? 'rắn' : 'mềm'}) tách lớp rõ rệt nhờ thêm NaCl`
-          : `Đang thủy phân chất béo trong kiềm ${soapAlkali} nóng`,
-        w * 0.54,
-        h * 0.45
+      // Cold water cooling bath around receiver!
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.26)';
+      ctx.fillRect(rX - 66, rY - 82, 132, 92);
+      ctx.strokeStyle = '#0284C7';
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(rX - 66, rY - 82, 132, 92);
+      drawPillBadge(ctx, rX, rY + 26, 'Cốc nước lạnh + Ống hứng NaCl bão hòa', '#EFF6FF', '#93C5FD', '#1E3A8A');
+
+      // Receiving test tube with NaCl saturated layer & Floating Ester layer
+      const esterLayerH = Math.max(5, st.yieldFrac * 44);
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.65)';
+      ctx.fillRect(rX - 30, rY - 68, 60, 68);
+      ctx.fillStyle = activeEsterPreset.tint;
+      ctx.fillRect(rX - 30, rY - 68 - esterLayerH, 60, esterLayerH);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.4;
+      ctx.strokeRect(rX - 30, rY - 126, 60, 126);
+
+      drawPillBadge(
+        ctx,
+        rX,
+        rY - 86 - esterLayerH,
+        `Lớp ${activeEsterPreset.name} nổi trên`,
+        '#FEF3C7',
+        '#F59E0B',
+        '#92400E'
       );
+      drawPillBadge(
+        ctx,
+        w * 0.5,
+        28,
+        `${activeEsterPreset.formula} · ${activeEsterPreset.aroma}`,
+        '#FFFFFF',
+        '#CBD5E1',
+        '#0F172A'
+      );
+    } else {
+      // Saponification visual: clearly shows reaction beaker + stirring rod + floating soap cake after NaCl salting-out!
+      const bX = w * 0.42;
+      const bBot = h * 0.72;
+      const bW = 148;
+      const bH = 142;
+
+      // Water bath
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.35)';
+      ctx.fillRect(bX - 102, bBot - 80, 204, 92);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bX - 102, bBot - 80, 204, 92);
+
+      // Flame
+      const flicker = Math.sin(st.t * 14) * 3;
+      ctx.fillStyle = '#F97316';
+      ctx.beginPath();
+      ctx.moveTo(bX - 12, bBot + 42);
+      ctx.quadraticCurveTo(bX + flicker * 0.5, bBot + 10 + flicker, bX + 12, bBot + 42);
+      ctx.fill();
+      drawPillBadge(ctx, bX, bBot + 64, `Đun khuấy hỗn hợp ở ${esterTempC}°C`, '#FFF7ED', '#FDBA74', '#9A3412');
+
+      // Reaction beaker layers
+      const isSimpleEster = saponSubstrate === 'ethyl_acetate_hydro';
+      const liqBaseH = 74;
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.65)';
+      ctx.fillRect(bX - bW / 2, bBot - liqBaseH, bW, liqBaseH);
+
+      if (!isSimpleEster) {
+        const soapThick = soapSaltOut ? Math.max(8, st.yieldFrac * 36) : Math.max(4, (1 - st.yieldFrac) * 14 + 4);
+        ctx.fillStyle = soapSaltOut
+          ? soapAlkali === 'NaOH'
+            ? '#FEF3C7'
+            : '#FFEDD5'
+          : 'rgba(253, 224, 71, 0.55)';
+        ctx.fillRect(bX - bW / 2, bBot - liqBaseH - soapThick, bW, soapThick);
+        ctx.strokeStyle = '#D97706';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(bX - bW / 2, bBot - liqBaseH - soapThick, bW, soapThick);
+      }
+
+      // Glass stirring rod
+      const stirX = bX + Math.sin(st.t * 5) * 18;
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(stirX - 12, bBot - bH - 22);
+      ctx.lineTo(stirX + 16, bBot - 16);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.6;
+      ctx.strokeRect(bX - bW / 2, bBot - bH, bW, bH);
+
+      // Right-hand observational callouts
+      const infoX = w * 0.76;
+      if (isSimpleEster) {
+        drawPillBadge(
+          ctx,
+          infoX,
+          h * 0.38,
+          'Lớp ester biến mất → Dung dịch đồng nhất',
+          '#ECFDF5',
+          '#6EE7B7',
+          '#065F46'
+        );
+      } else if (soapSaltOut) {
+        drawPillBadge(
+          ctx,
+          infoX,
+          h * 0.34,
+          `Bánh xà phòng (${soapAlkali === 'NaOH' ? 'rắn' : 'mềm'}) nổi lên trên`,
+          '#FEF3C7',
+          '#F59E0B',
+          '#92400E'
+        );
+        drawPillBadge(
+          ctx,
+          infoX,
+          h * 0.52,
+          'Lớp dưới: Glycerol + NaCl bão hòa',
+          '#EFF6FF',
+          '#93C5FD',
+          '#1E3A8A'
+        );
+      } else {
+        drawPillBadge(
+          ctx,
+          infoX,
+          h * 0.42,
+          `Đang xà phòng hóa trong kiềm ${soapAlkali} nóng`,
+          '#FFFFFF',
+          '#CBD5E1',
+          '#0F172A'
+        );
+      }
     }
   };
 
@@ -798,9 +1158,19 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               <span>Làm lại</span>
             </button>
           </div>
+
+          <span className="text-[11px] font-semibold text-slate-500">
+            {moduleId === 'galvanic_cell'
+              ? 'Nét đứt xám: kích thước Anot ban đầu · Viền đậm: lớp kim loại mới bám Catot'
+              : moduleId === 'electrolysis'
+              ? elecCalc.isSolubleAnode
+                ? 'Nét đứt xám: kích thước Anot ban đầu'
+                : 'Điện cực trơ Graphit (không tan)'
+              : 'Quan sát trực tiếp các pha chất lỏng phân tách'}
+          </span>
         </div>
 
-        <div className="relative w-full h-[400px] sm:h-[440px]">
+        <div className="relative w-full h-[430px] sm:h-[470px]">
           <canvas ref={canvasRef} className="w-full h-full block" />
         </div>
 
@@ -815,7 +1185,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Anot (+) {elecCalc.isSolubleAnode ? 'bị hòa tan' : '(điện cực trơ)'}</div>
+                <div className="text-slate-500">Anot (+) {elecCalc.isSolubleAnode ? 'bị hòa tan' : '(trơ)'}</div>
                 <div className="font-mono tabular-nums font-bold text-rose-700 mt-0.5">
                   {elecCalc.isSolubleAnode
                     ? `−${elecCalc.anodeDissolvedG.toFixed(2)} g`
@@ -858,7 +1228,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Sơ đồ pin chuẩn</div>
+                <div className="text-slate-500">Ký hiệu pin chuẩn</div>
                 <div className="font-mono font-bold text-slate-900 mt-0.5">
                   (−) {galvCalc.anode.symbol} | {galvCalc.anode.ion} || {galvCalc.cathode.ion} | {galvCalc.cathode.symbol} (+)
                 </div>
@@ -881,11 +1251,13 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5 col-span-2">
-                <div className="text-slate-500">Vai trò hóa chất</div>
+                <div className="text-slate-500">Hiện tượng chính</div>
                 <div className="font-bold text-slate-800 mt-0.5">
                   {esterMode === 'esterification'
-                    ? 'H₂SO₄ đặc vừa xúc tác vừa hút nước làm chuyển dịch cân bằng theo chiều thuận.'
-                    : 'NaCl bão hòa làm tăng khối lượng riêng lớp nước, giảm độ tan giúp xà phòng tách nổi lên trên.'}
+                    ? `${activeEsterPreset.name} không tan, nhẹ hơn nước nên nổi thành lớp riêng trên NaCl bão hòa (${activeEsterPreset.aroma}).`
+                    : saponSubstrate === 'ethyl_acetate_hydro'
+                    ? 'Ester bị thủy phân hoàn toàn tạo CH₃COONa và C₂H₅OH tan tốt nên dung dịch đồng nhất.'
+                    : 'NaCl bão hòa làm muối sodium/potassium của acid béo kết tinh nổi lên thành bánh xà phòng.'}
                 </div>
               </div>
             </>
@@ -904,12 +1276,14 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
           {moduleId === 'electrolysis' && (
             <>
               <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 block">Quy trình tinh chế / mạ điện</label>
+                <label className="font-semibold text-slate-700 block">Chọn phản ứng điện phân / tinh chế / mạ điện</label>
                 {[
                   { id: 'cuso4_refine', label: 'Tinh chế Cu thô (Anot Cu bẩn tan → Catot Cu sạch)' },
+                  { id: 'plating_cu', label: 'Mạ Đồng lên vật kim loại (Anot Cu tan)' },
                   { id: 'plating_ag', label: 'Mạ Bạc lên vật kim loại (Anot Ag tan)' },
                   { id: 'plating_ni', label: 'Mạ Niken chống gỉ (Anot Ni tan)' },
                   { id: 'cuso4_inert', label: 'Điện phân CuSO₄ (Anot Graphit trơ)' },
+                  { id: 'agno3_inert', label: 'Điện phân AgNO₃ (Anot Graphit trơ)' },
                 ].map((opt) => (
                   <button
                     key={opt.id}
@@ -943,40 +1317,64 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
 
           {moduleId === 'galvanic_cell' && (
             <>
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-700 block">Pin chuẩn thường gặp THPT</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { label: 'Pin Daniell Zn–Cu', l: 2, r: 6 },
+                    { label: 'Pin Al–Cu', l: 1, r: 6 },
+                    { label: 'Pin Fe–Ag', l: 3, r: 7 },
+                    { label: 'Pin Mg–Cu', l: 0, r: 6 },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => {
+                        setGalvLeftIdx(p.l);
+                        setGalvRightIdx(p.r);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 font-bold text-slate-700 hover:text-emerald-800 cursor-pointer"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="font-semibold text-slate-700 block">Bán pin trái (Điện cực 1)</label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-4 gap-1">
                   {ELECTRODE_METALS.map((m, idx) => (
                     <button
                       key={m.symbol}
                       type="button"
                       onClick={() => setGalvLeftIdx(idx)}
-                      className={`py-1.5 rounded-lg border font-bold cursor-pointer ${
+                      className={`py-1.5 rounded-lg border font-bold text-[11px] cursor-pointer ${
                         galvLeftIdx === idx
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                           : 'bg-white border-slate-200 text-slate-700'
                       }`}
                     >
-                      {m.symbol} ({m.e0 > 0 ? `+${m.e0}` : m.e0}V)
+                      {m.symbol} ({m.e0 > 0 ? `+${m.e0}` : m.e0})
                     </button>
                   ))}
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="font-semibold text-slate-700 block">Bán pin phải (Điện cực 2)</label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-4 gap-1">
                   {ELECTRODE_METALS.map((m, idx) => (
                     <button
                       key={m.symbol}
                       type="button"
                       onClick={() => setGalvRightIdx(idx)}
-                      className={`py-1.5 rounded-lg border font-bold cursor-pointer ${
+                      className={`py-1.5 rounded-lg border font-bold text-[11px] cursor-pointer ${
                         galvRightIdx === idx
                           ? 'bg-sky-50 border-sky-300 text-sky-800'
                           : 'bg-white border-slate-200 text-slate-700'
                       }`}
                     >
-                      {m.symbol} ({m.e0 > 0 ? `+${m.e0}` : m.e0}V)
+                      {m.symbol} ({m.e0 > 0 ? `+${m.e0}` : m.e0})
                     </button>
                   ))}
                 </div>
@@ -1030,19 +1428,43 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                   Xà phòng hóa
                 </button>
               </div>
-              <ChemSlider
-                label="Nhiệt độ đun cách thủy"
-                valueDisplay={`${esterTempC} °C`}
-                min={30}
-                max={95}
-                step={5}
-                value={esterTempC}
-                onChange={setEsterTempC}
-              />
+
               {esterMode === 'esterification' ? (
                 <>
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-slate-700 block">Chọn Ester điều chế (THPT)</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {ESTER_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setEsterPresetId(p.id);
+                            esterStateRef.current.yieldFrac = 0;
+                          }}
+                          className={`px-2.5 py-2 rounded-xl border text-left font-bold cursor-pointer ${
+                            esterPresetId === p.id
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                              : 'bg-white border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          <div className="truncate">{p.name}</div>
+                          <div className="text-[10px] font-medium text-slate-500 truncate">{p.aroma}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <ChemSlider
-                    label="Tỉ lệ mol Ethanol / Acetic acid"
+                    label="Nhiệt độ đun cách thủy"
+                    valueDisplay={`${esterTempC} °C`}
+                    min={30}
+                    max={95}
+                    step={5}
+                    value={esterTempC}
+                    onChange={setEsterTempC}
+                  />
+                  <ChemSlider
+                    label="Tỉ lệ mol Alcohol / Acid"
                     valueDisplay={`${esterMoleRatio.toFixed(1)} : 1`}
                     min={1.0}
                     max={4.0}
@@ -1062,6 +1484,39 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </>
               ) : (
                 <>
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-slate-700 block">Chọn chất tham gia xà phòng hóa</label>
+                    {[
+                      { id: 'tristearin', label: 'Tristearin (C₁₇H₃₅COO)₃C₃H₅ (chất béo no)' },
+                      { id: 'triolein', label: 'Triolein (C₁₇H₃₃COO)₃C₃H₅ (chất béo lỏng)' },
+                      { id: 'ethyl_acetate_hydro', label: 'Ethyl Acetate CH₃COOC₂H₅ (thủy phân ester)' },
+                    ].map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          setSaponSubstrate(s.id as SaponificationSubstrateId);
+                          esterStateRef.current.yieldFrac = 0;
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl border text-left font-bold cursor-pointer ${
+                          saponSubstrate === s.id
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                            : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <ChemSlider
+                    label="Nhiệt độ đun cách thủy"
+                    valueDisplay={`${esterTempC} °C`}
+                    min={30}
+                    max={95}
+                    step={5}
+                    value={esterTempC}
+                    onChange={setEsterTempC}
+                  />
                   <div className="grid grid-cols-2 gap-1.5">
                     {(['NaOH', 'KOH'] as const).map((alk) => (
                       <button
@@ -1078,15 +1533,17 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                       </button>
                     ))}
                   </div>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={soapSaltOut}
-                      onChange={(e) => setSoapSaltOut(e.target.checked)}
-                      className="rounded accent-emerald-600"
-                    />
-                    <span className="font-semibold text-slate-700">Thêm dung dịch NaCl bão hòa (tách lớp)</span>
-                  </label>
+                  {saponSubstrate !== 'ethyl_acetate_hydro' && (
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={soapSaltOut}
+                        onChange={(e) => setSoapSaltOut(e.target.checked)}
+                        className="rounded accent-emerald-600"
+                      />
+                      <span className="font-semibold text-slate-700">Thêm dung dịch NaCl bão hòa (tách bánh xà phòng)</span>
+                    </label>
+                  )}
                 </>
               )}
             </>
@@ -1128,15 +1585,19 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               <>
                 <p className="font-mono font-bold text-slate-900">
                   {esterMode === 'esterification'
-                    ? 'CH₃COOH + C₂H₅OH ⇌ CH₃COOC₂H₅ + H₂O   (H₂SO₄ đặc, t°)'
-                    : '(RCOO)₃C₃H₅ + 3NaOH → 3RCOONa + C₃H₅(OH)₃   (t°)'}
+                    ? activeEsterPreset.equation
+                    : saponSubstrate === 'tristearin'
+                    ? `(C₁₇H₃₅COO)₃C₃H₅ + 3${soapAlkali} —(t°)→ 3C₁₇H₃₅COO${soapAlkali.replace('OH', '')} + C₃H₅(OH)₃`
+                    : saponSubstrate === 'triolein'
+                    ? `(C₁₇H₃₃COO)₃C₃H₅ + 3${soapAlkali} —(t°)→ 3C₁₇H₃₃COO${soapAlkali.replace('OH', '')} + C₃H₅(OH)₃`
+                    : `CH₃COOC₂H₅ + ${soapAlkali} —(t°)→ CH₃COO${soapAlkali.replace('OH', '')} + C₂H₅OH`}
                 </p>
                 <p className="text-slate-600 flex items-start gap-1.5">
                   <Info size={14} className="shrink-0 mt-0.5 text-emerald-600" />
                   <span>
                     {esterMode === 'esterification'
-                      ? 'Phản ứng ester hóa (Hóa 12) là thuận nghịch. Dùng H₂SO₄ đặc xúc tác + hút nước và lấy dư ethanol giúp tăng hiệu suất; hứng vào NaCl bão hòa để tách lớp ethyl acetate.'
-                      : 'Phản ứng xà phòng hóa xảy ra một chiều trong kiềm nóng. Thêm NaCl bão hòa làm muối sodium/potassium của acid béo tách nổi lên thành lớp xà phòng.'}
+                      ? 'Phản ứng ester hóa (Hóa 12) thuận nghịch. H₂SO₄ đặc xúc tác + hút nước và ống hứng ngâm nước lạnh chứa NaCl bão hòa giúp ngưng tụ và tách lớp ester nổi lên trên rõ rệt.'
+                      : 'Phản ứng xà phòng hóa xảy ra một chiều khi đun nóng với kiềm. Thêm NaCl bão hòa giúp muối của acid béo giảm độ tan và nổi lên thành lớp bánh xà phòng.'}
                   </span>
                 </p>
               </>

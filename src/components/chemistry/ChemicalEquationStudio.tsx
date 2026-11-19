@@ -35,9 +35,10 @@ const BALANCER_EXAMPLES = [
   { label: 'Đốt quặng Pirit FeS₂', eq: 'FeS2 + O2 -> Fe2O3 + SO2↑' },
   { label: 'K₂Cr₂O₇ + FeSO₄', eq: 'K2Cr2O7 + FeSO4 + H2SO4 -> Fe2(SO4)3 + Cr2(SO4)3 + K2SO4 + H2O' },
   { label: 'Fe₃O₄ + HNO₃', eq: 'Fe3O4 + HNO3 -> Fe(NO3)3 + NO↑ + H2O' },
-  { label: 'Al + HNO₃ → N₂O', eq: 'Al + HNO3 -> Al(NO3)3 + N2O↑ + H2O' },
+  { label: 'Sản xuất Nhôm Al₂O₃', eq: 'Al2O3 -> Al + O2↑' },
+  { label: 'Xà phòng hóa Tristearin', eq: '(C17H35COO)3C3H5 + NaOH -> C17H35COONa + C3H5(OH)3' },
+  { label: 'Tráng bạc Glucose', eq: 'C6H12O6 + AgNO3 + NH3 + H2O -> C6H11O7NH4 + Ag↓ + NH4NO3' },
   { label: 'Tổng hợp NH₃', eq: 'N2 + H2 <-> NH3' },
-  { label: 'Đốt Glucozơ', eq: 'C6H12O6 + O2 -> CO2↑ + H2O' },
 ];
 
 const QUICK_TOKENS = [
@@ -452,12 +453,14 @@ export const ChemicalEquationStudio: React.FC = () => {
                 'Cu + H2SO4',
                 'Al + NaOH + H2O',
                 'Na2CO3 + HCl',
-                'BaCl2 + Na2SO4',
-                'KMnO4',
-                'KMnO4 + HCl',
+                'Fe2O3 + HCl',
+                'Zn + CuSO4',
+                'Al2O3',
+                'Ca(HCO3)2',
                 'CH3COOH + C2H5OH',
-                'Mg + H2SO4',
-                'Ca(OH)2 + H3PO4',
+                '(C17H35COO)3C3H5 + NaOH',
+                'C6H5NH2 + Br2',
+                'C4H10 + O2',
               ].map((sample) => (
                 <button
                   key={sample}
