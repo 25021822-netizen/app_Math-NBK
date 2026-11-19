@@ -216,43 +216,43 @@ interface ThermoReaction {
 const THERMO_REACTIONS: ThermoReaction[] = [
   {
     id: 'neutralization',
-    label: 'HCl + NaOH (Trung hòa)',
+    label: 'HCl(aq) + NaOH(aq) (Trung hòa)',
     type: 'exo',
     deltaH: -57.3,
     targetTempC: 39.5,
     liquidColor: 'rgba(251, 146, 60, 0.25)',
-    equation: 'HCl(aq) + NaOH(aq) → NaCl(aq) + H₂O(l)   ΔH° = -57,3 kJ',
-    explanation: 'Phản ứng trung hòa giải phóng nhiệt lượng ra môi trường làm nhiệt độ dung dịch tăng lên rõ rệt.',
+    equation: 'HCl(aq) + NaOH(aq) → NaCl(aq) + H₂O(l)   ΔᵣH°₂₉₈ = -57,3 kJ',
+    explanation: 'Phản ứng trung hòa là phản ứng tỏa nhiệt (ΔᵣH°₂₉₈ < 0), giải phóng nhiệt lượng làm nhiệt độ dung dịch tăng lên.',
   },
   {
     id: 'cao_water',
-    label: 'CaO + H₂O (Tôi vôi)',
+    label: 'CaO(s) + H₂O(l) (Tôi vôi)',
     type: 'exo',
     deltaH: -65.2,
     targetTempC: 68.0,
     liquidColor: 'rgba(226, 232, 240, 0.72)',
-    equation: 'CaO(s) + H₂O(l) → Ca(OH)₂(aq)   ΔH° = -65,2 kJ',
-    explanation: 'Quá trình tôi vôi tỏa nhiệt cực mạnh, nước trong nhiệt lượng kế nóng bốc hơi nhanh chóng.',
+    equation: 'CaO(s) + H₂O(l) → Ca(OH)₂(aq)   ΔᵣH°₂₉₈ = -65,2 kJ',
+    explanation: 'Quá trình tôi vôi tỏa nhiệt cực mạnh (ΔᵣH°₂₉₈ < 0), làm nước trong nhiệt lượng kế nóng nhanh.',
   },
   {
     id: 'nh4no3_dissolve',
-    label: 'Hòa tan NH₄NO₃ trong H₂O',
+    label: 'Hòa tan NH₄NO₃(s) trong H₂O',
     type: 'endo',
     deltaH: +25.7,
     targetTempC: 7.5,
     liquidColor: 'rgba(186, 230, 253, 0.48)',
-    equation: 'NH₄NO₃(s) + aq → NH₄⁺(aq) + NO₃⁻(aq)   ΔH° = +25,7 kJ',
-    explanation: 'Quá trình phá vỡ mạng tinh thể hấp thụ nhiệt từ nước làm dung dịch lạnh đi nhanh (ứng dụng túi chườm lạnh).',
+    equation: 'NH₄NO₃(s) + aq → NH₄⁺(aq) + NO₃⁻(aq)   ΔᵣH°₂₉₈ = +25,7 kJ',
+    explanation: 'Quá trình hòa tan thu nhiệt (ΔᵣH°₂₉₈ > 0) hấp thụ nhiệt từ nước làm dung dịch lạnh đi nhanh (ứng dụng túi chườm lạnh).',
   },
   {
     id: 'baoh2_nh4cl',
-    label: 'Ba(OH)₂·8H₂O + 2NH₄Cl',
+    label: 'Ba(OH)₂·8H₂O(s) + 2NH₄Cl(s)',
     type: 'endo',
     deltaH: +80.3,
     targetTempC: -6.0,
     liquidColor: 'rgba(125, 211, 252, 0.55)',
-    equation: 'Ba(OH)₂·8H₂O + 2NH₄Cl → BaCl₂ + 2NH₃ ↑ + 10H₂O   ΔH° > 0',
-    explanation: 'Phản ứng thu nhiệt rất mạnh khiến nhiệt độ hỗn hợp giảm xuống dưới 0°C, có thể làm đóng băng giọt nước dưới đáy cốc!',
+    equation: 'Ba(OH)₂·8H₂O(s) + 2NH₄Cl(s) → BaCl₂(aq) + 2NH₃(g) + 10H₂O(l)   ΔᵣH°₂₉₈ > 0',
+    explanation: 'Phản ứng thu nhiệt rất mạnh (ΔᵣH°₂₉₈ > 0) khiến nhiệt độ hỗn hợp giảm xuống dưới 0°C, có thể làm đóng băng giọt nước dưới đáy cốc.',
   },
 ];
 
@@ -276,7 +276,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
 
   const elecCalc = useMemo(() => {
     const tSec = elecTimeMin * 60;
-    const F = 96485;
+    const F = 96500; // Hằng số Faraday theo SGK Hóa học 12 (96 500 C/mol)
     const nMolE = (elecCurrentA * tSec) / F;
     let cathodeMassG = 0;
     let anodeGasL = 0;
@@ -1792,9 +1792,9 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Ký hiệu pin</div>
+                <div className="text-slate-500">Sơ đồ pin chuẩn</div>
                 <div className="font-mono font-bold text-slate-900 mt-0.5">
-                  {galvCalc.anode.symbol}|{galvCalc.anode.ion} || {galvCalc.cathode.ion}|{galvCalc.cathode.symbol}
+                  (−) {galvCalc.anode.symbol} | {galvCalc.anode.ion} || {galvCalc.cathode.ion} | {galvCalc.cathode.symbol} (+)
                 </div>
               </div>
             </>
@@ -1857,8 +1857,8 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 <div className="text-slate-500">Vai trò hóa chất</div>
                 <div className="font-bold text-slate-800 mt-0.5">
                   {esterMode === 'esterification'
-                    ? 'H₂SO₄ đặc vừa xúc tác vừa hút nước chuyển dịch cân bằng.'
-                    : 'NaCl bão hòa làm giảm độ tan để xà phòng tách nổi lên trên.'}
+                    ? 'H₂SO₄ đặc vừa xúc tác vừa hút nước làm chuyển dịch cân bằng theo chiều thuận.'
+                    : 'NaCl bão hòa làm tăng khối lượng riêng lớp nước, giảm độ tan giúp xà phòng tách nổi lên trên.'}
                 </div>
               </div>
             </>
@@ -1880,13 +1880,13 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Phân loại</div>
+                <div className="text-slate-500">Phân loại nhiệt phản ứng</div>
                 <div className={`font-bold mt-0.5 ${activeThermo.type === 'exo' ? 'text-rose-700' : 'text-sky-700'}`}>
-                  {activeThermo.type === 'exo' ? 'Tỏa nhiệt (ΔH < 0)' : 'Thu nhiệt (ΔH > 0)'}
+                  {activeThermo.type === 'exo' ? 'Tỏa nhiệt (ΔᵣH°₂₉₈ < 0)' : 'Thu nhiệt (ΔᵣH°₂₉₈ > 0)'}
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Nhiệt lượng Q (100g dd)</div>
+                <div className="text-slate-500">Nhiệt lượng Q = m·c·ΔT</div>
                 <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
                   {Math.abs(thermoReadout.qKj).toFixed(2)} kJ
                 </div>
@@ -2174,7 +2174,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                     esterMode === 'esterification' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
                   }`}
                 >
-                  Điều chế Este
+                  Điều chế Ester
                 </button>
                 <button
                   type="button"
@@ -2201,7 +2201,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               {esterMode === 'esterification' ? (
                 <>
                   <ChemSlider
-                    label="Tỉ lệ mol Ancol / Acid"
+                    label="Tỉ lệ mol Ethanol / Acetic acid"
                     valueDisplay={`${esterMoleRatio.toFixed(1)} : 1`}
                     min={1.0}
                     max={4.0}
@@ -2362,10 +2362,11 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
           <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-slate-800">
             {moduleId === 'electrolysis' && (
               <>
-                <p className="font-semibold text-sky-800">Catot (−): {elecCalc.cathodeEq}</p>
-                <p className="font-semibold text-rose-800">Anot (+): {elecCalc.anodeEq}</p>
+                <p className="font-semibold text-sky-800">Catot (−, xảy ra sự khử): {elecCalc.cathodeEq}</p>
+                <p className="font-semibold text-rose-800">Anot (+, xảy ra sự oxi hóa): {elecCalc.anodeEq}</p>
                 <p className="font-mono font-bold text-slate-900 pt-1 border-t border-slate-200">{elecCalc.overallEq}</p>
                 <p className="text-slate-600">{elecCalc.phenomenon}</p>
+                <p className="text-[11px] font-mono text-slate-500">Định luật Faraday (Hóa 12): m = (A · I · t) / (n · F), với F = 96 500 C/mol; V_khí (đkc) = n · 24,79 L.</p>
               </>
             )}
             {moduleId === 'galvanic_cell' && (
@@ -2373,10 +2374,13 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 <p className="font-mono font-bold text-slate-900">
                   {galvCalc.anode.symbol} + {galvCalc.cathode.ion} → {galvCalc.anode.ion} + {galvCalc.cathode.symbol}
                 </p>
+                <p className="font-mono text-[11px] text-emerald-700 font-semibold">
+                  E°_pin = E°_cathode − E°_anode = ({galvCalc.cathode.e0 > 0 ? `+${galvCalc.cathode.e0}` : galvCalc.cathode.e0}) − ({galvCalc.anode.e0 > 0 ? `+${galvCalc.anode.e0}` : galvCalc.anode.e0}) = {(galvCalc.cathode.e0 - galvCalc.anode.e0).toFixed(2)} V
+                </p>
                 <p className="text-slate-600 flex items-start gap-1.5">
                   <Zap size={14} className="shrink-0 mt-0.5 text-emerald-600" />
                   <span>
-                    Kim loại có thế điện cực chuẩn E° nhỏ hơn đóng vai trò Anot (bị oxi hóa, giải phóng electron chạy sang Catot).
+                    Trong Pin điện hóa (Hóa 12): cực có thế điện cực E nhỏ hơn là Anot (−, bị oxi hóa); cực lớn hơn là Catot (+, ion kim loại bị khử). Cầu muối KNO₃ giúp cân bằng ion giữa hai bán pin.
                   </span>
                 </p>
               </>
@@ -2386,15 +2390,18 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 <p className="font-mono font-bold text-slate-900">
                   Na₂S₂O₃ + H₂SO₄ → Na₂SO₄ + S ↓ (vàng đục) + SO₂ ↑ + H₂O
                 </p>
+                <p className="font-mono text-[11px] text-emerald-700 font-semibold">
+                  Van ’t Hoff (Hóa 10): v(T₂) = v(T₁) · γ^((T₂ − T₁)/10), với γ ≈ 2–4
+                </p>
                 <p className="text-slate-600">
-                  Quy tắc Van 't Hoff: Khi nhiệt độ tăng thêm 10°C, tốc độ phản ứng tăng khoảng 2–4 lần.
+                  Các yếu tố làm tăng tốc độ phản ứng: tăng nồng độ, tăng nhiệt độ, tăng diện tích bề mặt tiếp xúc và thêm chất xúc tác (hạ năng lượng hoạt hóa Ea).
                 </p>
               </>
             )}
             {moduleId === 'redox_flame' && (
               <p className="font-mono font-bold text-slate-900">
                 {redoxSubMode === 'flame'
-                  ? `Cấu hình electron vỏ ion ${activeFlameIon.ion} phát xạ vạch quang phổ ${activeFlameIon.wavelengthNm}`
+                  ? `Quang phổ phát xạ đặc trưng của ion ${activeFlameIon.ion}: màu ${activeFlameIon.colorName} (λ ≈ ${activeFlameIon.wavelengthNm})`
                   : activeRedox.equation}
               </p>
             )}
@@ -2402,15 +2409,15 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               <>
                 <p className="font-mono font-bold text-slate-900">
                   {esterMode === 'esterification'
-                    ? 'CH₃COOH + C₂H₅OH ⇌ CH₃COOC₂H₅ + H₂O'
-                    : '(RCOO)₃C₃H₅ + 3NaOH → 3RCOONa + C₃H₅(OH)₃'}
+                    ? 'CH₃COOH + C₂H₅OH ⇌ CH₃COOC₂H₅ + H₂O   (H₂SO₄ đặc, t°)'
+                    : '(RCOO)₃C₃H₅ + 3NaOH → 3RCOONa + C₃H₅(OH)₃   (t°)'}
                 </p>
                 <p className="text-slate-600 flex items-start gap-1.5">
                   <Info size={14} className="shrink-0 mt-0.5 text-emerald-600" />
                   <span>
                     {esterMode === 'esterification'
-                      ? 'Phản ứng este hóa là thuận nghịch. Tăng dư ancol hoặc dùng H₂SO₄ đặc hút nước làm tăng hiệu suất tạo este.'
-                      : 'Phản ứng xà phòng hóa xảy ra một chiều trong môi trường kiềm nóng.'}
+                      ? 'Phản ứng ester hóa (Hóa 12) là thuận nghịch. Dùng H₂SO₄ đặc xúc tác + hút nước và lấy dư ethanol giúp tăng hiệu suất; hứng vào NaCl bão hòa để tách lớp ethyl acetate.'
+                      : 'Phản ứng xà phòng hóa xảy ra một chiều trong kiềm nóng. Thêm NaCl bão hòa làm muối sodium/potassium của acid béo tách nổi lên thành lớp xà phòng.'}
                   </span>
                 </p>
               </>
@@ -2419,12 +2426,14 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               <>
                 <p className="font-mono font-bold text-slate-900">{activeThermo.equation}</p>
                 <p className="text-slate-600">{activeThermo.explanation}</p>
+                <p className="text-[11px] font-mono text-slate-500">Hóa 10: Đo nhiệt lượng Q = m · c · ΔT (c = 4,18 J/(g·K), đkc 25°C, 1 bar).</p>
               </>
             )}
             {moduleId === 'oxygen_prep' && (
               <>
                 <p className="font-mono font-bold text-slate-900">{o2Calc.eq}</p>
                 <p className="text-slate-600">{o2Calc.note}</p>
+                <p className="text-[11px] font-mono text-slate-500">Thể tích khí tính ở điều kiện chuẩn (25°C, 1 bar): V = n · 24,79 L.</p>
               </>
             )}
           </div>

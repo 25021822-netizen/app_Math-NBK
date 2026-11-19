@@ -66,11 +66,18 @@ const QUICK_TOKENS = [
 
 const TOPIC_FILTERS: { id: 'all' | ChemReactionEntry['topic']; label: string }[] = [
   { id: 'all', label: 'Tất cả chủ đề' },
-  { id: 'metal_acid', label: 'Kim loại & Axit' },
+  { id: 'metal_acid', label: 'Kim loại & Acid' },
   { id: 'exchange', label: 'Trao đổi ion' },
   { id: 'redox_gas', label: 'Oxi hóa – Khử & Điều chế' },
-  { id: 'oxide_base_salt', label: 'Oxit · Bazơ · Muối' },
-  { id: 'organic', label: 'Hóa hữu cơ' },
+  { id: 'oxide_base_salt', label: 'Oxide · Base · Muối' },
+  { id: 'organic', label: 'Hóa hữu cơ THPT' },
+];
+
+const GRADE_FILTERS = [
+  { id: 'all', label: 'Tất cả THPT (10–12)' },
+  { id: 'Lớp 10', label: 'Hóa học 10' },
+  { id: 'Lớp 11', label: 'Hóa học 11' },
+  { id: 'Lớp 12', label: 'Hóa học 12' },
 ];
 
 export const ChemicalEquationStudio: React.FC = () => {
@@ -86,6 +93,7 @@ export const ChemicalEquationStudio: React.FC = () => {
   // 3. Reaction Library state
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [topicFilter, setTopicFilter] = useState<'all' | ChemReactionEntry['topic']>('all');
+  const [gradeFilter, setGradeFilter] = useState<string>('all');
 
   // Shared Equation Notebook & Copy feedback
   const [savedList, setSavedList] = useState<SavedEquationItem[]>([
@@ -105,6 +113,10 @@ export const ChemicalEquationStudio: React.FC = () => {
     const q = searchQuery.trim().toLowerCase();
     return CHEM_REACTIONS_DB.filter((entry) => {
       if (topicFilter !== 'all' && entry.topic !== topicFilter) return false;
+      if (gradeFilter !== 'all') {
+        const num = gradeFilter.replace('Lớp ', '');
+        if (!entry.grade.includes(num)) return false;
+      }
       if (!q) return true;
       const haystack = [
         ...entry.reactants,
@@ -124,7 +136,7 @@ export const ChemicalEquationStudio: React.FC = () => {
         balanced: balanceChemicalEquation(raw),
       };
     });
-  }, [searchQuery, topicFilter]);
+  }, [searchQuery, topicFilter, gradeFilter]);
 
   const copyText = (text: string, tag: string) => {
     navigator.clipboard?.writeText(text).catch(() => {});
@@ -519,17 +531,17 @@ export const ChemicalEquationStudio: React.FC = () => {
         {activeTab === 'library' && (
           <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-              <div className="sm:col-span-7 relative">
+              <div className="sm:col-span-5 relative">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Tìm theo chất (Fe, KMnO4, CO2, AgCl, Este...) hoặc hiện tượng..."
+                  placeholder="Tìm theo chất (Fe, KMnO4, AlCl3, Ester...) hoặc hiện tượng..."
                   className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:outline-none text-xs sm:text-sm text-slate-900 bg-slate-50"
                 />
               </div>
-              <div className="sm:col-span-5">
+              <div className="sm:col-span-4">
                 <select
                   value={topicFilter}
                   onChange={(e) => setTopicFilter(e.target.value as 'all' | ChemReactionEntry['topic'])}
@@ -538,6 +550,19 @@ export const ChemicalEquationStudio: React.FC = () => {
                   {TOPIC_FILTERS.map((f) => (
                     <option key={f.id} value={f.id}>
                       {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-3">
+                <select
+                  value={gradeFilter}
+                  onChange={(e) => setGradeFilter(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:outline-none text-xs sm:text-sm font-semibold text-slate-800 bg-slate-50 cursor-pointer"
+                >
+                  {GRADE_FILTERS.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.label}
                     </option>
                   ))}
                 </select>

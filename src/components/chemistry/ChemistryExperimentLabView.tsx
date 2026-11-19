@@ -48,29 +48,29 @@ const CHEM_CATEGORIES: ChemCategoryMeta[] = [
   {
     id: 'general',
     title: 'Hóa Đại Cương & Nhiệt Hóa',
-    grades: 'Lớp 10 · 11',
-    description: 'Tốc độ phản ứng & xúc tác, cân bằng hóa học Le Chatelier, phản ứng tỏa nhiệt & thu nhiệt.',
+    grades: 'Hóa 10 · Hóa 11',
+    description: 'Động hóa học (tốc độ phản ứng & xúc tác), năng lượng hóa học (ΔᵣH°₂₉₈) và cân bằng hóa học Le Chatelier.',
     icon: Gauge,
   },
   {
     id: 'solution',
     title: 'Dung Dịch, Acid – Base & Trao Đổi Ion',
-    grades: 'Lớp 11',
-    description: 'Chuẩn độ Acid – Base với đường cong pH, phản ứng trao đổi ion trong dung dịch (kết tủa, bay hơi, điện li yếu) và tạo phức.',
+    grades: 'Hóa 11 · Hóa 12',
+    description: 'Chuẩn độ Acid – Base theo thuyết Brønsted–Lowry, phản ứng trao đổi ion trong dung dịch, hiđroxit lưỡng tính và tạo phức chất.',
     icon: Droplets,
   },
   {
     id: 'electrochem',
     title: 'Điện Hóa, Vô Cơ & Oxi Hóa – Khử',
-    grades: 'Lớp 10 · 12',
-    description: 'Pin Galvani, điện phân dung dịch, kim loại tác dụng với acid loãng & đặc, điều chế khí Oxi (O₂) và thử ngọn lửa.',
+    grades: 'Hóa 10 · 11 · 12',
+    description: 'Pin Galvani (thế điện cực chuẩn E°), điện phân dung dịch (Faraday), kim loại + acid loãng/đặc, Halogen, thử ngọn lửa IA–IIA và điều chế khí.',
     icon: Zap,
   },
   {
     id: 'organic',
-    title: 'Hóa Học Hữu Cơ',
-    grades: 'Lớp 12',
-    description: 'Tổng hợp Etyl Axetat (phản ứng este hóa thuận nghịch) và phản ứng xà phòng hóa chất béo.',
+    title: 'Hóa Học Hữu Cơ THPT',
+    grades: 'Hóa 12',
+    description: 'Tổng hợp Ethyl Acetate (phản ứng ester hóa thuận nghịch) và xà phòng hóa chất béo (tách lớp bằng NaCl bão hòa).',
     icon: FlaskConical,
   },
 ];
@@ -90,115 +90,115 @@ const CHEM_EXPERIMENTS: ChemExperimentMeta[] = [
     id: 'equation_writer',
     title: 'Viết & Cân Bằng Tất Cả Phương Trình Hóa Học',
     category: 'general',
-    categoryLabel: 'Công cụ PTHH',
-    grade: 'Lớp 8 · 9 · 10 · 11 · 12',
-    summary: 'Cân bằng mọi phương trình vô cơ/hữu cơ bất kỳ bằng đại số tuyến tính chính xác, tự viết sản phẩm từ chất tham gia và tra cứu kho PTHH.',
+    categoryLabel: 'Công cụ PTHH THPT',
+    grade: 'THPT · Lớp 10 · 11 · 12',
+    summary: 'Cân bằng mọi phương trình vô cơ, hữu cơ, oxi hóa – khử bằng đại số tuyến tính; tự viết sản phẩm từ vế trái và tra cứu kho PTHH chuẩn GDPT 2018.',
     icon: Scale,
   },
   {
     id: 'reaction_rate',
     title: 'Tốc Độ Phản Ứng & Chất Xúc Tác',
     category: 'general',
-    categoryLabel: 'Hóa đại cương',
+    categoryLabel: 'Hóa 10 · Động hóa học',
     grade: 'Lớp 10',
-    summary: 'Thí nghiệm dấu chữ X với Na₂S₂O₃ + H₂SO₄, mô hình va chạm phân tử và giản đồ năng lượng hoạt hóa Ea.',
+    summary: 'Thí nghiệm dấu chữ X với Na₂S₂O₃ + H₂SO₄, quy tắc hệ số nhiệt độ Van ’t Hoff, va chạm hiệu quả và giản đồ năng lượng hoạt hóa Ea.',
     icon: Gauge,
   },
   {
     id: 'equilibrium',
     title: 'Cân Bằng Hóa Học Le Chatelier',
     category: 'general',
-    categoryLabel: 'Hóa đại cương',
+    categoryLabel: 'Hóa 11 · Cân bằng hóa học',
     grade: 'Lớp 11',
-    summary: 'Hệ khí 2NO₂ (nâu đỏ) ⇌ N₂O₄ (không màu) dịch chuyển cân bằng khi thay đổi nhiệt độ và áp suất.',
+    summary: 'Hệ khí thuận nghịch 2NO₂ (nâu đỏ) ⇌ N₂O₄ (không màu) dịch chuyển cân bằng khi thay đổi nhiệt độ và áp suất.',
     icon: Atom,
   },
   {
     id: 'thermochemistry',
-    title: 'Nhiệt Hóa Học: Tỏa Nhiệt & Thu Nhiệt',
+    title: 'Nhiệt Hóa Học: Biến Thiên Enthalpy ΔᵣH°₂₉₈',
     category: 'general',
-    categoryLabel: 'Nhiệt hóa học',
+    categoryLabel: 'Hóa 10 · Năng lượng hóa học',
     grade: 'Lớp 10',
-    summary: 'Nhiệt lượng kế đo biến thiên nhiệt độ ΔT và nhiệt lượng Q của các phản ứng trung hòa, tôi vôi, hòa tan muối.',
+    summary: 'Nhiệt lượng kế đo ΔT và nhiệt lượng Q = m·c·ΔT của các phản ứng tỏa nhiệt (ΔᵣH°₂₉₈ < 0) và thu nhiệt (ΔᵣH°₂₉₈ > 0).',
     icon: Thermometer,
   },
   {
     id: 'titration',
     title: 'Chuẩn Độ Acid – Base (HCl + NaOH)',
     category: 'solution',
-    categoryLabel: 'Dung dịch',
+    categoryLabel: 'Hóa 11 · Acid – Base & pH',
     grade: 'Lớp 11',
-    summary: 'Ống buret chuẩn độ từng giọt, đổi màu chất chỉ thị Phenolphtalein/Quỳ tím và đồ thị pH trực tiếp.',
+    summary: 'Chuẩn độ dung dịch HCl bằng dung dịch chuẩn NaOH trên buret, quan sát bước nhảy pH và đổi màu chỉ thị Phenolphthalein/Quỳ tím.',
     icon: Droplets,
   },
   {
     id: 'precipitate',
-    title: 'Phản Ứng Trao Đổi Ion Trong Dung Dịch',
+    title: 'Phản Ứng Trao Đổi Ion & Hiđroxit Lưỡng Tính',
     category: 'solution',
-    categoryLabel: 'Trao đổi ion',
-    grade: 'Lớp 11',
-    summary: 'Khảo sát điều kiện xảy ra phản ứng trao đổi ion: tạo kết tủa (AgCl, BaSO₄, hiđroxit), tạo khí bay hơi (CO₂, NH₃), chất điện li yếu và hòa tan kết tủa.',
+    categoryLabel: 'Hóa 11 · 12 · Dung dịch',
+    grade: 'Lớp 11 · 12',
+    summary: 'Khảo sát 3 điều kiện trao đổi ion (tạo kết tủa, khí bay hơi, chất điện li yếu), kết tủa lưỡng tính Al(OH)₃ tan trong kiềm dư và phức chất [Cu(NH₃)₄]²⁺.',
     icon: Beaker,
   },
   {
     id: 'galvanic_cell',
-    title: 'Pin Điện Hóa (Pin Galvani & Thế Điện Cực)',
+    title: 'Pin Điện Hóa (Pin Galvani & Thế Điện Cực Chuẩn)',
     category: 'electrochem',
-    categoryLabel: 'Điện hóa học',
+    categoryLabel: 'Hóa 12 · Pin điện & Điện phân',
     grade: 'Lớp 12',
-    summary: 'Ghép cặp kim loại Mg, Zn, Fe, Pb, Cu, Ag nối cầu muối, đo suất điện động E_pin theo nồng độ ion.',
+    summary: 'Ghép cặp oxi hóa – khử Mg, Zn, Fe, Pb, Cu, Ag nối cầu muối KNO₃; xác định Anot (−), Catot (+) và tính sức điện động E_pin.',
     icon: Zap,
   },
   {
     id: 'electrolysis',
-    title: 'Điện Phân Dung Dịch & Mạ Điện',
+    title: 'Điện Phân Dung Dịch & Định Luật Faraday',
     category: 'electrochem',
-    categoryLabel: 'Điện hóa học',
+    categoryLabel: 'Hóa 12 · Pin điện & Điện phân',
     grade: 'Lớp 12',
-    summary: 'Điện phân CuSO₄ (điện cực trơ / Anot tan), NaCl có màng ngăn, AgNO₃ và định luật Faraday.',
+    summary: 'Điện phân CuSO₄ (điện cực trơ / Anot Cu tan), NaCl bão hòa có màng ngăn, AgNO₃ và tính khối lượng bám cực m = AIt/(nF).',
     icon: Zap,
   },
   {
     id: 'metal_acid',
-    title: 'Kim Loại Tác Dụng Với Acid (Loãng & Đặc Nóng)',
+    title: 'Kim Loại Tác Dụng Với Acid (HCl, H₂SO₄, HNO₃)',
     category: 'electrochem',
-    categoryLabel: 'Vô cơ',
-    grade: 'Lớp 10 · 12',
-    summary: 'Khảo sát Mg, Al, Zn, Fe, Cu với HCl, H₂SO₄ loãng (khí H₂) và HNO₃ đặc, H₂SO₄ đặc (NO₂, SO₂, thụ động hóa Al/Fe khi nguội).',
+    categoryLabel: 'Hóa 10 · 11 · 12 · Vô cơ',
+    grade: 'Lớp 10 · 11 · 12',
+    summary: 'Khảo sát Mg, Al, Zn, Fe, Cu với HCl, H₂SO₄ loãng (H₂), HNO₃ loãng (NO), HNO₃ đặc (NO₂), H₂SO₄ đặc (SO₂) và sự thụ động hóa Al, Fe khi nguội.',
     icon: Flame,
   },
   {
     id: 'oxygen_prep',
-    title: 'Điều Chế Khí Oxi (O₂) Trong Phòng Thí Nghiệm',
+    title: 'Điều Chế Khí O₂ & Khảo Sát Xúc Tác MnO₂',
     category: 'electrochem',
-    categoryLabel: 'Hóa vô cơ',
+    categoryLabel: 'Hóa 10 · Thực hành điều chế',
     grade: 'Lớp 10',
-    summary: 'Nhiệt phân KMnO₄, KClO₃ (có/không MnO₂) hoặc phân hủy H₂O₂; thu khí bằng đẩy nước / đẩy không khí và thử tàn đóm đỏ.',
+    summary: 'Phân hủy H₂O₂ (xúc tác MnO₂ — không cần đun), nhiệt phân KMnO₄, KClO₃; thu khí đẩy nước/đẩy không khí và thử tàn đóm đỏ.',
     icon: Flame,
   },
   {
     id: 'redox_flame',
-    title: 'Thử Màu Ngọn Lửa & Oxi Hóa – Khử',
+    title: 'Thử Màu Ngọn Lửa IA–IIA & Oxi Hóa – Khử',
     category: 'electrochem',
-    categoryLabel: 'Nhận biết & Khử',
+    categoryLabel: 'Hóa 10 · 12 · Nhận biết',
     grade: 'Lớp 10 · 12',
-    summary: 'Đốt muối Li⁺, Na⁺, K⁺, Ca²⁺, Cu²⁺, Ba²⁺ trên đèn Bunsen và thí nghiệm Fe + CuSO₄, Cu + HNO₃, KMnO₄.',
+    summary: 'Đốt muối Li⁺, Na⁺, K⁺, Ca²⁺, Ba²⁺, Cu²⁺ trên đèn Bunsen (nhóm IA–IIA) và các phản ứng KMnO₄ + HCl đặc, chuẩn độ Fe²⁺ bằng KMnO₄.',
     icon: Flame,
   },
   {
     id: 'ester_lab',
-    title: 'Tổng Hợp Este & Phản Ứng Xà Phòng Hóa',
+    title: 'Điều Chế Ester & Phản Ứng Xà Phòng Hóa',
     category: 'organic',
-    categoryLabel: 'Hóa hữu cơ',
+    categoryLabel: 'Hóa 12 · Ester – Lipid',
     grade: 'Lớp 12',
-    summary: 'Điều chế Etyl Axetat cách thủy với H₂SO₄ đặc, tách lớp este và xà phòng hóa chất béo trong kiềm.',
+    summary: 'Điều chế Ethyl Acetate (H₂SO₄ đặc xúc tác & hút nước, tách lớp bằng NaCl bão hòa) và xà phòng hóa chất béo trong NaOH/KOH nóng.',
     icon: FlaskConical,
   },
 ];
 
 type IndicatorType = 'phenolphthalein' | 'litmus';
 type MetalType = 'Mg' | 'Al' | 'Zn' | 'Fe' | 'Cu';
-type AcidType = 'HCl' | 'H2SO4' | 'HNO3_conc' | 'H2SO4_conc';
+type AcidType = 'HCl' | 'H2SO4' | 'HNO3_dil' | 'HNO3_conc' | 'H2SO4_conc';
 
 interface PrecipitateReaction {
   id: string;
@@ -245,9 +245,24 @@ const PRECIPITATE_REACTIONS: PrecipitateReaction[] = [
     precipitateColor: '#FFFFFF',
     finalLiquidColor: 'rgba(241, 245, 249, 0.45)',
     hasPrecipitate: true,
-    phenomenon: 'Xuất hiện kết tủa trắng mịn bari sunfat BaSO₄ ↓ bền trong acid và kiềm.',
+    phenomenon: 'Xuất hiện kết tủa trắng mịn barium sulfate BaSO₄ ↓ bền trong acid mạnh và kiềm.',
     molecularEq: 'BaCl₂ + Na₂SO₄ → BaSO₄ ↓ (trắng) + 2NaCl',
     ionicEq: 'Ba²⁺ + SO₄²⁻ → BaSO₄ ↓',
+  },
+  {
+    id: 'aloh3_excess',
+    label: 'AlCl₃ + NaOH (đến dư)',
+    reactionTypeLabel: 'Lưỡng tính',
+    reagentA: 'Dung dịch AlCl₃ (không màu)',
+    reagentB: 'Dung dịch NaOH (nhỏ từ từ đến dư)',
+    solutionBaseColor: 'rgba(226, 232, 240, 0.34)',
+    precipitateColor: '#FFFFFF',
+    finalLiquidColor: 'rgba(226, 232, 240, 0.32)',
+    hasPrecipitate: true,
+    dissolvesInExcess: true,
+    phenomenon: 'Ban đầu xuất hiện kết tủa keo trắng Al(OH)₃ ↓; khi NaOH dư kết tủa tan dần tạo dung dịch trong suốt Na[Al(OH)₄].',
+    molecularEq: 'AlCl₃ + 3NaOH → Al(OH)₃ ↓ + 3NaCl  ;  Al(OH)₃ + NaOH → Na[Al(OH)₄]',
+    ionicEq: 'Al³⁺ + 3OH⁻ → Al(OH)₃ ↓  ;  Al(OH)₃ + OH⁻ → [Al(OH)₄]⁻',
   },
   {
     id: 'cuoh2',
@@ -259,7 +274,7 @@ const PRECIPITATE_REACTIONS: PrecipitateReaction[] = [
     precipitateColor: '#0284C7',
     finalLiquidColor: 'rgba(186, 230, 253, 0.35)',
     hasPrecipitate: true,
-    phenomenon: 'Xuất hiện kết tủa keo xanh lam đồng(II) hiđroxit Cu(OH)₂ ↓ không tan trong kiềm.',
+    phenomenon: 'Xuất hiện kết tủa keo xanh lam copper(II) hydroxide Cu(OH)₂ ↓ không tan trong kiềm dư.',
     molecularEq: 'CuSO₄ + 2NaOH → Cu(OH)₂ ↓ (xanh lam) + Na₂SO₄',
     ionicEq: 'Cu²⁺ + 2OH⁻ → Cu(OH)₂ ↓',
   },
@@ -498,60 +513,76 @@ export const ChemistryExperimentLabView: React.FC = () => {
     const reactivity: Record<MetalType, number> = { Mg: 2.2, Al: 1.85, Zn: 1.0, Fe: 0.65, Cu: 0.45 };
     const nMetal = metalMassG / molarMass[selectedMetal];
     const isConc = selectedAcid === 'HNO3_conc' || selectedAcid === 'H2SO4_conc';
-    // Treat concentrated acids as 6x effective molarity multiplier in 100 mL so slider remains intuitive
+    const isOxidizingAcid = selectedAcid === 'HNO3_dil' || isConc;
+    // Concentrated acids use 6x molarity multiplier in 100 mL; dilute acids use 1x
     const nAcid = acidConcMetal * 0.1 * (isConc ? 6 : 1);
     const nHPlus = selectedAcid === 'H2SO4' ? nAcid * 2 : nAcid;
 
     const isPassivated = isConc && (selectedMetal === 'Al' || selectedMetal === 'Fe') && rxnTempC < 45;
     const needsHeatCuH2SO4 = selectedAcid === 'H2SO4_conc' && selectedMetal === 'Cu' && rxnTempC < 40;
-    const cuDiluteNoRxn = !isConc && selectedMetal === 'Cu';
+    const cuDiluteNoRxn = !isOxidizingAcid && selectedMetal === 'Cu';
     const reacts = !isPassivated && !needsHeatCuH2SO4 && !cuDiluteNoRxn;
 
     let gasFormula = 'H₂';
     let gasColor = 'rgba(241, 245, 249, 0.92)';
     let bubbleBorder = '#0284C7';
     let nGasMax = 0;
-    let acidNeededPerMetal = 2;
     let eqText = '';
     let limiting = '';
 
-    if (!isConc) {
+    if (!isOxidizingAcid) {
       gasFormula = 'H₂';
       if (cuDiluteNoRxn) {
-        limiting = 'Cu đứng sau H trong dãy hoạt động hóa học (không phản ứng)';
+        limiting = 'Cu có E°(Cu²⁺/Cu) = +0,34 V > 0 V (đứng sau H) nên không phản ứng với HCl, H₂SO₄ loãng';
         eqText = `Cu + ${selectedAcid === 'HCl' ? 'HCl' : 'H₂SO₄ (loãng)'} → Không xảy ra phản ứng`;
       } else if (selectedMetal === 'Al') {
-        acidNeededPerMetal = 3; // 3 H+ per Al
         nGasMax = Math.min(nMetal * 1.5, nHPlus / 2);
         limiting =
           nMetal * 3 <= nHPlus
-            ? 'Kim loại Al tan hết hoàn toàn'
-            : `Acid ${selectedAcid === 'HCl' ? 'HCl' : 'H₂SO₄'} hết trước, còn dư Al`;
+            ? 'Kim loại Al tan hết hoàn toàn, giải phóng khí H₂'
+            : `Acid ${selectedAcid === 'HCl' ? 'HCl' : 'H₂SO₄ loãng'} hết trước, còn dư Al`;
         eqText =
           selectedAcid === 'HCl'
             ? '2Al + 6HCl → 2AlCl₃ + 3H₂ ↑'
             : '2Al + 3H₂SO₄ (loãng) → Al₂(SO₄)₃ + 3H₂ ↑';
       } else {
-        acidNeededPerMetal = 2; // 2 H+ per M(II)
         nGasMax = Math.min(nMetal, nHPlus / 2);
         limiting =
           nMetal * 2 <= nHPlus
-            ? `Kim loại ${selectedMetal} tan hết hoàn toàn`
-            : `Acid ${selectedAcid === 'HCl' ? 'HCl' : 'H₂SO₄'} hết trước, còn dư ${selectedMetal}`;
+            ? `Kim loại ${selectedMetal} tan hết hoàn toàn, giải phóng khí H₂`
+            : `Acid ${selectedAcid === 'HCl' ? 'HCl' : 'H₂SO₄ loãng'} hết trước, còn dư ${selectedMetal}`;
         eqText =
           selectedAcid === 'HCl'
             ? `${selectedMetal} + 2HCl → ${selectedMetal}Cl₂ + H₂ ↑`
             : `${selectedMetal} + H₂SO₄ (loãng) → ${selectedMetal}SO₄ + H₂ ↑`;
+      }
+    } else if (selectedAcid === 'HNO3_dil') {
+      gasFormula = 'NO';
+      gasColor = 'rgba(226, 232, 240, 0.85)';
+      bubbleBorder = '#64748B';
+      if (selectedMetal === 'Al' || selectedMetal === 'Fe') {
+        nGasMax = Math.min(nMetal, nAcid / 4);
+        limiting =
+          nMetal * 4 <= nAcid
+            ? `${selectedMetal} tan hết tạo muối ${selectedMetal}(NO₃)₃ và khí NO không màu`
+            : `HNO₃ loãng hết trước, còn dư ${selectedMetal}`;
+        eqText = `${selectedMetal} + 4HNO₃ (loãng) → ${selectedMetal}(NO₃)₃ + NO ↑ + 2H₂O`;
+      } else {
+        nGasMax = Math.min((nMetal * 2) / 3, nAcid / 4);
+        limiting =
+          (nMetal * 8) / 3 <= nAcid
+            ? `${selectedMetal} tan hết tạo muối ${selectedMetal}(NO₃)₂ và khí NO (hóa nâu ngoài không khí)`
+            : `HNO₃ loãng hết trước, còn dư ${selectedMetal}`;
+        eqText = `3${selectedMetal} + 8HNO₃ (loãng) → 3${selectedMetal}(NO₃)₂ + 2NO ↑ + 4H₂O`;
       }
     } else if (selectedAcid === 'HNO3_conc') {
       gasFormula = 'NO₂';
       gasColor = 'rgba(180, 83, 9, 0.72)';
       bubbleBorder = '#B45309';
       if (isPassivated) {
-        limiting = `${selectedMetal} bị thụ động hóa trong HNO₃ đặc nguội (< 45°C). Tăng nhiệt độ ≥ 45°C!`;
+        limiting = `${selectedMetal} bị thụ động hóa trong HNO₃ đặc nguội (< 45°C). Tăng nhiệt độ ≥ 45°C để đun nóng!`;
         eqText = `${selectedMetal} + HNO₃ (đặc, nguội) → Bị thụ động hóa (không phản ứng)`;
       } else if (selectedMetal === 'Al' || selectedMetal === 'Fe') {
-        acidNeededPerMetal = 6;
         nGasMax = Math.min(nMetal * 3, nAcid * 0.5);
         limiting =
           nMetal * 6 <= nAcid
@@ -559,7 +590,6 @@ export const ChemistryExperimentLabView: React.FC = () => {
             : `HNO₃ hết trước, còn dư ${selectedMetal}`;
         eqText = `${selectedMetal} + 6HNO₃ (đặc, nóng) → ${selectedMetal}(NO₃)₃ + 3NO₂ ↑ + 3H₂O`;
       } else {
-        acidNeededPerMetal = 4;
         nGasMax = Math.min(nMetal * 2, nAcid * 0.5);
         limiting =
           nMetal * 4 <= nAcid
@@ -573,13 +603,12 @@ export const ChemistryExperimentLabView: React.FC = () => {
       gasColor = 'rgba(254, 249, 195, 0.90)';
       bubbleBorder = '#CA8A04';
       if (isPassivated) {
-        limiting = `${selectedMetal} bị thụ động hóa trong H₂SO₄ đặc nguội (< 45°C). Tăng nhiệt độ ≥ 45°C!`;
+        limiting = `${selectedMetal} bị thụ động hóa trong H₂SO₄ đặc nguội (< 45°C). Tăng nhiệt độ ≥ 45°C để đun nóng!`;
         eqText = `${selectedMetal} + H₂SO₄ (đặc, nguội) → Bị thụ động hóa (không phản ứng)`;
       } else if (needsHeatCuH2SO4) {
         limiting = 'Cu chỉ phản ứng với H₂SO₄ đặc khi đun nóng (tăng nhiệt độ ≥ 40°C)';
         eqText = 'Cu + H₂SO₄ (đặc, nguội) → Cần đun nóng để phản ứng xảy ra';
       } else if (selectedMetal === 'Al' || selectedMetal === 'Fe') {
-        acidNeededPerMetal = 3;
         nGasMax = Math.min(nMetal * 1.5, nAcid * 0.5);
         limiting =
           nMetal * 3 <= nAcid
@@ -587,7 +616,6 @@ export const ChemistryExperimentLabView: React.FC = () => {
             : `H₂SO₄ đặc hết trước, còn dư ${selectedMetal}`;
         eqText = `2${selectedMetal} + 6H₂SO₄ (đặc, nóng) → ${selectedMetal}₂(SO₄)₃ + 3SO₂ ↑ + 6H₂O`;
       } else {
-        acidNeededPerMetal = 2;
         nGasMax = Math.min(nMetal, nAcid * 0.5);
         limiting =
           nMetal * 2 <= nAcid
@@ -597,8 +625,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
       }
     }
 
-    void acidNeededPerMetal;
-    const vGasLiters = nGasMax * 24.79; // đkc 25°C, 1 bar
+    const vGasLiters = nGasMax * 24.79; // đkc 25°C, 1 bar (GDPT 2018)
     const rate =
       reactivity[selectedMetal] *
       Math.max(0.25, acidConcMetal) *
@@ -608,10 +635,11 @@ export const ChemistryExperimentLabView: React.FC = () => {
     return {
       reacts,
       isConc,
+      isOxidizingAcid,
       isPassivated,
       needsHeatCuH2SO4,
       nMetal,
-      nHPlus: isConc ? nAcid : nHPlus,
+      nHPlus: isConc || selectedAcid === 'HNO3_dil' ? nAcid : nHPlus,
       nGasMax,
       vGasLiters,
       gasFormula,
@@ -677,11 +705,11 @@ export const ChemistryExperimentLabView: React.FC = () => {
 
     // Solution color shifts dynamically based on product ion (Cu2+ blue, Fe2+ pale green, Fe3+ amber-yellow)
     const p = metalStoich.reacts ? rxnProgress : 0;
-    if (selectedMetal === 'Cu' && metalStoich.isConc && p > 0) {
+    if (selectedMetal === 'Cu' && metalStoich.isOxidizingAcid && p > 0) {
       ctx.fillStyle = `rgba(${Math.round(210 - p * 185)}, ${Math.round(240 - p * 75)}, 252, 0.78)`;
-    } else if (selectedMetal === 'Fe' && metalStoich.isConc && p > 0) {
+    } else if (selectedMetal === 'Fe' && metalStoich.isOxidizingAcid && p > 0) {
       ctx.fillStyle = `rgba(251, ${Math.round(220 - p * 45)}, ${Math.round(210 - p * 145)}, 0.72)`;
-    } else if (selectedMetal === 'Fe' && !metalStoich.isConc && p > 0) {
+    } else if (selectedMetal === 'Fe' && !metalStoich.isOxidizingAcid && p > 0) {
       ctx.fillStyle = `rgba(${Math.round(210 - p * 90)}, ${Math.round(240 - p * 10)}, ${Math.round(252 - p * 70)}, 0.72)`;
     } else {
       ctx.fillStyle = 'rgba(224, 242, 254, 0.65)';
@@ -736,6 +764,15 @@ export const ChemistryExperimentLabView: React.FC = () => {
       ctx.stroke();
     }
 
+    // Heating indicator when T >= 40°C
+    if (rxnTempC >= 40) {
+      ctx.fillStyle = '#F97316';
+      ctx.beginPath();
+      ctx.moveTo(flaskCx - 12, flaskBottom + 2);
+      ctx.quadraticCurveTo(flaskCx, flaskBottom - 14, flaskCx + 12, flaskBottom + 2);
+      ctx.fill();
+    }
+
     // Beaker outline & labels
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 2.5;
@@ -755,35 +792,72 @@ export const ChemistryExperimentLabView: React.FC = () => {
     const cylX = w * 0.72;
     const cylTop = 64;
     const cylH = 220;
-    const cylW = 64;
-
-    ctx.strokeStyle = '#64748B';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(flaskCx + 10, flaskBottom - 186);
-    ctx.lineTo(flaskCx + 10, 44);
-    ctx.lineTo(cylX, 44);
-    ctx.lineTo(cylX, cylTop + cylH - 10);
-    ctx.stroke();
-
-    // Inverted cylinder water bath
-    ctx.fillStyle = 'rgba(186, 230, 253, 0.4)';
-    ctx.fillRect(cylX - 58, cylTop + cylH - 36, 116, 48);
-
+    const cylW = 68;
     const gasCollectedL = metalStoich.vGasLiters * rxnProgress;
     const fillRatio = Math.min(0.92, gasCollectedL / Math.max(2.5, metalStoich.vGasLiters * 1.1));
     const gasPx = cylH * fillRatio;
 
-    // Liquid inside cylinder
-    ctx.fillStyle = 'rgba(125, 211, 252, 0.5)';
-    ctx.fillRect(cylX - cylW / 2, cylTop + gasPx, cylW, cylH - gasPx);
-    // Collected Gas pocket at top (brown NO2, pale SO2, or clear H2)
-    ctx.fillStyle = metalStoich.gasColor;
-    ctx.fillRect(cylX - cylW / 2, cylTop, cylW, gasPx);
+    const collectByWater = metalStoich.gasFormula === 'H₂' || metalStoich.gasFormula === 'NO';
 
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(cylX - cylW / 2, cylTop, cylW, cylH);
+    if (collectByWater) {
+      // Water displacement (đẩy nước) — H2 & NO are practically insoluble in water
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(flaskCx + 10, flaskBottom - 186);
+      ctx.lineTo(flaskCx + 10, 44);
+      ctx.lineTo(cylX - 68, 44);
+      ctx.lineTo(cylX - 68, cylTop + cylH - 8);
+      ctx.lineTo(cylX, cylTop + cylH - 8);
+      ctx.lineTo(cylX, cylTop + cylH - 24);
+      ctx.stroke();
+
+      // Water bath trough
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.42)';
+      ctx.fillRect(cylX - 62, cylTop + cylH - 36, 124, 48);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(cylX - 62, cylTop + cylH - 36, 124, 48);
+
+      // Liquid inside inverted cylinder
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.5)';
+      ctx.fillRect(cylX - cylW / 2, cylTop + gasPx, cylW, cylH - gasPx);
+      // Collected Gas pocket at top
+      ctx.fillStyle = metalStoich.gasColor;
+      ctx.fillRect(cylX - cylW / 2, cylTop, cylW, gasPx);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cylX - cylW / 2, cylTop, cylW, cylH);
+    } else {
+      // Upright air displacement (đẩy không khí — đặt đứng bình) for NO2 (M=46 > 29) & SO2 (M=64 > 29)
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(flaskCx + 10, flaskBottom - 186);
+      ctx.lineTo(flaskCx + 10, 44);
+      ctx.lineTo(cylX, 44);
+      ctx.lineTo(cylX, cylTop + cylH - 18);
+      ctx.stroke();
+
+      // NaOH cotton plug at jar mouth to absorb toxic NO2/SO2 gas (SGK THPT)
+      ctx.fillStyle = '#E2E8F0';
+      ctx.strokeStyle = '#94A3B8';
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(cylX - cylW / 2 + 2, cylTop - 6, cylW - 4, 14);
+      ctx.strokeRect(cylX - cylW / 2 + 2, cylTop - 6, cylW - 4, 14);
+
+      // Dense gas settles from bottom upward
+      ctx.fillStyle = metalStoich.gasColor;
+      ctx.fillRect(cylX - cylW / 2, cylTop + cylH - gasPx, cylW, gasPx);
+
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cylX - cylW / 2, cylTop, cylW, cylH);
+
+      ctx.fillStyle = '#0369A1';
+      ctx.font = '700 10px ui-sans-serif, sans-serif';
+      ctx.fillText('Bông tẩm NaOH', cylX + cylW / 2 + 8, cylTop + 4);
+    }
 
     // Graduations
     ctx.fillStyle = '#475569';
@@ -801,6 +875,8 @@ export const ChemistryExperimentLabView: React.FC = () => {
         ? 'HCl'
         : selectedAcid === 'H2SO4'
         ? 'H₂SO₄ loãng'
+        : selectedAcid === 'HNO3_dil'
+        ? 'HNO₃ loãng'
         : selectedAcid === 'HNO3_conc'
         ? 'HNO₃ đặc'
         : 'H₂SO₄ đặc';
@@ -809,9 +885,9 @@ export const ChemistryExperimentLabView: React.FC = () => {
     ctx.font = '700 12px ui-sans-serif, sans-serif';
     ctx.fillText(`Bình phản ứng (${selectedMetal} + ${acidDisplay})`, flaskCx - 86, flaskBottom + 24);
     ctx.fillText(
-      `Ống thu khí ${metalStoich.gasFormula} (${gasCollectedL.toFixed(2)} L)`,
-      cylX - 72,
-      cylTop - 14
+      `Thu ${metalStoich.gasFormula} (${collectByWater ? 'đẩy nước' : 'đặt ngửa bình'} · ${gasCollectedL.toFixed(2)} L)`,
+      cylX - 96,
+      cylTop - 18
     );
 
     if (metalStoich.isPassivated) {
@@ -1152,13 +1228,13 @@ export const ChemistryExperimentLabView: React.FC = () => {
         <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-emerald-700">
-              Phòng Thí Nghiệm Hóa Học · Lớp 10 · 11 · 12
+              Phòng Thí Nghiệm Hóa Học THPT (GDPT 2018) · Lớp 10 · 11 · 12
             </p>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
               Chọn Mục Thí Nghiệm Hóa Học
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Nhấn vào từng mục bên dưới để xem danh sách các thí nghiệm mô phỏng bên trong.
+              Mô phỏng trực quan chuẩn kiến thức Hóa học 10, 11, 12 (điều kiện chuẩn 25°C, 1 bar · V = 24,79 L/mol, danh pháp IUPAC).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 shrink-0">
@@ -1179,13 +1255,13 @@ export const ChemistryExperimentLabView: React.FC = () => {
             </div>
             <div>
               <div className="text-[11px] font-bold text-emerald-700">
-                Công cụ chuyên sâu · Lớp 8 – 12
+                Công cụ chuyên sâu THPT · Lớp 10 – 11 – 12
               </div>
               <h2 className="text-base font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors">
                 Viết, Tự Sinh Sản Phẩm &amp; Cân Bằng Mọi Phương Trình Hóa Học
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Nhập cả 2 vế để cân bằng chính xác, chỉ nhập chất tham gia để tự viết sản phẩm, hoặc tra cứu kho phương trình kèm bảng ghi chép chuỗi phản ứng.
+                Nhập cả 2 vế để cân bằng chính xác, chỉ nhập chất tham gia để tự viết sản phẩm, hoặc tra cứu kho phương trình chuẩn THPT kèm bảng ghi chép.
               </p>
             </div>
           </div>
@@ -1633,7 +1709,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
                   className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <RotateCcw size={14} />
-                  <span>Điều kiện chuẩn (25°C · 1 atm)</span>
+                  <span>Điều kiện chuẩn (25°C · 1 bar)</span>
                 </button>
               </div>
               <div className="h-[390px] w-full">
@@ -1712,6 +1788,10 @@ export const ChemistryExperimentLabView: React.FC = () => {
                 <p className="font-bold text-slate-900">
                   {dropCount === 0
                     ? `Trong cốc đang chứa sẵn ${activeRxn.reagentA}. Nhấn nút "Nhỏ thêm thuốc thử" để tiến hành thí nghiệm.`
+                    : activeRxn.dissolvesInExcess && dropCount <= 6
+                    ? activeRxn.id === 'aloh3_excess'
+                      ? 'Đang tạo kết tủa keo trắng Al(OH)₃ ↓. Nhỏ tiếp thêm giọt để quan sát kết tủa tan trong NaOH dư!'
+                      : 'Đang tạo kết tủa xanh lam Cu(OH)₂ ↓. Nhỏ tiếp thêm giọt NH₃ để quan sát tạo phức chất xanh thẫm!'
                     : activeRxn.phenomenon}
                 </p>
               </div>
@@ -1862,6 +1942,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
                     {[
                       { id: 'HCl', label: 'HCl (loãng)' },
                       { id: 'H2SO4', label: 'H₂SO₄ loãng' },
+                      { id: 'HNO3_dil', label: 'HNO₃ loãng' },
                       { id: 'HNO3_conc', label: 'HNO₃ đặc' },
                       { id: 'H2SO4_conc', label: 'H₂SO₄ đặc' },
                     ].map((a) => (
@@ -1869,7 +1950,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
                         key={a.id}
                         type="button"
                         onClick={() => setSelectedAcid(a.id as AcidType)}
-                        className={`py-2 rounded-lg border font-bold cursor-pointer ${
+                        className={`py-2 px-2 rounded-lg border font-bold cursor-pointer ${
                           selectedAcid === a.id
                             ? 'bg-emerald-600 text-white border-emerald-600'
                             : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -1990,9 +2071,9 @@ export const ChemistryExperimentLabView: React.FC = () => {
 
             {activeModule === 'titration' && (
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                <p className="font-mono font-bold text-slate-900">HCl + NaOH → NaCl + H₂O</p>
+                <p className="font-mono font-bold text-slate-900">HCl + NaOH → NaCl + H₂O   (H⁺ + OH⁻ → H₂O)</p>
                 <p className="text-slate-600 leading-relaxed">
-                  Tại điểm tương đương: n(H⁺) = n(OH⁻) nên pH = 7.00. Phenolphthalein đổi màu rõ sang hồng nhạt ở khoảng pH ≈ 8.2 ngay khi dư 1 giọt NaOH.
+                  Theo thuyết Brønsted–Lowry (Hóa 11): tại điểm tương đương <span className="font-mono font-semibold">C_A·V_A = C_B·V_B</span> nên pH = 7,00. Phenolphthalein đổi màu rõ sang hồng nhạt ở pH ≈ 8,2–10,0 ngay khi dư 1 giọt NaOH.
                 </p>
               </div>
             )}
@@ -2001,9 +2082,9 @@ export const ChemistryExperimentLabView: React.FC = () => {
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                 <p className="font-mono font-bold text-slate-900">{metalStoich.eqText}</p>
                 <p className="text-slate-600 leading-relaxed">
-                  {metalStoich.isConc
-                    ? 'HNO₃ đặc và H₂SO₄ đặc là acid có tính oxi hóa mạnh: khử N⁺⁵ → NO₂ (nâu đỏ) hoặc S⁺⁶ → SO₂; riêng Al, Fe bị thụ động hóa khi nguội (< 45°C).'
-                    : 'Acid HCl, H₂SO₄ loãng oxi hóa kim loại đứng trước H thành muối (Fe lên +2) và giải phóng khí H₂ theo thứ tự tốc độ: Mg > Al > Zn > Fe.'}
+                  {metalStoich.isOxidizingAcid
+                    ? 'HNO₃ (loãng/đặc) và H₂SO₄ đặc nóng là acid có tính oxi hóa mạnh: đưa Fe lên Fe⁺³, khử N⁺⁵ → NO (loãng) / NO₂ (đặc) hoặc S⁺⁶ → SO₂ (đặt ngửa bình thu, bông tẩm NaOH). Al, Fe bị thụ động hóa trong HNO₃/H₂SO₄ đặc nguội.'
+                    : 'Acid HCl, H₂SO₄ loãng oxi hóa kim loại đứng trước H (E° < 0 V) thành muối (Fe lên Fe²⁺) và giải phóng khí H₂ thu bằng phương pháp đẩy nước.'}
                 </p>
               </div>
             )}
@@ -2015,7 +2096,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
                   Ion thu gọn: {activeRxn.ionicEq}
                 </p>
                 <p className="text-slate-600 leading-relaxed">
-                  Điều kiện xảy ra phản ứng trao đổi ion trong dung dịch: tạo ít nhất một chất kết tủa, chất khí bay hơi hoặc chất điện li yếu (như H₂O).
+                  Phản ứng trao đổi ion trong dung dịch xảy ra khi tạo ít nhất một chất kết tủa, chất khí bay hơi hoặc chất điện li yếu (H₂O). Riêng Al(OH)₃ có tính lưỡng tính nên tan trong base mạnh NaOH dư.
                 </p>
               </div>
             )}
@@ -2023,12 +2104,12 @@ export const ChemistryExperimentLabView: React.FC = () => {
             {activeModule === 'equilibrium' && (
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                 <p className="font-mono font-bold text-slate-900">
-                  2NO₂ (nâu đỏ) ⇌ N₂O₄ (không màu) · ΔH = -57.2 kJ
+                  2NO₂ (nâu đỏ) ⇌ N₂O₄ (không màu) · ΔᵣH°₂₉₈ = -57,2 kJ
                 </p>
                 <p className="text-slate-600 leading-relaxed flex items-start gap-1.5">
                   <Info size={14} className="shrink-0 mt-0.5 text-emerald-600" />
                   <span>
-                    Phản ứng thuận tỏa nhiệt và làm giảm số mol khí. Khi tăng áp suất hoặc hạ nhiệt độ, cân bằng dịch chuyển theo chiều thuận (màu nhạt dần).
+                    Theo nguyên lí Le Chatelier (Hóa 11): phản ứng thuận tỏa nhiệt (ΔᵣH° &lt; 0) và làm giảm số mol khí (2 → 1). Hạ nhiệt độ hoặc tăng áp suất làm cân bằng dịch chuyển theo chiều thuận (màu nhạt dần); lưu ý hằng số cân bằng chỉ phụ thuộc nhiệt độ T.
                   </span>
                 </p>
               </div>
