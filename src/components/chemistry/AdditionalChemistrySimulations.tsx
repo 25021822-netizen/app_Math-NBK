@@ -5,19 +5,13 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Info,
-  Flame,
   Zap,
-  Thermometer,
 } from 'lucide-react';
 
 export type AdditionalChemModuleId =
   | 'electrolysis'
   | 'galvanic_cell'
-  | 'reaction_rate'
-  | 'redox_flame'
-  | 'ester_lab'
-  | 'thermochemistry'
-  | 'oxygen_prep';
+  | 'ester_lab';
 
 interface ChemSliderProps {
   label: string;
@@ -96,7 +90,6 @@ function drawArrow(
   ctx.restore();
 }
 
-// Data for Galvanic Cell
 interface ElectrodeMetal {
   symbol: string;
   ion: string;
@@ -116,145 +109,7 @@ const ELECTRODE_METALS: ElectrodeMetal[] = [
   { symbol: 'Ag', ion: 'Ag⁺', n: 1, e0: +0.80, molarMass: 108, color: '#E2E8F0', solColor: 'rgba(241,245,249,0.5)' },
 ];
 
-// Data for Flame Test
-interface FlameIon {
-  id: string;
-  ion: string;
-  salt: string;
-  flameColor: string;
-  glowColor: string;
-  wavelengthNm: string;
-  colorName: string;
-}
-
-const FLAME_IONS: FlameIon[] = [
-  { id: 'Li', ion: 'Li⁺', salt: 'LiCl', flameColor: '#E11D48', glowColor: 'rgba(225, 29, 72, 0.55)', wavelengthNm: '671 nm', colorName: 'Đỏ tía (Crimson)' },
-  { id: 'Na', ion: 'Na⁺', salt: 'NaCl', flameColor: '#FACC15', glowColor: 'rgba(250, 204, 21, 0.65)', wavelengthNm: '589 nm', colorName: 'Vàng rực' },
-  { id: 'K', ion: 'K⁺', salt: 'KCl', flameColor: '#C084FC', glowColor: 'rgba(192, 132, 252, 0.55)', wavelengthNm: '766 / 404 nm', colorName: 'Tím hoa cà' },
-  { id: 'Ca', ion: 'Ca²⁺', salt: 'CaCl₂', flameColor: '#FB923C', glowColor: 'rgba(251, 146, 60, 0.60)', wavelengthNm: '622 nm', colorName: 'Đỏ cam' },
-  { id: 'Cu', ion: 'Cu²⁺', salt: 'CuCl₂', flameColor: '#10B981', glowColor: 'rgba(16, 185, 129, 0.58)', wavelengthNm: '510 nm', colorName: 'Xanh lục lam' },
-  { id: 'Ba', ion: 'Ba²⁺', salt: 'BaCl₂', flameColor: '#A3E635', glowColor: 'rgba(163, 230, 53, 0.58)', wavelengthNm: '524 nm', colorName: 'Vàng lục' },
-];
-
-// Data for Redox test-tube experiments
-interface RedoxReaction {
-  id: string;
-  title: string;
-  reagents: string;
-  initialLiquid: string;
-  finalLiquid: string;
-  gasColor: string | null;
-  gasFormula: string | null;
-  depositColor: string | null;
-  phenomenon: string;
-  equation: string;
-}
-
-const REDOX_REACTIONS: RedoxReaction[] = [
-  {
-    id: 'fe_cuso4',
-    title: 'Fe + CuSO₄',
-    reagents: 'Đinh sắt vào dung dịch CuSO₄ (xanh lam)',
-    initialLiquid: 'rgba(56, 189, 248, 0.55)',
-    finalLiquid: 'rgba(134, 239, 172, 0.45)',
-    gasColor: null,
-    gasFormula: null,
-    depositColor: '#B45309',
-    phenomenon: 'Lớp đồng đỏ bám ngoài đinh sắt; màu xanh lam của CuSO₄ nhạt dần chuyển sang lục nhạt (FeSO₄).',
-    equation: 'Fe + CuSO₄ → FeSO₄ + Cu ↓',
-  },
-  {
-    id: 'cu_hno3',
-    title: 'Cu + HNO₃ đặc',
-    reagents: 'Mảnh đồng vào dung dịch HNO₃ đặc',
-    initialLiquid: 'rgba(226, 232, 240, 0.45)',
-    finalLiquid: 'rgba(14, 165, 233, 0.62)',
-    gasColor: 'rgba(180, 83, 9, 0.72)',
-    gasFormula: 'NO₂ ↑ (nâu đỏ)',
-    depositColor: null,
-    phenomenon: 'Đồng tan nhanh, dung dịch hóa xanh lam Cu(NO₃)₂ và sủi bọt khí NO₂ màu nâu đỏ bay ra mạnh.',
-    equation: 'Cu + 4HNO₃ (đặc) → Cu(NO₃)₂ + 2NO₂ ↑ + 2H₂O',
-  },
-  {
-    id: 'kmno4_hcl',
-    title: 'KMnO₄ + HCl đặc',
-    reagents: 'Tinh thể KMnO₄ tím đen + HCl đặc',
-    initialLiquid: 'rgba(147, 51, 234, 0.68)',
-    finalLiquid: 'rgba(254, 243, 199, 0.45)',
-    gasColor: 'rgba(163, 230, 53, 0.65)',
-    gasFormula: 'Cl₂ ↑ (vàng lục)',
-    depositColor: null,
-    phenomenon: 'Dung dịch mất màu tím chuyển gần như không màu (MnCl₂) và giải phóng khí Cl₂ màu vàng lục mùi hắc.',
-    equation: '2KMnO₄ + 16HCl (đặc) → 2KCl + 2MnCl₂ + 5Cl₂ ↑ + 8H₂O',
-  },
-  {
-    id: 'kmno4_feso4',
-    title: 'KMnO₄ + FeSO₄ + H₂SO₄',
-    reagents: 'Nhỏ KMnO₄ vào hỗn hợp FeSO₄ / H₂SO₄ loãng',
-    initialLiquid: 'rgba(168, 85, 247, 0.65)',
-    finalLiquid: 'rgba(254, 240, 138, 0.35)',
-    gasColor: null,
-    gasFormula: null,
-    depositColor: null,
-    phenomenon: 'Màu tím của MnO₄⁻ bị khử hoàn toàn mất màu ngay lập tức, dung dịch có màu vàng nhạt của Fe³⁺.',
-    equation: '10FeSO₄ + 2KMnO₄ + 8H₂SO₄ → 5Fe₂(SO₄)₃ + K₂SO₄ + 2MnSO₄ + 8H₂O',
-  },
-];
-
-// Data for Thermochemistry
-interface ThermoReaction {
-  id: string;
-  label: string;
-  type: 'exo' | 'endo';
-  deltaH: number; // kJ/mol
-  targetTempC: number;
-  liquidColor: string;
-  equation: string;
-  explanation: string;
-}
-
-const THERMO_REACTIONS: ThermoReaction[] = [
-  {
-    id: 'neutralization',
-    label: 'HCl(aq) + NaOH(aq) (Trung hòa)',
-    type: 'exo',
-    deltaH: -57.3,
-    targetTempC: 39.5,
-    liquidColor: 'rgba(251, 146, 60, 0.25)',
-    equation: 'HCl(aq) + NaOH(aq) → NaCl(aq) + H₂O(l)   ΔᵣH°₂₉₈ = -57,3 kJ',
-    explanation: 'Phản ứng trung hòa là phản ứng tỏa nhiệt (ΔᵣH°₂₉₈ < 0), giải phóng nhiệt lượng làm nhiệt độ dung dịch tăng lên.',
-  },
-  {
-    id: 'cao_water',
-    label: 'CaO(s) + H₂O(l) (Tôi vôi)',
-    type: 'exo',
-    deltaH: -65.2,
-    targetTempC: 68.0,
-    liquidColor: 'rgba(226, 232, 240, 0.72)',
-    equation: 'CaO(s) + H₂O(l) → Ca(OH)₂(aq)   ΔᵣH°₂₉₈ = -65,2 kJ',
-    explanation: 'Quá trình tôi vôi tỏa nhiệt cực mạnh (ΔᵣH°₂₉₈ < 0), làm nước trong nhiệt lượng kế nóng nhanh.',
-  },
-  {
-    id: 'nh4no3_dissolve',
-    label: 'Hòa tan NH₄NO₃(s) trong H₂O',
-    type: 'endo',
-    deltaH: +25.7,
-    targetTempC: 7.5,
-    liquidColor: 'rgba(186, 230, 253, 0.48)',
-    equation: 'NH₄NO₃(s) + aq → NH₄⁺(aq) + NO₃⁻(aq)   ΔᵣH°₂₉₈ = +25,7 kJ',
-    explanation: 'Quá trình hòa tan thu nhiệt (ΔᵣH°₂₉₈ > 0) hấp thụ nhiệt từ nước làm dung dịch lạnh đi nhanh (ứng dụng túi chườm lạnh).',
-  },
-  {
-    id: 'baoh2_nh4cl',
-    label: 'Ba(OH)₂·8H₂O(s) + 2NH₄Cl(s)',
-    type: 'endo',
-    deltaH: +80.3,
-    targetTempC: -6.0,
-    liquidColor: 'rgba(125, 211, 252, 0.55)',
-    equation: 'Ba(OH)₂·8H₂O(s) + 2NH₄Cl(s) → BaCl₂(aq) + 2NH₃(g) + 10H₂O(l)   ΔᵣH°₂₉₈ > 0',
-    explanation: 'Phản ứng thu nhiệt rất mạnh (ΔᵣH°₂₉₈ > 0) khiến nhiệt độ hỗn hợp giảm xuống dưới 0°C, có thể làm đóng băng giọt nước dưới đáy cốc.',
-  },
-];
+type ElectrolysisSystem = 'cuso4_refine' | 'plating_ag' | 'plating_ni' | 'cuso4_inert';
 
 interface AdditionalChemistrySimulationsProps {
   moduleId: AdditionalChemModuleId;
@@ -267,64 +122,99 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // ===========================================================================
-  // 1. ĐIỆN PHÂN DUNG DỊCH & MẠ ĐIỆN (ELECTROLYSIS)
+  // 1. TINH CHẾ KIM LOẠI, MẠ ĐIỆN & ĐIỆN PHÂN DUNG DỊCH (ĐIỆN CỰC TAN / TRƠ)
   // ===========================================================================
-  const [elecSystem, setElecSystem] = useState<'cuso4_inert' | 'cuso4_cu' | 'nacl_membrane' | 'agno3_inert'>('cuso4_inert');
-  const [elecCurrentA, setElecCurrentA] = useState<number>(4.0); // A
-  const [elecTimeMin, setElecTimeMin] = useState<number>(0); // 0..60 min animated
+  const [elecSystem, setElecSystem] = useState<ElectrolysisSystem>('cuso4_refine');
+  const [elecCurrentA, setElecCurrentA] = useState<number>(5.0); // A
+  const [elecTimeMin, setElecTimeMin] = useState<number>(0); // 0..45 min
   const elecStateRef = useRef({ elapsedMin: 0, t: 0 });
 
   const elecCalc = useMemo(() => {
     const tSec = elecTimeMin * 60;
-    const F = 96500; // Hằng số Faraday theo SGK Hóa học 12 (96 500 C/mol)
+    const F = 96500; // Hằng số Faraday SGK Hóa 12
     const nMolE = (elecCurrentA * tSec) / F;
     let cathodeMassG = 0;
+    let anodeDissolvedG = 0;
     let anodeGasL = 0;
-    let cathodeGasL = 0;
+    let isSolubleAnode = true;
     let cathodeEq = '';
     let anodeEq = '';
     let overallEq = '';
     let phenomenon = '';
+    let anodeLabel = 'Anot (+)';
+    let cathodeLabel = 'Catot (−)';
 
-    if (elecSystem === 'cuso4_inert') {
+    if (elecSystem === 'cuso4_refine') {
       cathodeMassG = (64 * nMolE) / 2;
-      anodeGasL = (nMolE / 4) * 24.79;
-      cathodeEq = 'Cu²⁺ + 2e → Cu ↓ (bám đỏ lên Catot)';
-      anodeEq = '2H₂O → O₂ ↑ + 4H⁺ + 4e (sủi bọt khí)';
-      overallEq = '2CuSO₄ + 2H₂O → 2Cu ↓ + O₂ ↑ + 2H₂SO₄';
-      phenomenon = 'Catot có lớp đồng đỏ bám vào; Anot sủi bọt khí O₂; màu xanh dung dịch nhạt dần và pH giảm.';
-    } else if (elecSystem === 'cuso4_cu') {
-      cathodeMassG = (64 * nMolE) / 2;
-      cathodeEq = 'Cu²⁺ + 2e → Cu ↓ (mạ đồng lên Catot)';
-      anodeEq = 'Cu → Cu²⁺ + 2e (Anot đồng tan dần)';
-      overallEq = 'Anot Cu tan → Ion Cu²⁺ di chuyển sang Catot (nồng độ không đổi)';
-      phenomenon = 'Ứng dụng mạ đồng / tinh chế đồng: khối lượng Catot tăng đúng bằng khối lượng Anot bị hòa tan.';
-    } else if (elecSystem === 'nacl_membrane') {
-      cathodeGasL = (nMolE / 2) * 24.79;
-      anodeGasL = (nMolE / 2) * 24.79;
-      cathodeEq = '2H₂O + 2e → H₂ ↑ + 2OH⁻ (hóa hồng phenolphtalein)';
-      anodeEq = '2Cl⁻ → Cl₂ ↑ + 2e (khí vàng lục)';
-      overallEq = '2NaCl + 2H₂O —(đpmn)→ 2NaOH + H₂ ↑ + Cl₂ ↑';
-      phenomenon = 'Catot sủi khí H₂ và dung dịch chuyển hồng (sinh NaOH); Anot sủi khí Cl₂ vàng lục.';
-    } else {
+      anodeDissolvedG = (64 * nMolE) / 2;
+      isSolubleAnode = true;
+      anodeLabel = 'Anot (+) Cu thô (tan)';
+      cathodeLabel = 'Catot (−) Cu tinh khiết';
+      cathodeEq = 'Cu²⁺ + 2e → Cu ↓ (bám đồng 99,99% lên Catot)';
+      anodeEq = 'Cu (thô) → Cu²⁺ + 2e (Anot Cu tan, tạp chất Ag/Au lắng bùn)';
+      overallEq = 'Tinh chế đồng: Cu (Anot thô) —(đpdd CuSO₄)→ Cu (Catot tinh khiết)';
+      phenomenon =
+        'Điện cực Anot đồng thô tan dần để lại bùn anot (Ag, Au); ion Cu²⁺ di chuyển về Catot tạo lớp đồng tinh khiết dày lên.';
+    } else if (elecSystem === 'plating_ag') {
       cathodeMassG = 108 * nMolE;
+      anodeDissolvedG = 108 * nMolE;
+      isSolubleAnode = true;
+      anodeLabel = 'Anot (+) Thanh Ag (tan)';
+      cathodeLabel = 'Catot (−) Vật cần mạ';
+      cathodeEq = 'Ag⁺ + 1e → Ag ↓ (lớp mạ bạc trắng bóng bám lên vật)';
+      anodeEq = 'Ag → Ag⁺ + 1e (Anot Ag tan dần bù lượng Ag⁺ đã điện phân)';
+      overallEq = 'Mạ bạc: Ag (Anot tan) —(đpdd muối Ag⁺)→ Ag (bám bề mặt Catot)';
+      phenomenon =
+        'Thanh Anot Ag tan dần giúp duy trì ổn định nồng độ ion Ag⁺; bề mặt vật ở Catot được phủ lớp bạc trắng sáng bóng.';
+    } else if (elecSystem === 'plating_ni') {
+      cathodeMassG = (58.7 * nMolE) / 2;
+      anodeDissolvedG = (58.7 * nMolE) / 2;
+      isSolubleAnode = true;
+      anodeLabel = 'Anot (+) Thanh Ni (tan)';
+      cathodeLabel = 'Catot (−) Vật thép cần mạ';
+      cathodeEq = 'Ni²⁺ + 2e → Ni ↓ (phủ lớp niken chống ăn mòn lên thép)';
+      anodeEq = 'Ni → Ni²⁺ + 2e (Anot Ni tan dần bổ sung ion Ni²⁺)';
+      overallEq = 'Mạ niken: Ni (Anot tan) —(đpdd NiSO₄)→ Ni (lớp phủ bảo vệ Catot)';
+      phenomenon =
+        'Anot niken tan dần theo định luật Faraday; Catot bằng thép được mạ lớp niken sáng mịn bảo vệ chống gỉ sét.';
+    } else {
+      cathodeMassG = (64 * nMolE) / 2;
+      anodeDissolvedG = 0;
       anodeGasL = (nMolE / 4) * 24.79;
-      cathodeEq = 'Ag⁺ + 1e → Ag ↓ (mạ bạc trắng sáng)';
-      anodeEq = '2H₂O → O₂ ↑ + 4H⁺ + 4e';
-      overallEq = '4AgNO₃ + 2H₂O → 4Ag ↓ + O₂ ↑ + 4HNO₃';
-      phenomenon = 'Lớp bạc trắng bóng bám lên Catot; Anot than chì sủi bọt khí O₂ không màu.';
+      isSolubleAnode = false;
+      anodeLabel = 'Anot (+) Graphit (trơ)';
+      cathodeLabel = 'Catot (−) Đồng bám';
+      cathodeEq = 'Cu²⁺ + 2e → Cu ↓ (bám đỏ lên Catot)';
+      anodeEq = '2H₂O → O₂ ↑ + 4H⁺ + 4e (điện cực trơ không tan)';
+      overallEq = '2CuSO₄ + 2H₂O —(đpdd, cực trơ)→ 2Cu ↓ + O₂ ↑ + 2H₂SO₄';
+      phenomenon =
+        'Anot than chì trơ không tan và sủi bọt khí O₂; Catot có Cu bám vào; nồng độ Cu²⁺ giảm làm dung dịch nhạt màu xanh và pH giảm.';
     }
-    return { nMolE, cathodeMassG, anodeGasL, cathodeGasL, cathodeEq, anodeEq, overallEq, phenomenon };
+
+    return {
+      nMolE,
+      cathodeMassG,
+      anodeDissolvedG,
+      anodeGasL,
+      isSolubleAnode,
+      cathodeEq,
+      anodeEq,
+      overallEq,
+      phenomenon,
+      anodeLabel,
+      cathodeLabel,
+    };
   }, [elecSystem, elecCurrentA, elecTimeMin]);
 
   // ===========================================================================
-  // 2. PIN ĐIỆN HÓA (GALVANIC CELL)
+  // 2. PIN GALVANI (PIN ĐIỆN HÓA — ĐIỆN CỰC ANOT TAN & CATOT BỒI ĐẮP)
   // ===========================================================================
   const [galvLeftIdx, setGalvLeftIdx] = useState<number>(1); // Zn
   const [galvRightIdx, setGalvRightIdx] = useState<number>(4); // Cu
   const [galvConcLeft, setGalvConcLeft] = useState<number>(1.0); // M
   const [galvConcRight, setGalvConcRight] = useState<number>(1.0); // M
-  const galvStateRef = useRef({ t: 0 });
+  const [galvTimeMin, setGalvTimeMin] = useState<number>(0); // 0..60 min discharge
+  const galvStateRef = useRef({ t: 0, elapsedMin: 0 });
 
   const galvCalc = useMemo(() => {
     const leftM = ELECTRODE_METALS[galvLeftIdx];
@@ -335,86 +225,44 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     const anode = leftIsAnode ? leftM : rightM;
     const cathode = leftIsAnode ? rightM : leftM;
     const eCell = Math.abs(eRight - eLeft);
-    return { leftM, rightM, eLeft, eRight, leftIsAnode, anode, cathode, eCell };
-  }, [galvLeftIdx, galvRightIdx, galvConcLeft, galvConcRight]);
 
-  // ===========================================================================
-  // 3. TỐC ĐỘ PHẢN ỨNG & XÚC TÁC (REACTION RATE)
-  // ===========================================================================
-  const [rateSubMode, setRateSubMode] = useState<'cross_x' | 'collision'>('cross_x');
-  const [rateConcM, setRateConcM] = useState<number>(0.4); // M
-  const [rateTempC, setRateTempC] = useState<number>(25); // C
-  const [rateCatalyst, setRateCatalyst] = useState<boolean>(false);
-  const [rateSurfaceFine, setRateSurfaceFine] = useState<boolean>(false);
-  const rateStateRef = useRef({
-    t: 0,
-    turbidity: 0, // 0..1
-    finished: false,
-    crossTimeS: 0,
-    particles: Array.from({ length: 32 }, () => ({
-      x: Math.random(),
-      y: Math.random(),
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      reacted: false,
-    })),
-  });
-  const [rateReadout, setRateReadout] = useState({ turbidityPct: 0, elapsedS: 0, done: false });
+    // Simulate continuous discharge at nominal current proportional to E_cell (e.g. I = 2.0 * E_cell A)
+    const F = 96500;
+    const nominalCurrentA = eCell > 0.01 ? Math.max(0.5, 2.2 * eCell) : 0;
+    const nMolE = (nominalCurrentA * galvTimeMin * 60) / F;
+    const anodeLostG = (anode.molarMass * nMolE) / anode.n;
+    const cathodeGainedG = (cathode.molarMass * nMolE) / cathode.n;
+    const wearFrac = eCell > 0.01 ? Math.min(1, galvTimeMin / 60) : 0;
 
-  const rateFactor = useMemo(() => {
-    const tempFactor = Math.pow(2.0, (rateTempC - 25) / 10);
-    const concFactor = rateConcM / 0.4;
-    const catFactor = rateCatalyst ? 2.1 : 1.0;
-    const surfFactor = rateSurfaceFine && rateSubMode === 'collision' ? 1.5 : 1.0;
-    return tempFactor * concFactor * catFactor * surfFactor;
-  }, [rateTempC, rateConcM, rateCatalyst, rateSurfaceFine, rateSubMode]);
-
-  const resetRate = () => {
-    rateStateRef.current = {
-      t: 0,
-      turbidity: 0,
-      finished: false,
-      crossTimeS: 0,
-      particles: Array.from({ length: 32 }, () => ({
-        x: Math.random(),
-        y: Math.random(),
-        vx: (Math.random() - 0.5) * 0.5,
-        vy: (Math.random() - 0.5) * 0.5,
-        reacted: false,
-      })),
+    return {
+      leftM,
+      rightM,
+      eLeft,
+      eRight,
+      leftIsAnode,
+      anode,
+      cathode,
+      eCell,
+      nMolE,
+      anodeLostG,
+      cathodeGainedG,
+      wearFrac,
     };
-    setRateReadout({ turbidityPct: 0, elapsedS: 0, done: false });
-  };
+  }, [galvLeftIdx, galvRightIdx, galvConcLeft, galvConcRight, galvTimeMin]);
 
+  // Reset discharge time when changing electrode metals
   useEffect(() => {
-    resetRate();
-  }, [rateSubMode, rateConcM, rateTempC, rateCatalyst, rateSurfaceFine]);
+    galvStateRef.current.elapsedMin = 0;
+    setGalvTimeMin(0);
+  }, [galvLeftIdx, galvRightIdx]);
 
   // ===========================================================================
-  // 4. THỬ NGỌN LỬA & OXI HÓA - KHỬ (REDOX & FLAME)
-  // ===========================================================================
-  const [redoxSubMode, setRedoxSubMode] = useState<'flame' | 'test_tube'>('flame');
-  const [flameIonId, setFlameIonId] = useState<string>('Na');
-  const [redoxRxnId, setRedoxRxnId] = useState<string>('fe_cuso4');
-  const [redoxDropped, setRedoxDropped] = useState<boolean>(false);
-  const redoxStateRef = useRef({ t: 0, progress: 0 });
-
-  const activeFlameIon = useMemo(
-    () => FLAME_IONS.find((f) => f.id === flameIonId) || FLAME_IONS[1],
-    [flameIonId]
-  );
-  const activeRedox = useMemo(
-    () => REDOX_REACTIONS.find((r) => r.id === redoxRxnId) || REDOX_REACTIONS[0],
-    [redoxRxnId]
-  );
-
-  // ===========================================================================
-  // 5. ESTE HÓA & XÀ PHÒNG HÓA (ESTER LAB)
+  // 3. ĐIỀU CHẾ ESTER & XÀ PHÒNG HÓA (ESTER LAB)
   // ===========================================================================
   const [esterMode, setEsterMode] = useState<'esterification' | 'saponification'>('esterification');
   const [esterTempC, setEsterTempC] = useState<number>(70); // C
   const [esterCatH2SO4, setEsterCatH2SO4] = useState<boolean>(true);
-  const [esterMoleRatio, setEsterMoleRatio] = useState<number>(1.5); // Ancol / Acid
+  const [esterMoleRatio, setEsterMoleRatio] = useState<number>(1.5); // Ethanol / Acetic acid
   const [soapAlkali, setSoapAlkali] = useState<'NaOH' | 'KOH'>('NaOH');
   const [soapSaltOut, setSoapSaltOut] = useState<boolean>(false);
   const esterStateRef = useRef({ t: 0, yieldFrac: 0 });
@@ -422,106 +270,17 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
 
   const esterMaxYield = useMemo(() => {
     if (esterMode === 'esterification') {
-      // Equilibrium K=4 for CH3COOH + C2H5OH <-> Ester + H2O
       const k = 4.0;
       const r = esterMoleRatio;
-      // (k-1)x^2 - k(1+r)x + kr = 0
       const a = k - 1;
       const b = -k * (1 + r);
       const c = k * r;
       const disc = Math.sqrt(Math.max(0, b * b - 4 * a * c));
-      const x = ( -b - disc ) / (2 * a);
+      const x = (-b - disc) / (2 * a);
       return Math.min(96, Math.max(20, x * 100));
     }
     return 95;
   }, [esterMode, esterMoleRatio]);
-
-  // ===========================================================================
-  // 6. NHIỆT HÓA HỌC (THERMOCHEMISTRY)
-  // ===========================================================================
-  const [thermoId, setThermoId] = useState<string>('neutralization');
-  const [thermoStarted, setThermoStarted] = useState<boolean>(false);
-  const thermoStateRef = useRef({
-    t: 0,
-    tempC: 25.0,
-    history: [{ t: 0, tempC: 25.0 }] as { t: number; tempC: number }[],
-  });
-  const [thermoReadout, setThermoReadout] = useState({ tempC: 25.0, qKj: 0 });
-
-  const activeThermo = useMemo(
-    () => THERMO_REACTIONS.find((x) => x.id === thermoId) || THERMO_REACTIONS[0],
-    [thermoId]
-  );
-
-  const resetThermo = () => {
-    setThermoStarted(false);
-    thermoStateRef.current = { t: 0, tempC: 25.0, history: [{ t: 0, tempC: 25.0 }] };
-    setThermoReadout({ tempC: 25.0, qKj: 0 });
-  };
-
-  useEffect(() => {
-    resetThermo();
-  }, [thermoId]);
-
-  // ===========================================================================
-  // 7. ĐIỀU CHẾ KHÍ OXI (O2) TRONG PHÒNG THÍ NGHIỆM
-  // ===========================================================================
-  const [o2Method, setO2Method] = useState<'kmno4' | 'kclo3' | 'h2o2'>('kmno4');
-  const [o2CollectMethod, setO2CollectMethod] = useState<'water' | 'air'>('water');
-  const [o2BurnerOn, setO2BurnerOn] = useState<boolean>(true);
-  const [o2CatalystMnO2, setO2CatalystMnO2] = useState<boolean>(true);
-  const [o2ReactantMassG, setO2ReactantMassG] = useState<number>(15.8); // g (hoặc g chất tan)
-  const [o2TestSplint, setO2TestSplint] = useState<boolean>(false);
-
-  const o2Calc = useMemo(() => {
-    let nO2Max = 0;
-    let eq = '';
-    let note = '';
-    let rateMul = 1.0;
-
-    if (o2Method === 'kmno4') {
-      // 2 KMnO4 (158) -> K2MnO4 + MnO2 + O2
-      nO2Max = (o2ReactantMassG / 158) * 0.5;
-      eq = '2KMnO₄ —(t°)→ K₂MnO₄ + MnO₂ + O₂ ↑';
-      note = 'Ống nghiệm hơi chúc miệng xuống để tránh hơi nước đọng làm vỡ ống; bông gòn ngăn bụi KMnO₄.';
-      rateMul = o2BurnerOn ? 1.0 : 0;
-    } else if (o2Method === 'kclo3') {
-      // 2 KClO3 (122.5) -> 2 KCl + 3 O2
-      nO2Max = (o2ReactantMassG / 122.5) * 1.5;
-      eq = o2CatalystMnO2
-        ? '2KClO₃ —(MnO₂, t°)→ 2KCl + 3O₂ ↑'
-        : '2KClO₃ —(t° cao)→ 2KCl + 3O₂ ↑';
-      note = o2CatalystMnO2
-        ? 'Xúc tác MnO₂ hạ nhiệt độ phân hủy KClO₃ từ ~400°C xuống ~200°C, khí O₂ thoát ra rất nhanh.'
-        : 'Không có xúc tác MnO₂, KClO₃ phân hủy rất chậm và cần nhiệt độ cao hơn.';
-      rateMul = o2BurnerOn ? (o2CatalystMnO2 ? 1.45 : 0.35) : 0;
-    } else {
-      // 2 H2O2 (34) -> 2 H2O + O2
-      nO2Max = (o2ReactantMassG / 34) * 0.5;
-      eq = '2H₂O₂ —(MnO₂)→ 2H₂O + O₂ ↑';
-      note = 'Không cần đun nóng! Nhỏ dung dịch H₂O₂ lên bột xúc tác MnO₂, khí O₂ thoát ra ngay ở nhiệt độ phòng.';
-      rateMul = o2CatalystMnO2 ? 1.3 : 0.08;
-    }
-
-    const vO2MaxL = nO2Max * 24.79; // đkc
-    return { nO2Max, vO2MaxL, eq, note, rateMul };
-  }, [o2Method, o2ReactantMassG, o2BurnerOn, o2CatalystMnO2]);
-
-  const o2StateRef = useRef({
-    t: 0,
-    progress: 0, // 0..1
-  });
-  const [o2Readout, setO2Readout] = useState({ progressPct: 0, collectedL: 0 });
-
-  const resetOxygenPrep = () => {
-    setO2TestSplint(false);
-    o2StateRef.current = { t: 0, progress: 0 };
-    setO2Readout({ progressPct: 0, collectedL: 0 });
-  };
-
-  useEffect(() => {
-    resetOxygenPrep();
-  }, [o2Method, o2CollectMethod, o2ReactantMassG]);
 
   // ===========================================================================
   // MAIN ANIMATION LOOP
@@ -551,13 +310,13 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
       lastTs = now;
       const dt = isRunning ? rawDt : 0;
 
-      // 1. ELECTROLYSIS
+      // 1. ELECTROLYSIS / REFINING / PLATING
       if (moduleId === 'electrolysis' && canvasRef.current) {
         const st = elecStateRef.current;
         if (dt > 0) {
           st.t += dt;
           if (st.elapsedMin < 45) {
-            st.elapsedMin = Math.min(45, st.elapsedMin + dt * 1.4);
+            st.elapsedMin = Math.min(45, st.elapsedMin + dt * 1.45);
           }
           uiTimer += rawDt;
           if (uiTimer >= 0.08) {
@@ -569,68 +328,25 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         if (setup) drawElectrolysis(setup.ctx, setup.w, setup.h, st.t);
       }
 
-      // 2. GALVANIC CELL
+      // 2. GALVANIC CELL (DISSOLVING ANODE & DEPOSITING CATHODE)
       if (moduleId === 'galvanic_cell' && canvasRef.current) {
         const st = galvStateRef.current;
-        if (dt > 0) st.t += dt;
+        if (dt > 0) {
+          st.t += dt;
+          if (galvCalc.eCell > 0.01 && st.elapsedMin < 60) {
+            st.elapsedMin = Math.min(60, st.elapsedMin + dt * 1.8);
+            uiTimer += rawDt;
+            if (uiTimer >= 0.08) {
+              uiTimer = 0;
+              setGalvTimeMin(Number(st.elapsedMin.toFixed(1)));
+            }
+          }
+        }
         const setup = setupCanvas(canvasRef.current);
         if (setup) drawGalvanicCell(setup.ctx, setup.w, setup.h, st.t);
       }
 
-      // 3. REACTION RATE
-      if (moduleId === 'reaction_rate' && canvasRef.current) {
-        const st = rateStateRef.current;
-        if (dt > 0) {
-          if (rateSubMode === 'cross_x') {
-            if (!st.finished) {
-              st.t += dt;
-              st.turbidity = Math.min(1, st.turbidity + dt * 0.095 * rateFactor);
-              if (st.turbidity >= 1) {
-                st.finished = true;
-                st.crossTimeS = st.t;
-              }
-            }
-          } else {
-            st.t += dt;
-            const spd = 0.025 * (1 + (rateTempC - 10) / 30);
-            const activeCount = Math.max(8, Math.min(32, Math.round((rateConcM / 1.0) * 32)));
-            st.particles.slice(0, activeCount).forEach((p) => {
-              p.x += p.vx * spd;
-              p.y += p.vy * spd;
-              if (p.x < 0.04 || p.x > 0.96) p.vx *= -1;
-              if (p.y < 0.06 || p.y > 0.94) p.vy *= -1;
-              p.x = Math.max(0.04, Math.min(0.96, p.x));
-              p.y = Math.max(0.06, Math.min(0.94, p.y));
-            });
-          }
-          uiTimer += rawDt;
-          if (uiTimer >= 0.08) {
-            uiTimer = 0;
-            setRateReadout({
-              turbidityPct: Math.round(st.turbidity * 100),
-              elapsedS: st.finished ? st.crossTimeS : st.t,
-              done: st.finished,
-            });
-          }
-        }
-        const setup = setupCanvas(canvasRef.current);
-        if (setup) drawReactionRate(setup.ctx, setup.w, setup.h, st);
-      }
-
-      // 4. REDOX & FLAME
-      if (moduleId === 'redox_flame' && canvasRef.current) {
-        const st = redoxStateRef.current;
-        if (dt > 0) {
-          st.t += dt;
-          if (redoxSubMode === 'test_tube' && redoxDropped) {
-            st.progress = Math.min(1, st.progress + dt * 0.28);
-          }
-        }
-        const setup = setupCanvas(canvasRef.current);
-        if (setup) drawRedoxFlame(setup.ctx, setup.w, setup.h, st);
-      }
-
-      // 5. ESTER LAB
+      // 3. ESTER LAB
       if (moduleId === 'ester_lab' && canvasRef.current) {
         const st = esterStateRef.current;
         if (dt > 0) {
@@ -651,49 +367,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         if (setup) drawEsterLab(setup.ctx, setup.w, setup.h, st);
       }
 
-      // 6. THERMOCHEMISTRY
-      if (moduleId === 'thermochemistry' && canvasRef.current) {
-        const st = thermoStateRef.current;
-        if (dt > 0 && thermoStarted) {
-          st.t += dt;
-          st.tempC += (activeThermo.targetTempC - st.tempC) * Math.min(1, dt * 0.65);
-          if (st.history.length === 0 || st.t - st.history[st.history.length - 1].t > 0.15) {
-            st.history.push({ t: st.t, tempC: st.tempC });
-            if (st.history.length > 160) st.history.shift();
-          }
-          uiTimer += rawDt;
-          if (uiTimer >= 0.08) {
-            uiTimer = 0;
-            // Q = m * c * dT (for 100g aqueous solution, c = 4.18 J/g.K)
-            const qKj = (100 * 4.18 * (st.tempC - 25.0)) / 1000;
-            setThermoReadout({ tempC: st.tempC, qKj });
-          }
-        }
-        const setup = setupCanvas(canvasRef.current);
-        if (setup) drawThermoCanvas(setup.ctx, setup.w, setup.h, st);
-      }
-
-      // 7. OXYGEN LAB PREPARATION
-      if (moduleId === 'oxygen_prep' && canvasRef.current) {
-        const st = o2StateRef.current;
-        if (dt > 0) {
-          st.t += dt;
-          if (o2Calc.rateMul > 0 && st.progress < 1) {
-            st.progress = Math.min(1, st.progress + dt * 0.095 * o2Calc.rateMul);
-          }
-          uiTimer += rawDt;
-          if (uiTimer >= 0.08) {
-            uiTimer = 0;
-            setO2Readout({
-              progressPct: Math.round(st.progress * 100),
-              collectedL: o2Calc.vO2MaxL * st.progress,
-            });
-          }
-        }
-        const setup = setupCanvas(canvasRef.current);
-        if (setup) drawOxygenPrep(setup.ctx, setup.w, setup.h, st);
-      }
-
       rafId = requestAnimationFrame(tick);
     };
 
@@ -710,41 +383,24 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
 
     const bx = w * 0.5;
     const bBottom = h * 0.85;
-    const bW = Math.min(340, w * 0.56);
+    const bW = Math.min(350, w * 0.58);
     const bH = h * 0.54;
     const liqH = bH * 0.78;
     const progress = Math.min(1, elecStateRef.current.elapsedMin / 45);
 
     // Electrolyte solution color
-    let liqColor = 'rgba(56, 189, 248, 0.42)';
+    let liqColor = 'rgba(56, 189, 248, 0.44)';
     if (elecSystem === 'cuso4_inert') {
       const alpha = Math.max(0.08, 0.48 * (1 - progress * 0.8));
       liqColor = `rgba(56, 189, 248, ${alpha})`;
-    } else if (elecSystem === 'cuso4_cu') {
-      liqColor = 'rgba(56, 189, 248, 0.44)';
-    } else if (elecSystem === 'nacl_membrane') {
+    } else if (elecSystem === 'plating_ag') {
       liqColor = 'rgba(226, 232, 240, 0.45)';
-    } else {
-      liqColor = 'rgba(241, 245, 249, 0.5)';
+    } else if (elecSystem === 'plating_ni') {
+      liqColor = 'rgba(52, 211, 153, 0.36)';
     }
 
     ctx.fillStyle = liqColor;
     ctx.fillRect(bx - bW / 2, bBottom - liqH, bW, liqH);
-
-    // In NaCl with membrane: pink phenolphthalein halo near Cathode (left) & green Cl2 tint near Anode (right)
-    if (elecSystem === 'nacl_membrane') {
-      ctx.fillStyle = `rgba(219, 39, 119, ${Math.min(0.42, 0.08 + progress * 0.36)})`;
-      ctx.fillRect(bx - bW / 2, bBottom - liqH, bW / 2, liqH);
-      // Membrane dashed divider
-      ctx.strokeStyle = '#64748B';
-      ctx.setLineDash([5, 4]);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(bx, bBottom - liqH);
-      ctx.lineTo(bx, bBottom);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
 
     // Cathode (left, -) and Anode (right, +)
     const catX = bx - bW * 0.27;
@@ -752,46 +408,78 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     const elecTop = bBottom - bH + 10;
     const elecBot = bBottom - 22;
 
-    // Anode thickness (shrinks if Cu dissolving!)
-    const anoThick = elecSystem === 'cuso4_cu' ? Math.max(6, 18 - progress * 10) : 16;
-    ctx.fillStyle = elecSystem === 'cuso4_cu' ? '#B45309' : '#334155';
+    // Anode thickness (soluble anodes shrink cleanly!)
+    const anoThick = elecCalc.isSolubleAnode ? Math.max(6, 22 - progress * 14) : 16;
+    ctx.fillStyle =
+      elecSystem === 'cuso4_refine'
+        ? '#B45309'
+        : elecSystem === 'plating_ag'
+        ? '#CBD5E1'
+        : elecSystem === 'plating_ni'
+        ? '#94A3B8'
+        : '#334155';
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 1.4;
     ctx.fillRect(anoX - anoThick / 2, elecTop, anoThick, elecBot - elecTop);
+    ctx.strokeRect(anoX - anoThick / 2, elecTop, anoThick, elecBot - elecTop);
 
-    // Cathode core + plating layer
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(catX - 8, elecTop, 16, elecBot - elecTop);
-    if (elecSystem === 'cuso4_inert' || elecSystem === 'cuso4_cu' || elecSystem === 'agno3_inert') {
-      const coatW = progress * 8;
-      if (coatW > 0.3) {
-        ctx.fillStyle = elecSystem === 'agno3_inert' ? '#E2E8F0' : '#D97706';
-        ctx.fillRect(catX - 8 - coatW, elecTop + 36, 16 + coatW * 2, elecBot - elecTop - 36);
+    // Anode mud (bùn anot: Ag, Au) settling below crude Cu anode during refining
+    if (elecSystem === 'cuso4_refine' && progress > 0.05) {
+      ctx.fillStyle = '#475569';
+      const mudCount = Math.round(progress * 18);
+      for (let i = 0; i < mudCount; i++) {
+        const mx = anoX - 18 + ((i * 7) % 36);
+        const my = bBottom - 5 - (i % 3) * 2.5;
+        ctx.beginPath();
+        ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
+        ctx.fill();
       }
+      ctx.fillStyle = '#475569';
+      ctx.font = '600 10px ui-sans-serif, sans-serif';
+      ctx.fillText('Bùn anot (Ag, Au)', anoX - 38, bBottom - 12);
     }
 
-    // Bubbles on Anode (O2 or Cl2) and Cathode (H2 for NaCl)
-    const bubbleCount = Math.min(18, Math.round(elecCurrentA * 1.8));
-    if (elecSystem !== 'cuso4_cu') {
-      const gasColor = elecSystem === 'nacl_membrane' ? 'rgba(163, 230, 53, 0.85)' : 'rgba(255, 255, 255, 0.85)';
-      ctx.fillStyle = gasColor;
+    // Cathode core + plating deposit layer
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(catX - 8, elecTop, 16, elecBot - elecTop);
+    const coatW = progress * 9;
+    if (coatW > 0.3) {
+      ctx.fillStyle =
+        elecSystem === 'plating_ag'
+          ? '#F1F5F9'
+          : elecSystem === 'plating_ni'
+          ? '#CBD5E1'
+          : '#D97706';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1;
+      ctx.fillRect(catX - 8 - coatW, elecTop + 34, 16 + coatW * 2, elecBot - elecTop - 34);
+      ctx.strokeRect(catX - 8 - coatW, elecTop + 34, 16 + coatW * 2, elecBot - elecTop - 34);
+    }
+
+    // Animated cations migrating Anode -> Cathode for soluble-anode processes
+    if (elecCalc.isSolubleAnode) {
+      const ionLabel = elecSystem === 'plating_ag' ? 'Ag⁺' : elecSystem === 'plating_ni' ? 'Ni²⁺' : 'Cu²⁺';
+      const ionColor = elecSystem === 'plating_ag' ? '#64748B' : elecSystem === 'plating_ni' ? '#059669' : '#0284C7';
+      for (let i = 0; i < 6; i++) {
+        const frac = (t * 0.42 + i / 6) % 1;
+        const ix = anoX - frac * (anoX - catX);
+        const iy = bBottom - liqH + 35 + ((i * 29) % (liqH - 60));
+        ctx.fillStyle = ionColor;
+        ctx.beginPath();
+        ctx.arc(ix, iy, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      drawArrow(ctx, anoX - 24, bBottom - liqH + 20, catX + 24, bBottom - liqH + 20, ionColor, ionLabel);
+    } else {
+      // Bubbles O2 on inert Graphite Anode
+      const bubbleCount = Math.min(18, Math.round(elecCurrentA * 1.8));
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
       ctx.strokeStyle = '#64748B';
       ctx.lineWidth = 0.8;
       for (let i = 0; i < bubbleCount; i++) {
-        const yOff = ((t * 55 + i * 27) % (liqH - 30));
+        const yOff = (t * 55 + i * 27) % (liqH - 30);
         const by = bBottom - 26 - yOff;
         const bxPos = anoX + Math.sin(t * 4 + i) * 14;
-        ctx.beginPath();
-        ctx.arc(bxPos, by, 3.2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-    }
-    if (elecSystem === 'nacl_membrane') {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
-      ctx.strokeStyle = '#64748B';
-      for (let i = 0; i < bubbleCount; i++) {
-        const yOff = ((t * 62 + i * 23) % (liqH - 30));
-        const by = bBottom - 26 - yOff;
-        const bxPos = catX + Math.cos(t * 4 + i) * 14;
         ctx.beginPath();
         ctx.arc(bxPos, by, 3.2, 0, Math.PI * 2);
         ctx.fill();
@@ -812,14 +500,12 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     ctx.lineTo(bx + 26, topWireY);
     ctx.stroke();
 
-    // DC box
     ctx.fillStyle = '#0F172A';
     ctx.fillRect(bx - 34, topWireY - 14, 68, 28);
     ctx.fillStyle = '#FFFFFF';
     ctx.font = '700 11px ui-monospace, monospace';
-    ctx.fillText(`− DC +`, bx - 22, topWireY + 4);
+    ctx.fillText('− DC +', bx - 22, topWireY + 4);
 
-    // Electron arrow
     drawArrow(ctx, bx - 68, topWireY - 14, catX + 18, topWireY - 14, '#0284C7', 'e⁻');
 
     // Beaker outline
@@ -830,8 +516,8 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     // Labels
     ctx.fillStyle = '#0F172A';
     ctx.font = '700 11px ui-sans-serif, sans-serif';
-    ctx.fillText('Catot (−)', catX - 24, bBottom + 20);
-    ctx.fillText('Anot (+)', anoX - 22, bBottom + 20);
+    ctx.fillText(elecCalc.cathodeLabel, catX - 58, bBottom + 20);
+    ctx.fillText(elecCalc.anodeLabel, anoX - 54, bBottom + 20);
   };
 
   const drawGalvanicCell = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number) => {
@@ -841,9 +527,10 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     const b1x = w * 0.28;
     const b2x = w * 0.72;
     const bBottom = h * 0.85;
-    const bW = Math.min(160, w * 0.26);
+    const bW = Math.min(165, w * 0.27);
     const bH = h * 0.48;
     const liqH = bH * 0.74;
+    const wf = galvCalc.wearFrac;
 
     // Left & Right Beakers
     [
@@ -856,22 +543,56 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
       ctx.lineWidth = 2.2;
       ctx.strokeRect(cell.x - bW / 2, bBottom - bH, bW, bH);
 
-      // Electrode bar
+      // Soluble Anode dissolves thinner; Cathode thickens with plated deposit
+      const baseHalfW = 12;
+      const barW = cell.isAnode
+        ? Math.max(7, baseHalfW * 2 - wf * 14)
+        : baseHalfW * 2;
       ctx.fillStyle = cell.m.color;
       ctx.strokeStyle = '#1E293B';
       ctx.lineWidth = 1.5;
-      ctx.fillRect(cell.x - 12, bBottom - bH - 12, 24, bH - 8);
-      ctx.strokeRect(cell.x - 12, bBottom - bH - 12, 24, bH - 8);
+      ctx.fillRect(cell.x - barW / 2, bBottom - bH - 12, barW, bH - 8);
+      ctx.strokeRect(cell.x - barW / 2, bBottom - bH - 12, barW, bH - 8);
+
+      // Plated metallic deposit sleeve on immersed Cathode portion
+      if (!cell.isAnode && wf > 0.02) {
+        const plateThick = wf * 6.5;
+        const immersedTop = bBottom - liqH + 4;
+        ctx.fillStyle = cell.m.color;
+        ctx.fillRect(cell.x - barW / 2 - plateThick, immersedTop, barW + plateThick * 2, liqH - 24);
+        ctx.strokeStyle = '#0F172A';
+        ctx.lineWidth = 1.1;
+        ctx.strokeRect(cell.x - barW / 2 - plateThick, immersedTop, barW + plateThick * 2, liqH - 24);
+      }
+
+      // Dissolving ions off Anode vs Depositing ions onto Cathode
+      if (galvCalc.eCell > 0.01) {
+        for (let i = 0; i < 4; i++) {
+          const frac = (t * 0.55 + i * 0.25) % 1;
+          const ix = cell.isAnode
+            ? cell.x + barW / 2 + frac * 34
+            : cell.x - 42 + frac * (42 - barW / 2);
+          const iy = bBottom - liqH + 25 + i * 24;
+          ctx.fillStyle = cell.isAnode ? '#E11D48' : '#0284C7';
+          ctx.beginPath();
+          ctx.arc(ix, iy, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
 
       ctx.fillStyle = '#0F172A';
       ctx.font = '800 12px ui-sans-serif, sans-serif';
-      ctx.fillText(`${cell.m.symbol} (${cell.isAnode ? 'Anot −' : 'Catot +'})`, cell.x - 36, bBottom + 20);
+      ctx.fillText(
+        `${cell.m.symbol} (${cell.isAnode ? 'Anot − · Tan dần' : 'Catot + · Dày lên'})`,
+        cell.x - 58,
+        bBottom + 20
+      );
       ctx.font = '600 11px ui-monospace, monospace';
       ctx.fillStyle = '#475569';
-      ctx.fillText(`[${cell.m.ion}] = ${cell.conc.toFixed(2)}M`, cell.x - 42, bBottom + 36);
+      ctx.fillText(`[${cell.m.ion}] = ${cell.conc.toFixed(2)}M`, cell.x - 44, bBottom + 36);
     });
 
-    // Salt bridge (U-tube connecting both beakers)
+    // Salt bridge (KNO3 U-tube)
     ctx.strokeStyle = '#CBD5E1';
     ctx.lineWidth = 18;
     ctx.lineCap = 'round';
@@ -923,7 +644,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     if (galvCalc.eCell > 0.01) {
       const dir = galvCalc.leftIsAnode ? 1 : -1;
       for (let i = 0; i < 6; i++) {
-        const frac = ((t * 0.45 + i / 6) % 1);
+        const frac = (t * 0.45 + i / 6) % 1;
         const ex = dir > 0 ? b1x + frac * (b2x - b1x) : b2x - frac * (b2x - b1x);
         if (Math.abs(ex - w * 0.5) < 34) continue;
         ctx.fillStyle = '#0284C7';
@@ -940,264 +661,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         '#0284C7',
         'e⁻'
       );
-    }
-  };
-
-  const drawReactionRate = (
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    st: typeof rateStateRef.current
-  ) => {
-    ctx.fillStyle = '#F8FAFC';
-    ctx.fillRect(0, 0, w, h);
-
-    if (rateSubMode === 'cross_x') {
-      // Top-down / angled view of flask over X mark
-      const cx = w * 0.34;
-      const cy = h * 0.52;
-      const r = Math.min(w * 0.22, h * 0.32);
-
-      // White paper under flask with bold black X
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#CBD5E1';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r + 16, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // Draw X mark underneath
-      ctx.strokeStyle = '#0F172A';
-      ctx.lineWidth = 7;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.45, cy - r * 0.45);
-      ctx.lineTo(cx + r * 0.45, cy + r * 0.45);
-      ctx.moveTo(cx + r * 0.45, cy - r * 0.45);
-      ctx.lineTo(cx - r * 0.45, cy + r * 0.45);
-      ctx.stroke();
-
-      // Sulfur turbidity overlay progressively obscures X
-      ctx.fillStyle = `rgba(254, 240, 138, ${Math.min(0.97, st.turbidity * 0.98)})`;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = '#475569';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 12px ui-sans-serif, sans-serif';
-      ctx.fillText('Nhìn từ trên xuống đáy bình tam giác', cx - 102, cy + r + 38);
-
-      // Right side: Reaction progress bar + Ea energy profile
-      const gx = w * 0.62;
-      const gy = 54;
-      const gw = w * 0.32;
-      const gh = h * 0.54;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#CBD5E1';
-      ctx.lineWidth = 1.5;
-      ctx.fillRect(gx, gy, gw, gh);
-      ctx.strokeRect(gx, gy, gw, gh);
-
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 11px ui-sans-serif, sans-serif';
-      ctx.fillText('Giản đồ năng lượng hoạt hóa Ea', gx + 10, gy + 20);
-
-      // Uncatalyzed curve
-      ctx.strokeStyle = '#94A3B8';
-      ctx.setLineDash([4, 3]);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(gx + 16, gy + gh * 0.52);
-      ctx.bezierCurveTo(gx + gw * 0.35, gy + gh * 0.52, gx + gw * 0.42, gy + gh * 0.16, gx + gw * 0.55, gy + gh * 0.16);
-      ctx.bezierCurveTo(gx + gw * 0.68, gy + gh * 0.16, gx + gw * 0.75, gy + gh * 0.72, gx + gw - 16, gy + gh * 0.72);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Catalyzed curve if active
-      if (rateCatalyst) {
-        ctx.strokeStyle = '#059669';
-        ctx.lineWidth = 2.6;
-        ctx.beginPath();
-        ctx.moveTo(gx + 16, gy + gh * 0.52);
-        ctx.bezierCurveTo(gx + gw * 0.35, gy + gh * 0.52, gx + gw * 0.42, gy + gh * 0.34, gx + gw * 0.55, gy + gh * 0.34);
-        ctx.bezierCurveTo(gx + gw * 0.68, gy + gh * 0.34, gx + gw * 0.75, gy + gh * 0.72, gx + gw - 16, gy + gh * 0.72);
-        ctx.stroke();
-        ctx.fillStyle = '#059669';
-        ctx.font = '700 10px ui-sans-serif, sans-serif';
-        ctx.fillText('Có xúc tác (hạ thấp Ea)', gx + 14, gy + gh - 14);
-      }
-    } else {
-      // Molecular collision box
-      const boxX = 32;
-      const boxY = 44;
-      const boxW = w - 64;
-      const boxH = h - 90;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2;
-      ctx.fillRect(boxX, boxY, boxW, boxH);
-      ctx.strokeRect(boxX, boxY, boxW, boxH);
-
-      const activeCount = Math.max(8, Math.min(32, Math.round((rateConcM / 1.0) * 32)));
-      st.particles.slice(0, activeCount).forEach((p, idx) => {
-        const px = boxX + p.x * boxW;
-        const py = boxY + p.y * boxH;
-        const isA = idx % 2 === 0;
-        ctx.fillStyle = isA ? '#0284C7' : '#D97706';
-        ctx.beginPath();
-        ctx.arc(px, py, rateSurfaceFine ? 5 : 8, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 12px ui-sans-serif, sans-serif';
-      ctx.fillText(
-        `Số phân tử: ${activeCount} · Nhiệt độ: ${rateTempC}°C · Tốc độ phản ứng tương đối: ×${rateFactor.toFixed(2)}`,
-        boxX,
-        28
-      );
-      ctx.fillStyle = '#475569';
-      ctx.font = '600 11px ui-sans-serif, sans-serif';
-      ctx.fillText(
-        'Tăng nhiệt độ, nồng độ, chia nhỏ hạt hoặc thêm xúc tác làm tăng số va chạm hiệu quả/giây.',
-        boxX,
-        boxY + boxH + 22
-      );
-    }
-  };
-
-  const drawRedoxFlame = (
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    st: typeof redoxStateRef.current
-  ) => {
-    if (redoxSubMode === 'flame') {
-      ctx.fillStyle = '#0F172A';
-      ctx.fillRect(0, 0, w, h);
-
-      const cx = w * 0.5;
-      const burnerY = h * 0.84;
-
-      // Bunsen burner tube & base
-      ctx.fillStyle = '#475569';
-      ctx.fillRect(cx - 46, burnerY, 92, 14);
-      ctx.fillStyle = '#94A3B8';
-      ctx.fillRect(cx - 12, burnerY - 96, 24, 96);
-
-      // Flame inner blue cone + outer ion colored flame
-      const flicker = Math.sin(st.t * 14) * 5;
-      const topY = burnerY - 235 + flicker;
-      const grad = ctx.createRadialGradient(cx, burnerY - 150, 8, cx, burnerY - 150, 95);
-      grad.addColorStop(0, activeFlameIon.flameColor);
-      grad.addColorStop(0.55, activeFlameIon.glowColor);
-      grad.addColorStop(1, 'rgba(15, 23, 42, 0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(cx, burnerY - 155, 95, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Flame teardrop shape
-      ctx.fillStyle = activeFlameIon.flameColor;
-      ctx.beginPath();
-      ctx.moveTo(cx - 16, burnerY - 96);
-      ctx.quadraticCurveTo(cx - 34, burnerY - 150, cx, topY);
-      ctx.quadraticCurveTo(cx + 34, burnerY - 150, cx + 16, burnerY - 96);
-      ctx.closePath();
-      ctx.fill();
-
-      // Hot blue inner core
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
-      ctx.beginPath();
-      ctx.moveTo(cx - 8, burnerY - 96);
-      ctx.quadraticCurveTo(cx - 14, burnerY - 125, cx, burnerY - 152);
-      ctx.quadraticCurveTo(cx + 14, burnerY - 125, cx + 8, burnerY - 96);
-      ctx.closePath();
-      ctx.fill();
-
-      // Platinum wire loop held into flame
-      ctx.strokeStyle = '#E2E8F0';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(cx + 115, burnerY - 110);
-      ctx.lineTo(cx + 8, burnerY - 146);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(cx + 2, burnerY - 148, 6, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.fillStyle = '#F8FAFC';
-      ctx.font = '800 14px ui-sans-serif, sans-serif';
-      ctx.fillText(`Thử màu ngọn lửa muối ${activeFlameIon.salt} (${activeFlameIon.ion})`, 20, 30);
-      ctx.fillStyle = '#CBD5E1';
-      ctx.font = '600 12px ui-sans-serif, sans-serif';
-      ctx.fillText(`Màu đặc trưng: ${activeFlameIon.colorName} · Bước sóng trội λ ≈ ${activeFlameIon.wavelengthNm}`, 20, 52);
-    } else {
-      ctx.fillStyle = '#F8FAFC';
-      ctx.fillRect(0, 0, w, h);
-
-      const cx = w * 0.5;
-      const bBottom = h * 0.86;
-      const tubeW = 76;
-      const tubeH = h * 0.56;
-      const liqH = tubeH * 0.65;
-      const p = redoxDropped ? st.progress : 0;
-
-      // Liquid color transition
-      ctx.fillStyle = p > 0.25 ? activeRedox.finalLiquid : activeRedox.initialLiquid;
-      ctx.beginPath();
-      ctx.roundRect(cx - tubeW / 2, bBottom - liqH, tubeW, liqH, [0, 0, 38, 38]);
-      ctx.fill();
-
-      // Deposit / metal strip if Fe + CuSO4
-      if (activeRedox.id === 'fe_cuso4' && redoxDropped) {
-        ctx.fillStyle = p > 0.3 ? '#B45309' : '#64748B';
-        ctx.save();
-        ctx.translate(cx, bBottom - 56);
-        ctx.rotate(-0.2);
-        ctx.fillRect(-5, -55, 10, 110);
-        ctx.restore();
-      } else if (activeRedox.id === 'cu_hno3' && redoxDropped) {
-        ctx.fillStyle = '#D97706';
-        ctx.fillRect(cx - 12, bBottom - 26, Math.max(4, 24 * (1 - p * 0.7)), 10);
-      }
-
-      // Gas plume & bubbles if gas produced
-      if (redoxDropped && activeRedox.gasColor) {
-        ctx.fillStyle = activeRedox.gasColor;
-        ctx.beginPath();
-        ctx.roundRect(cx - tubeW / 2 + 2, bBottom - tubeH + 8, tubeW - 4, tubeH - liqH, [6, 6, 0, 0]);
-        ctx.fill();
-
-        for (let i = 0; i < 12; i++) {
-          const yOff = ((st.t * 60 + i * 24) % (liqH - 20));
-          ctx.fillStyle = 'rgba(255,255,255,0.85)';
-          ctx.beginPath();
-          ctx.arc(cx + Math.sin(st.t * 5 + i) * 18, bBottom - 18 - yOff, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.fillStyle = '#991B1B';
-        ctx.font = '700 12px ui-sans-serif, sans-serif';
-        ctx.fillText(`Khí thoát ra: ${activeRedox.gasFormula}`, cx + tubeW / 2 + 18, bBottom - tubeH + 45);
-      }
-
-      // Test tube glass outline
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.6;
-      ctx.beginPath();
-      ctx.roundRect(cx - tubeW / 2, bBottom - tubeH, tubeW, tubeH, [4, 4, 38, 38]);
-      ctx.stroke();
-
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 12px ui-sans-serif, sans-serif';
-      ctx.fillText(activeRedox.reagents, 20, 28);
     }
   };
 
@@ -1231,7 +694,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
     ctx.fillText(`Đun cách thủy ${esterTempC}°C`, fX - 52, fY + 106);
 
     if (esterMode === 'esterification') {
-      // Reaction flask inside bath
       ctx.fillStyle = '#FEF3C7';
       ctx.strokeStyle = '#334155';
       ctx.lineWidth = 2.2;
@@ -1240,7 +702,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
       ctx.fill();
       ctx.stroke();
 
-      // Delivery tube to receiving tube on right
       const rX = w * 0.72;
       const rY = h * 0.74;
       ctx.strokeStyle = '#475569';
@@ -1252,7 +713,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
       ctx.lineTo(rX, rY - 95);
       ctx.stroke();
 
-      // Animated vapor bubbles traveling
       if (esterTempC > 50) {
         for (let i = 0; i < 4; i++) {
           const frac = (st.t * 0.5 + i * 0.25) % 1;
@@ -1264,7 +724,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         }
       }
 
-      // Receiving test tube with NaCl saturated water (bottom) & floating Ester layer (top)
       const esterLayerH = Math.max(4, st.yieldFrac * 42);
       ctx.fillStyle = 'rgba(186, 230, 253, 0.55)';
       ctx.fillRect(rX - 32, rY - 70, 64, 70);
@@ -1276,11 +735,10 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
 
       ctx.fillStyle = '#B45309';
       ctx.font = '700 11px ui-sans-serif, sans-serif';
-      ctx.fillText('Lớp Este nổi (nhẹ hơn H₂O)', rX - 58, rY - 78 - esterLayerH);
+      ctx.fillText('Lớp Ester nổi (nhẹ hơn H₂O)', rX - 58, rY - 78 - esterLayerH);
       ctx.fillStyle = '#0369A1';
       ctx.fillText('Dung dịch NaCl bão hòa', rX - 56, rY + 22);
     } else {
-      // Saponification beaker
       const soapLayerH = Math.max(4, st.yieldFrac * (soapSaltOut ? 36 : 16));
       ctx.fillStyle = 'rgba(226, 232, 240, 0.6)';
       ctx.fillRect(fX - 42, fY - 22, 84, 62);
@@ -1299,359 +757,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         w * 0.54,
         h * 0.45
       );
-    }
-  };
-
-  const drawThermoCanvas = (
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    st: typeof thermoStateRef.current
-  ) => {
-    ctx.fillStyle = '#F8FAFC';
-    ctx.fillRect(0, 0, w, h);
-
-    // Left: Calorimeter cup + Thermometer
-    const cx = w * 0.25;
-    const bBottom = h * 0.84;
-    const cupW = 128;
-    const cupH = 160;
-
-    // Insulated jacket
-    ctx.fillStyle = '#E2E8F0';
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 2.4;
-    ctx.fillRect(cx - cupW / 2 - 10, bBottom - cupH, cupW + 20, cupH + 10);
-    ctx.strokeRect(cx - cupW / 2 - 10, bBottom - cupH, cupW + 20, cupH + 10);
-
-    // Liquid inside calorimeter
-    ctx.fillStyle = activeThermo.liquidColor;
-    ctx.fillRect(cx - cupW / 2, bBottom - cupH + 42, cupW, cupH - 42);
-
-    // Frost / Heat waves
-    if (thermoStarted && st.tempC < 12) {
-      ctx.fillStyle = '#0284C7';
-      ctx.font = '700 11px ui-sans-serif, sans-serif';
-      ctx.fillText('❄ Cốc lạnh buốt (Thu nhiệt)', cx - 64, bBottom + 24);
-    } else if (thermoStarted && st.tempC > 32) {
-      ctx.fillStyle = '#DC2626';
-      ctx.font = '700 11px ui-sans-serif, sans-serif';
-      ctx.fillText('🔥 Thành cốc nóng lên (Tỏa nhiệt)', cx - 72, bBottom + 24);
-    }
-
-    // Thermometer stem
-    const tx = cx;
-    const tTop = 34;
-    const tBot = bBottom - 26;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 2;
-    ctx.fillRect(tx - 6, tTop, 12, tBot - tTop);
-    ctx.strokeRect(tx - 6, tTop, 12, tBot - tTop);
-
-    const tempNorm = Math.max(0.05, Math.min(0.95, (st.tempC + 15) / 95));
-    const fillH = tempNorm * (tBot - tTop - 10);
-    ctx.fillStyle = st.tempC < 20 ? '#0284C7' : '#DC2626';
-    ctx.fillRect(tx - 3.5, tBot - fillH, 7, fillH);
-    ctx.beginPath();
-    ctx.arc(tx, tBot + 4, 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = '800 12px ui-monospace, monospace';
-    ctx.fillText(`${st.tempC.toFixed(1)} °C`, tx + 16, tBot - fillH + 4);
-
-    // Right: T(t) temperature graph
-    const gx = w * 0.48;
-    const gy = 48;
-    const gw = w * 0.47;
-    const gh = h - 100;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.strokeStyle = '#CBD5E1';
-    ctx.lineWidth = 1.5;
-    ctx.fillRect(gx, gy, gw, gh);
-    ctx.strokeRect(gx, gy, gw, gh);
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = '700 12px ui-sans-serif, sans-serif';
-    ctx.fillText('Đồ thị nhiệt độ dung dịch T(t) theo thời gian', gx, 32);
-
-    // 25C baseline
-    const y25 = gy + gh - ((25 + 15) / 95) * gh;
-    ctx.strokeStyle = '#E2E8F0';
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(gx, y25);
-    ctx.lineTo(gx + gw, y25);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#64748B';
-    ctx.font = '600 10px ui-monospace, monospace';
-    ctx.fillText('25°C', gx + 4, y25 - 4);
-
-    if (st.history.length > 1) {
-      ctx.strokeStyle = activeThermo.type === 'exo' ? '#DC2626' : '#0284C7';
-      ctx.lineWidth = 2.6;
-      ctx.beginPath();
-      st.history.forEach((pt, idx) => {
-        const px = gx + (idx / Math.max(1, st.history.length - 1)) * gw;
-        const py = gy + gh - Math.max(0.02, Math.min(0.98, (pt.tempC + 15) / 95)) * gh;
-        if (idx === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
-      ctx.stroke();
-    }
-  };
-
-  const drawOxygenPrep = (
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    st: typeof o2StateRef.current
-  ) => {
-    ctx.fillStyle = '#F8FAFC';
-    ctx.fillRect(0, 0, w, h);
-
-    const genX = w * 0.28;
-    const genY = h * 0.46;
-    const isActive = o2Calc.rateMul > 0.1 && st.progress < 1;
-
-    if (o2Method === 'h2o2') {
-      // Conical flask with MnO2 + Dropping funnel for H2O2
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.moveTo(genX - 18, genY - 25);
-      ctx.lineTo(genX - 54, genY + 75);
-      ctx.lineTo(genX + 54, genY + 75);
-      ctx.lineTo(genX + 18, genY - 25);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(224, 242, 254, 0.7)';
-      ctx.fill();
-      ctx.stroke();
-
-      // MnO2 black powder at bottom
-      if (o2CatalystMnO2) {
-        ctx.fillStyle = '#1E293B';
-        ctx.fillRect(genX - 36, genY + 62, 72, 11);
-      }
-
-      // Effervescing O2 bubbles inside H2O2 flask
-      if (isActive) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.strokeStyle = '#0284C7';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < 6; i++) {
-          const by = genY + 60 - ((st.t * 48 + i * 14) % 58);
-          ctx.beginPath();
-          ctx.arc(genX - 18 + (i % 4) * 12, by, 2.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-
-      // Dropping funnel & stem above flask
-      ctx.fillStyle = 'rgba(186, 230, 253, 0.7)';
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2;
-      ctx.fillRect(genX - 14, genY - 96, 28, 42);
-      ctx.strokeRect(genX - 14, genY - 96, 28, 42);
-      ctx.beginPath();
-      ctx.moveTo(genX, genY - 54);
-      ctx.lineTo(genX, genY - 10);
-      ctx.stroke();
-
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 11px ui-sans-serif, sans-serif';
-      ctx.fillText('H₂O₂', genX - 16, genY - 102);
-      ctx.fillText(o2CatalystMnO2 ? 'MnO₂ (xúc tác)' : 'Không MnO₂', genX - 36, genY + 95);
-    } else {
-      // Tilted hard-glass test tube + alcohol burner for KMnO4 / KClO3
-      ctx.save();
-      ctx.translate(genX, genY);
-      ctx.rotate(0.18); // mouth slightly tilted down
-
-      // Test tube body
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.roundRect(-84, -18, 140, 36, [18, 4, 4, 18]);
-      ctx.fill();
-      ctx.stroke();
-
-      // Solid reagent at closed end (-76..-25)
-      ctx.fillStyle = o2Method === 'kmno4' ? '#581C87' : o2CatalystMnO2 ? '#475569' : '#F1F5F9';
-      ctx.beginPath();
-      ctx.roundRect(-80, -4, 58, 19, [10, 4, 4, 10]);
-      ctx.fill();
-
-      // Cotton plug at mouth for KMnO4
-      if (o2Method === 'kmno4') {
-        ctx.fillStyle = '#E2E8F0';
-        ctx.fillRect(30, -14, 14, 28);
-      }
-
-      // Rubber stopper
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(50, -16, 12, 32);
-      ctx.restore();
-
-      // Lab clamp stand
-      ctx.fillStyle = '#475569';
-      ctx.fillRect(genX - 115, genY + 95, 70, 8);
-      ctx.fillRect(genX - 102, genY - 60, 6, 155);
-      ctx.fillRect(genX - 96, genY - 8, 60, 5);
-
-      // Alcohol burner under closed end of tube
-      const bX = genX - 48;
-      const bY = genY + 62;
-      ctx.fillStyle = '#CBD5E1';
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 1.8;
-      ctx.fillRect(bX - 20, bY, 40, 32);
-      ctx.strokeRect(bX - 20, bY, 40, 32);
-      if (o2BurnerOn) {
-        const flick = Math.sin(st.t * 14) * 3;
-        ctx.fillStyle = '#F97316';
-        ctx.beginPath();
-        ctx.moveTo(bX - 9, bY);
-        ctx.quadraticCurveTo(bX, bY - 38 + flick, bX + 9, bY);
-        ctx.fill();
-        ctx.fillStyle = '#38BDF8';
-        ctx.beginPath();
-        ctx.moveTo(bX - 4, bY);
-        ctx.quadraticCurveTo(bX, bY - 18, bX + 4, bY);
-        ctx.fill();
-      }
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 11px ui-sans-serif, sans-serif';
-      ctx.fillText(
-        o2Method === 'kmno4' ? 'Tinh thể KMnO₄' : o2CatalystMnO2 ? 'KClO₃ + MnO₂' : 'KClO₃ nguyên chất',
-        genX - 78,
-        genY - 32
-      );
-    }
-
-    // Collection side (Right)
-    const colX = w * 0.72;
-    const tubeOutX = o2Method === 'h2o2' ? genX + 14 : genX + 56;
-    const tubeOutY = o2Method === 'h2o2' ? genY - 12 : genY + 10;
-
-    if (o2CollectMethod === 'water') {
-      // Water trough + inverted gas jar
-      const troughTop = h * 0.62;
-      const troughH = h * 0.26;
-      ctx.fillStyle = 'rgba(186, 230, 253, 0.55)';
-      ctx.fillRect(colX - 88, troughTop, 176, troughH);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
-      ctx.strokeRect(colX - 88, troughTop, 176, troughH);
-
-      const jarW = 68;
-      const jarH = 178;
-      const jarTop = troughTop - jarH + 34;
-      const gasH = st.progress * (jarH - 36);
-
-      // Water inside jar (pushed down as O2 collects)
-      ctx.fillStyle = 'rgba(125, 211, 252, 0.65)';
-      ctx.fillRect(colX - jarW / 2, jarTop + gasH, jarW, jarH - gasH);
-      // O2 gas pocket at top
-      ctx.fillStyle = 'rgba(241, 245, 249, 0.94)';
-      ctx.fillRect(colX - jarW / 2, jarTop, jarW, gasH);
-
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
-      ctx.strokeRect(colX - jarW / 2, jarTop, jarW, jarH);
-
-      // Delivery tube routing into jar mouth under water
-      ctx.strokeStyle = '#64748B';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(tubeOutX, tubeOutY);
-      ctx.lineTo(colX - 110, tubeOutY - 10);
-      ctx.lineTo(colX - 110, troughTop + 44);
-      ctx.lineTo(colX, troughTop + 44);
-      ctx.lineTo(colX, troughTop + 26);
-      ctx.stroke();
-
-      // Rising O2 bubbles inside jar
-      if (isActive) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.strokeStyle = '#0284C7';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < 6; i++) {
-          const yPos = troughTop + 20 - ((st.t * 75 + i * 28) % Math.max(24, jarH - 25));
-          ctx.beginPath();
-          ctx.arc(colX + Math.sin(st.t * 4 + i) * 12, yPos, 3.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 12px ui-sans-serif, sans-serif';
-      ctx.fillText(`Thu khí O₂ đẩy nước (${Math.round(st.progress * 100)}%)`, colX - 80, jarTop - 12);
-    } else {
-      // Upward air displacement (upright jar because O2 M=32 > Air M=29)
-      const jarW = 74;
-      const jarH = 175;
-      const jarTop = h * 0.34;
-      const fillH = st.progress * (jarH - 12);
-
-      ctx.fillStyle = 'rgba(224, 242, 254, 0.45)';
-      ctx.fillRect(colX - jarW / 2, jarTop + jarH - fillH, jarW, fillH);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.2;
-      ctx.strokeRect(colX - jarW / 2, jarTop, jarW, jarH);
-
-      // Delivery tube dipping near bottom of upright jar
-      ctx.strokeStyle = '#64748B';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(tubeOutX, tubeOutY);
-      ctx.lineTo(colX, jarTop - 28);
-      ctx.lineTo(colX, jarTop + jarH - 16);
-      ctx.stroke();
-
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '700 12px ui-sans-serif, sans-serif';
-      ctx.fillText(`Đặt ngửa bình (M_O₂ = 32 > 29)`, colX - 88, jarTop + jarH + 22);
-    }
-
-    // Glowing splint test at jar mouth
-    if (o2TestSplint) {
-      const spX = o2CollectMethod === 'water' ? colX : colX + 18;
-      const spY = o2CollectMethod === 'water' ? h * 0.22 : h * 0.34;
-      ctx.strokeStyle = '#92400E';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(spX + 52, spY - 38);
-      ctx.lineTo(spX + 4, spY + 4);
-      ctx.stroke();
-
-      if (st.progress > 0.25) {
-        // Bright re-ignited flame!
-        ctx.fillStyle = '#FACC15';
-        ctx.beginPath();
-        ctx.arc(spX + 2, spY + 4, 14 + Math.sin(st.t * 16) * 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#F97316';
-        ctx.beginPath();
-        ctx.arc(spX + 2, spY + 4, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#059669';
-        ctx.font = '800 12px ui-sans-serif, sans-serif';
-        ctx.fillText('🔥 Tàn đóm bùng cháy sáng rực! (Xác nhận khí O₂)', colX - 135, 32);
-      } else {
-        ctx.fillStyle = '#EF4444';
-        ctx.beginPath();
-        ctx.arc(spX + 2, spY + 4, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#64748B';
-        ctx.font = '700 12px ui-sans-serif, sans-serif';
-        ctx.fillText('Chưa đủ khí O₂ — tiếp tục thu khí để thử tàn đóm!', colX - 135, 32);
-      }
     }
   };
 
@@ -1680,59 +785,18 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 if (moduleId === 'electrolysis') {
                   elecStateRef.current.elapsedMin = 0;
                   setElecTimeMin(0);
-                } else if (moduleId === 'reaction_rate') resetRate();
-                else if (moduleId === 'redox_flame') {
-                  setRedoxDropped(false);
-                  redoxStateRef.current.progress = 0;
-                } else if (moduleId === 'ester_lab') esterStateRef.current.yieldFrac = 0;
-                else if (moduleId === 'thermochemistry') resetThermo();
-                else if (moduleId === 'oxygen_prep') resetOxygenPrep();
+                } else if (moduleId === 'galvanic_cell') {
+                  galvStateRef.current.elapsedMin = 0;
+                  setGalvTimeMin(0);
+                } else if (moduleId === 'ester_lab') {
+                  esterStateRef.current.yieldFrac = 0;
+                }
               }}
               className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
             >
               <RotateCcw size={14} />
               <span>Làm lại</span>
             </button>
-
-            {moduleId === 'redox_flame' && redoxSubMode === 'test_tube' && (
-              <button
-                type="button"
-                onClick={() => {
-                  redoxStateRef.current.progress = 0;
-                  setRedoxDropped(true);
-                }}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Flame size={14} />
-                <span>Tiến hành phản ứng</span>
-              </button>
-            )}
-
-            {moduleId === 'thermochemistry' && (
-              <button
-                type="button"
-                onClick={() => setThermoStarted(true)}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Thermometer size={14} />
-                <span>{thermoStarted ? 'Đang đo nhiệt...' : 'Trộn chất & Bấm đo'}</span>
-              </button>
-            )}
-
-            {moduleId === 'oxygen_prep' && (
-              <button
-                type="button"
-                onClick={() => setO2TestSplint((v) => !v)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
-                  o2TestSplint
-                    ? 'bg-orange-100 text-orange-800 border border-orange-300 hover:bg-orange-200'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                }`}
-              >
-                <Flame size={14} />
-                <span>{o2TestSplint ? 'Rút que đóm ra' : 'Thử bằng tàn đóm đỏ'}</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -1751,21 +815,23 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                <div className="text-slate-500">Anot (+) {elecCalc.isSolubleAnode ? 'bị hòa tan' : '(điện cực trơ)'}</div>
+                <div className="font-mono tabular-nums font-bold text-rose-700 mt-0.5">
+                  {elecCalc.isSolubleAnode
+                    ? `−${elecCalc.anodeDissolvedG.toFixed(2)} g`
+                    : `0.00 g (${elecCalc.anodeGasL.toFixed(2)} L O₂)`}
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                <div className="text-slate-500">Kim loại bám Catot (−)</div>
+                <div className="font-mono tabular-nums font-bold text-amber-700 mt-0.5">
+                  +{elecCalc.cathodeMassG.toFixed(2)} g
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
                 <div className="text-slate-500">Mol electron trao đổi</div>
                 <div className="font-mono tabular-nums font-bold text-sky-700 mt-0.5">
                   {elecCalc.nMolE.toFixed(4)} mol
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Kim loại bám Catot</div>
-                <div className="font-mono tabular-nums font-bold text-amber-700 mt-0.5">
-                  {elecCalc.cathodeMassG.toFixed(2)} g
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Tổng khí thoát (đkc)</div>
-                <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
-                  {(elecCalc.anodeGasL + elecCalc.cathodeGasL).toFixed(3)} L
                 </div>
               </div>
             </>
@@ -1774,19 +840,19 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
           {moduleId === 'galvanic_cell' && (
             <>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Cực Anot (−)</div>
+                <div className="text-slate-500">Anot (−) tan dần</div>
                 <div className="font-mono font-bold text-rose-700 mt-0.5">
-                  {galvCalc.anode.symbol} → {galvCalc.anode.ion} + {galvCalc.anode.n}e
+                  {galvCalc.anode.symbol} (−{galvCalc.anodeLostG.toFixed(2)} g)
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Cực Catot (+)</div>
+                <div className="text-slate-500">Catot (+) bồi đắp</div>
                 <div className="font-mono font-bold text-sky-700 mt-0.5">
-                  {galvCalc.cathode.ion} + {galvCalc.cathode.n}e → {galvCalc.cathode.symbol}
+                  {galvCalc.cathode.symbol} (+{galvCalc.cathodeGainedG.toFixed(2)} g)
                 </div>
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Suất điện động E_pin</div>
+                <div className="text-slate-500">Sức điện động E_pin</div>
                 <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
                   {galvCalc.eCell.toFixed(3)} V
                 </div>
@@ -1798,45 +864,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 </div>
               </div>
             </>
-          )}
-
-          {moduleId === 'reaction_rate' && (
-            <>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Thời gian đồng hồ</div>
-                <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
-                  {rateReadout.elapsedS.toFixed(1)} s
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Độ đục kết tủa S</div>
-                <div className="font-mono tabular-nums font-bold text-amber-700 mt-0.5">
-                  {rateReadout.turbidityPct} %
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Hệ số tốc độ v/v₀</div>
-                <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
-                  ×{rateFactor.toFixed(2)}
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Trạng thái dấu X</div>
-                <div className="font-bold text-slate-800 mt-0.5">
-                  {rateReadout.done ? 'Đã khuất hoàn toàn' : 'Còn nhìn thấy'}
-                </div>
-              </div>
-            </>
-          )}
-
-          {moduleId === 'redox_flame' && (
-            <div className="bg-white border border-slate-200 rounded-xl p-3 col-span-2 sm:col-span-4">
-              <span className="font-bold text-slate-900 block">
-                {redoxSubMode === 'flame'
-                  ? `Ion ${activeFlameIon.ion} cho ngọn lửa màu ${activeFlameIon.colorName} (λ ≈ ${activeFlameIon.wavelengthNm}).`
-                  : activeRedox.phenomenon}
-              </span>
-            </div>
           )}
 
           {moduleId === 'ester_lab' && (
@@ -1863,65 +890,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               </div>
             </>
           )}
-
-          {moduleId === 'thermochemistry' && (
-            <>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Nhiệt độ hiện tại</div>
-                <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
-                  {thermoReadout.tempC.toFixed(1)} °C
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Độ biến thiên ΔT</div>
-                <div className="font-mono tabular-nums font-bold text-sky-700 mt-0.5">
-                  {(thermoReadout.tempC - 25.0) >= 0 ? '+' : ''}
-                  {(thermoReadout.tempC - 25.0).toFixed(1)} °C
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Phân loại nhiệt phản ứng</div>
-                <div className={`font-bold mt-0.5 ${activeThermo.type === 'exo' ? 'text-rose-700' : 'text-sky-700'}`}>
-                  {activeThermo.type === 'exo' ? 'Tỏa nhiệt (ΔᵣH°₂₉₈ < 0)' : 'Thu nhiệt (ΔᵣH°₂₉₈ > 0)'}
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Nhiệt lượng Q = m·c·ΔT</div>
-                <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
-                  {Math.abs(thermoReadout.qKj).toFixed(2)} kJ
-                </div>
-              </div>
-            </>
-          )}
-
-          {moduleId === 'oxygen_prep' && (
-            <>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Số mol O₂ tối đa</div>
-                <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
-                  {o2Calc.nO2Max.toFixed(3)} mol
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Thể tích O₂ đã thu (đkc)</div>
-                <div className="font-mono tabular-nums font-bold text-emerald-700 mt-0.5">
-                  {o2Readout.collectedL.toFixed(2)} / {o2Calc.vO2MaxL.toFixed(2)} L
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Mức đầy bình thu</div>
-                <div className="font-mono tabular-nums font-bold text-sky-700 mt-0.5">
-                  {o2Readout.progressPct} %
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-2.5">
-                <div className="text-slate-500">Cách thu khí</div>
-                <div className="font-bold text-slate-800 mt-0.5">
-                  {o2CollectMethod === 'water' ? 'Đẩy nước (ít tan)' : 'Đẩy không khí (nặng hơn KK)'}
-                </div>
-              </div>
-            </>
-          )}
         </div>
       </div>
 
@@ -1930,24 +898,24 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
         <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 text-xs">
           <div className="flex items-center gap-2 font-extrabold text-slate-900 text-sm">
             <SlidersHorizontal size={16} className="text-emerald-600" />
-            <span>Điều Chỉnh Hóa Chất & Điều Kiện</span>
+            <span>Điều Chỉnh Hóa Chất &amp; Điều Kiện</span>
           </div>
 
           {moduleId === 'electrolysis' && (
             <>
               <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 block">Hệ điện phân</label>
+                <label className="font-semibold text-slate-700 block">Quy trình tinh chế / mạ điện</label>
                 {[
-                  { id: 'cuso4_inert', label: 'CuSO₄ (điện cực trơ Graphit)' },
-                  { id: 'cuso4_cu', label: 'CuSO₄ (Anot Cu tan — Mạ đồng)' },
-                  { id: 'nacl_membrane', label: 'NaCl bão hòa (có màng ngăn)' },
-                  { id: 'agno3_inert', label: 'AgNO₃ (Mạ bạc điện cực)' },
+                  { id: 'cuso4_refine', label: 'Tinh chế Cu thô (Anot Cu bẩn tan → Catot Cu sạch)' },
+                  { id: 'plating_ag', label: 'Mạ Bạc lên vật kim loại (Anot Ag tan)' },
+                  { id: 'plating_ni', label: 'Mạ Niken chống gỉ (Anot Ni tan)' },
+                  { id: 'cuso4_inert', label: 'Điện phân CuSO₄ (Anot Graphit trơ)' },
                 ].map((opt) => (
                   <button
                     key={opt.id}
                     type="button"
                     onClick={() => {
-                      setElecSystem(opt.id as typeof elecSystem);
+                      setElecSystem(opt.id as ElectrolysisSystem);
                       elecStateRef.current.elapsedMin = 0;
                       setElecTimeMin(0);
                     }}
@@ -1965,7 +933,7 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 label="Cường độ dòng điện I"
                 valueDisplay={`${elecCurrentA.toFixed(1)} A`}
                 min={1}
-                max={10}
+                max={12}
                 step={0.5}
                 value={elecCurrentA}
                 onChange={setElecCurrentA}
@@ -2031,133 +999,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 value={galvConcRight}
                 onChange={setGalvConcRight}
               />
-            </>
-          )}
-
-          {moduleId === 'reaction_rate' && (
-            <>
-              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setRateSubMode('cross_x')}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    rateSubMode === 'cross_x' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Dấu X (Na₂S₂O₃)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRateSubMode('collision')}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    rateSubMode === 'collision' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Va chạm phân tử
-                </button>
-              </div>
-              <ChemSlider
-                label="Nồng độ chất phản ứng"
-                valueDisplay={`${rateConcM.toFixed(2)} M`}
-                min={0.1}
-                max={1.0}
-                step={0.05}
-                value={rateConcM}
-                onChange={setRateConcM}
-              />
-              <ChemSlider
-                label="Nhiệt độ phản ứng"
-                valueDisplay={`${rateTempC} °C`}
-                min={10}
-                max={65}
-                step={5}
-                value={rateTempC}
-                onChange={setRateTempC}
-              />
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rateCatalyst}
-                  onChange={(e) => setRateCatalyst(e.target.checked)}
-                  className="rounded accent-emerald-600"
-                />
-                <span className="font-semibold text-slate-700">Thêm chất xúc tác (hạ Ea)</span>
-              </label>
-              {rateSubMode === 'collision' && (
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={rateSurfaceFine}
-                    onChange={(e) => setRateSurfaceFine(e.target.checked)}
-                    className="rounded accent-emerald-600"
-                  />
-                  <span className="font-semibold text-slate-700">Nghiền nhỏ tăng diện tích tiếp xúc</span>
-                </label>
-              )}
-            </>
-          )}
-
-          {moduleId === 'redox_flame' && (
-            <>
-              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setRedoxSubMode('flame')}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    redoxSubMode === 'flame' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Thử màu ngọn lửa
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRedoxSubMode('test_tube')}
-                  className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                    redoxSubMode === 'test_tube' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  Oxi hóa – Khử
-                </button>
-              </div>
-              {redoxSubMode === 'flame' ? (
-                <div className="grid grid-cols-2 gap-1.5">
-                  {FLAME_IONS.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setFlameIonId(item.id)}
-                      className={`px-3 py-2 rounded-xl border text-left font-bold cursor-pointer ${
-                        flameIonId === item.id
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                          : 'bg-white border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {item.ion} ({item.salt})
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {REDOX_REACTIONS.map((rxn) => (
-                    <button
-                      key={rxn.id}
-                      type="button"
-                      onClick={() => {
-                        setRedoxRxnId(rxn.id);
-                        setRedoxDropped(false);
-                        redoxStateRef.current.progress = 0;
-                      }}
-                      className={`w-full px-3 py-2 rounded-xl border text-left font-bold cursor-pointer ${
-                        redoxRxnId === rxn.id
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                          : 'bg-white border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {rxn.title}
-                    </button>
-                  ))}
-                </div>
-              )}
             </>
           )}
 
@@ -2250,129 +1091,27 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
               )}
             </>
           )}
-
-          {moduleId === 'thermochemistry' && (
-            <div className="space-y-1.5">
-              <label className="font-semibold text-slate-700 block">Chọn phản ứng nhiệt hóa học</label>
-              {THERMO_REACTIONS.map((rxn) => (
-                <button
-                  key={rxn.id}
-                  type="button"
-                  onClick={() => setThermoId(rxn.id)}
-                  className={`w-full px-3 py-2 rounded-xl border text-left font-bold cursor-pointer ${
-                    thermoId === rxn.id
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                      : 'bg-white border-slate-200 text-slate-700'
-                  }`}
-                >
-                  {rxn.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {moduleId === 'oxygen_prep' && (
-            <>
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 block">Phương pháp điều chế O₂</label>
-                {[
-                  { id: 'kmno4', label: 'Nhiệt phân KMnO₄ (Thuốc tím)' },
-                  { id: 'kclo3', label: 'Nhiệt phân KClO₃ (có/không MnO₂)' },
-                  { id: 'h2o2', label: 'Phân hủy H₂O₂ (xúc tác MnO₂, không đun)' },
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setO2Method(m.id as 'kmno4' | 'kclo3' | 'h2o2')}
-                    className={`w-full px-3 py-2 rounded-xl border text-left font-bold cursor-pointer ${
-                      o2Method === m.id
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                        : 'bg-white border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 block">Cách thu khí O₂</label>
-                <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setO2CollectMethod('water')}
-                    className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                      o2CollectMethod === 'water' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
-                    }`}
-                  >
-                    Đẩy nước
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setO2CollectMethod('air')}
-                    className={`py-1.5 rounded-md font-bold cursor-pointer ${
-                      o2CollectMethod === 'air' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600'
-                    }`}
-                  >
-                    Đẩy không khí
-                  </button>
-                </div>
-              </div>
-
-              <ChemSlider
-                label="Khối lượng hóa chất ban đầu"
-                valueDisplay={`${o2ReactantMassG.toFixed(1)} g`}
-                min={5}
-                max={35}
-                step={0.5}
-                value={o2ReactantMassG}
-                onChange={setO2ReactantMassG}
-              />
-
-              {o2Method !== 'h2o2' && (
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={o2BurnerOn}
-                    onChange={(e) => setO2BurnerOn(e.target.checked)}
-                    className="rounded accent-emerald-600"
-                  />
-                  <span className="font-semibold text-slate-700">Đốt đèn cồn cung cấp nhiệt</span>
-                </label>
-              )}
-
-              {(o2Method === 'kclo3' || o2Method === 'h2o2') && (
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={o2CatalystMnO2}
-                    onChange={(e) => setO2CatalystMnO2(e.target.checked)}
-                    className="rounded accent-emerald-600"
-                  />
-                  <span className="font-semibold text-slate-700">Dùng chất xúc tác bột MnO₂</span>
-                </label>
-              )}
-            </>
-          )}
         </div>
 
         {/* Equation Card */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2.5 text-xs">
-          <h3 className="font-extrabold text-slate-900">Phương Trình & Giải Thích</h3>
+          <h3 className="font-extrabold text-slate-900">Phương Trình &amp; Giải Thích</h3>
           <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-slate-800">
             {moduleId === 'electrolysis' && (
               <>
-                <p className="font-semibold text-sky-800">Catot (−, xảy ra sự khử): {elecCalc.cathodeEq}</p>
-                <p className="font-semibold text-rose-800">Anot (+, xảy ra sự oxi hóa): {elecCalc.anodeEq}</p>
+                <p className="font-semibold text-sky-800">Catot (−, sự khử): {elecCalc.cathodeEq}</p>
+                <p className="font-semibold text-rose-800">Anot (+, sự oxi hóa): {elecCalc.anodeEq}</p>
                 <p className="font-mono font-bold text-slate-900 pt-1 border-t border-slate-200">{elecCalc.overallEq}</p>
                 <p className="text-slate-600">{elecCalc.phenomenon}</p>
-                <p className="text-[11px] font-mono text-slate-500">Định luật Faraday (Hóa 12): m = (A · I · t) / (n · F), với F = 96 500 C/mol; V_khí (đkc) = n · 24,79 L.</p>
+                <p className="text-[11px] font-mono text-slate-500">
+                  Faraday (Hóa 12): Δm = (A · I · t) / (n · F), F = 96 500 C/mol.
+                </p>
               </>
             )}
             {moduleId === 'galvanic_cell' && (
               <>
                 <p className="font-mono font-bold text-slate-900">
-                  {galvCalc.anode.symbol} + {galvCalc.cathode.ion} → {galvCalc.anode.ion} + {galvCalc.cathode.symbol}
+                  {galvCalc.anode.symbol} (Anot tan) + {galvCalc.cathode.ion} → {galvCalc.anode.ion} + {galvCalc.cathode.symbol} ↓ (bám Catot)
                 </p>
                 <p className="font-mono text-[11px] text-emerald-700 font-semibold">
                   E°_pin = E°_cathode − E°_anode = ({galvCalc.cathode.e0 > 0 ? `+${galvCalc.cathode.e0}` : galvCalc.cathode.e0}) − ({galvCalc.anode.e0 > 0 ? `+${galvCalc.anode.e0}` : galvCalc.anode.e0}) = {(galvCalc.cathode.e0 - galvCalc.anode.e0).toFixed(2)} V
@@ -2380,30 +1119,10 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                 <p className="text-slate-600 flex items-start gap-1.5">
                   <Zap size={14} className="shrink-0 mt-0.5 text-emerald-600" />
                   <span>
-                    Trong Pin điện hóa (Hóa 12): cực có thế điện cực E nhỏ hơn là Anot (−, bị oxi hóa); cực lớn hơn là Catot (+, ion kim loại bị khử). Cầu muối KNO₃ giúp cân bằng ion giữa hai bán pin.
+                    Điện cực {galvCalc.anode.symbol} có E° nhỏ hơn đóng vai trò Anot (−) nên bị oxi hóa và tan dần vào dung dịch; đồng thời ion {galvCalc.cathode.ion} nhận e bám dày lên Catot {galvCalc.cathode.symbol}.
                   </span>
                 </p>
               </>
-            )}
-            {moduleId === 'reaction_rate' && (
-              <>
-                <p className="font-mono font-bold text-slate-900">
-                  Na₂S₂O₃ + H₂SO₄ → Na₂SO₄ + S ↓ (vàng đục) + SO₂ ↑ + H₂O
-                </p>
-                <p className="font-mono text-[11px] text-emerald-700 font-semibold">
-                  Van ’t Hoff (Hóa 10): v(T₂) = v(T₁) · γ^((T₂ − T₁)/10), với γ ≈ 2–4
-                </p>
-                <p className="text-slate-600">
-                  Các yếu tố làm tăng tốc độ phản ứng: tăng nồng độ, tăng nhiệt độ, tăng diện tích bề mặt tiếp xúc và thêm chất xúc tác (hạ năng lượng hoạt hóa Ea).
-                </p>
-              </>
-            )}
-            {moduleId === 'redox_flame' && (
-              <p className="font-mono font-bold text-slate-900">
-                {redoxSubMode === 'flame'
-                  ? `Quang phổ phát xạ đặc trưng của ion ${activeFlameIon.ion}: màu ${activeFlameIon.colorName} (λ ≈ ${activeFlameIon.wavelengthNm})`
-                  : activeRedox.equation}
-              </p>
             )}
             {moduleId === 'ester_lab' && (
               <>
@@ -2420,20 +1139,6 @@ export const AdditionalChemistrySimulations: React.FC<AdditionalChemistrySimulat
                       : 'Phản ứng xà phòng hóa xảy ra một chiều trong kiềm nóng. Thêm NaCl bão hòa làm muối sodium/potassium của acid béo tách nổi lên thành lớp xà phòng.'}
                   </span>
                 </p>
-              </>
-            )}
-            {moduleId === 'thermochemistry' && (
-              <>
-                <p className="font-mono font-bold text-slate-900">{activeThermo.equation}</p>
-                <p className="text-slate-600">{activeThermo.explanation}</p>
-                <p className="text-[11px] font-mono text-slate-500">Hóa 10: Đo nhiệt lượng Q = m · c · ΔT (c = 4,18 J/(g·K), đkc 25°C, 1 bar).</p>
-              </>
-            )}
-            {moduleId === 'oxygen_prep' && (
-              <>
-                <p className="font-mono font-bold text-slate-900">{o2Calc.eq}</p>
-                <p className="text-slate-600">{o2Calc.note}</p>
-                <p className="text-[11px] font-mono text-slate-500">Thể tích khí tính ở điều kiện chuẩn (25°C, 1 bar): V = n · 24,79 L.</p>
               </>
             )}
           </div>
