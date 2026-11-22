@@ -12,9 +12,12 @@ import {
   Zap,
   Factory,
   Scale,
+  Atom,
+  Layers,
 } from 'lucide-react';
 import type { AdditionalChemModuleId } from './AdditionalChemistrySimulations';
 import type { IndustrialModuleId } from './IndustrialChemistrySimulations';
+import { getDefault3DReactionForModule } from './molecularReactions3dData';
 
 const AdditionalChemistrySimulations = lazy(() =>
   import('./AdditionalChemistrySimulations').then((m) => ({ default: m.AdditionalChemistrySimulations }))
@@ -25,10 +28,14 @@ const IndustrialChemistrySimulations = lazy(() =>
 const ChemicalEquationStudio = lazy(() =>
   import('./ChemicalEquationStudio').then((m) => ({ default: m.ChemicalEquationStudio }))
 );
+const MolecularReaction3DView = lazy(() =>
+  import('./MolecularReaction3DView').then((m) => ({ default: m.MolecularReaction3DView }))
+);
 
 type ChemModuleId =
   | 'titration'
   | 'equation_writer'
+  | 'molecule_3d'
   | AdditionalChemModuleId
   | IndustrialModuleId;
 
@@ -182,6 +189,7 @@ function computeTitrationPh(
 export const ChemistryExperimentLabView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<ChemCategoryId | null>(null);
   const [activeModule, setActiveModule] = useState<ChemModuleId | null>(null);
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
 
   // ===========================================================================
   // CHUẨN ĐỘ ACID - BASE (HCl / CH3COOH + NaOH)
@@ -303,32 +311,67 @@ export const ChemistryExperimentLabView: React.FC = () => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setActiveModule('equation_writer')}
-          className="w-full group text-left bg-white border border-emerald-300 hover:border-emerald-500 hover:shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all cursor-pointer"
-        >
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
-              <Scale size={22} />
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-emerald-700">
-                Công cụ chuyên sâu THPT · Lớp 10 – 11 – 12
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('2d');
+              setActiveModule('equation_writer');
+            }}
+            className="w-full group text-left bg-white border border-emerald-300 hover:border-emerald-500 hover:shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all cursor-pointer"
+          >
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
+                <Scale size={22} />
               </div>
-              <h2 className="text-base font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors">
-                Viết, Tự Sinh Sản Phẩm &amp; Cân Bằng Mọi Phương Trình Hóa Học
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Nhập cả 2 vế để cân bằng chính xác, chỉ nhập chất tham gia để tự viết sản phẩm, hoặc tra cứu kho phương trình chuẩn THPT.
-              </p>
+              <div>
+                <div className="text-[11px] font-bold text-emerald-700">
+                  Công cụ chuyên sâu THPT · Lớp 10 – 11 – 12
+                </div>
+                <h2 className="text-base font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                  Viết &amp; Cân Bằng Mọi Phương Trình Hóa Học
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Cân bằng chính xác, tự sinh sản phẩm từ chất tham gia và tra cứu 119 phương trình chuẩn THPT.
+                </p>
+              </div>
             </div>
-          </div>
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 shrink-0">
-            <span>Mở trình viết PTHH</span>
-            <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-          </span>
-        </button>
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 shrink-0">
+              <span>Mở trình viết PTHH</span>
+              <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('3d');
+              setActiveModule('molecule_3d');
+            }}
+            className="w-full group text-left bg-white border border-sky-300 hover:border-sky-500 hover:shadow-sm rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all cursor-pointer"
+          >
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-700 shrink-0">
+                <Atom size={22} />
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-sky-700">
+                  Chế độ xem tương tác 3D · Xoay 360°
+                </div>
+                <h2 className="text-base font-extrabold text-slate-900 group-hover:text-sky-700 transition-colors">
+                  Mô Hình Phân Tử 3D Trong Quá Trình Phản Ứng
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Xoay tự do 360° và tua tiến trình đứt – nối liên kết hóa học của 10 phản ứng THPT trọng tâm.
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 shrink-0">
+              <span>Mở chế độ 3D</span>
+              <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </button>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {CHEM_CATEGORIES.map((cat) => {
@@ -405,7 +448,10 @@ export const ChemistryExperimentLabView: React.FC = () => {
               <button
                 key={exp.id}
                 type="button"
-                onClick={() => setActiveModule(exp.id)}
+                onClick={() => {
+                  setViewMode('2d');
+                  setActiveModule(exp.id);
+                }}
                 className="group text-left bg-white border border-slate-200 hover:border-emerald-400 hover:shadow-sm rounded-2xl p-5 flex flex-col justify-between gap-4 transition-all cursor-pointer"
               >
                 <div className="space-y-3">
@@ -447,26 +493,32 @@ export const ChemistryExperimentLabView: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              if (activeModule === 'equation_writer') {
+              if (activeModule === 'equation_writer' || activeModule === 'molecule_3d') {
                 setActiveModule(null);
                 setSelectedCategory(null);
               } else {
                 setSelectedCategory(activeExperimentMeta?.category || selectedCategory);
                 setActiveModule(null);
               }
+              setViewMode('2d');
             }}
             className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors cursor-pointer"
           >
             <ArrowLeft size={15} />
-            <span>{activeModule === 'equation_writer' ? 'Trang chính Hóa' : 'Quay lại mục'}</span>
+            <span>
+              {activeModule === 'equation_writer' || activeModule === 'molecule_3d'
+                ? 'Trang chính Hóa'
+                : 'Quay lại mục'}
+            </span>
           </button>
 
-          {activeModule !== 'equation_writer' && (
+          {activeModule !== 'equation_writer' && activeModule !== 'molecule_3d' && (
             <button
               type="button"
               onClick={() => {
                 setActiveModule(null);
                 setSelectedCategory(null);
+                setViewMode('2d');
               }}
               className="px-2.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold shrink-0 whitespace-nowrap transition-colors cursor-pointer"
             >
@@ -478,17 +530,54 @@ export const ChemistryExperimentLabView: React.FC = () => {
             <div className="text-[11px] font-medium text-slate-500 truncate">
               {activeModule === 'equation_writer'
                 ? 'THPT · Lớp 10 · 11 · 12 · Công cụ PTHH'
+                : activeModule === 'molecule_3d'
+                ? 'THPT · Mô hình không gian 3D tương tác'
                 : `${activeExperimentMeta?.grade} · ${activeExperimentMeta?.categoryLabel}`}
             </div>
             <h1 className="text-base sm:text-lg font-extrabold text-slate-900 truncate">
               {activeModule === 'equation_writer'
                 ? 'Viết & Cân Bằng Tất Cả Phương Trình Hóa Học'
+                : activeModule === 'molecule_3d'
+                ? 'Xem Mô Hình Phân Tử 3D Trong Quá Trình Phản Ứng'
                 : activeExperimentMeta?.title}
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {activeModule !== 'equation_writer' && activeModule !== 'molecule_3d' && (
+            <div
+              role="group"
+              aria-label="Chế độ quan sát thí nghiệm"
+              className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200"
+            >
+              <button
+                type="button"
+                onClick={() => setViewMode('2d')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  viewMode === '2d'
+                    ? 'bg-white text-emerald-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Layers size={13} />
+                <span>Mô phỏng 2D</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('3d')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  viewMode === '3d'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Atom size={13} />
+                <span>Phân tử 3D</span>
+              </button>
+            </div>
+          )}
+
           <label htmlFor="quick-chem-select" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
             Chuyển nhanh:
           </label>
@@ -500,6 +589,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
               const nextMeta = CHEM_EXPERIMENTS.find((x) => x.id === nextId);
               if (nextMeta) setSelectedCategory(nextMeta.category);
               else setSelectedCategory(null);
+              setViewMode(nextId === 'molecule_3d' ? '3d' : '2d');
               setActiveModule(nextId);
             }}
             className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer"
@@ -514,6 +604,7 @@ export const ChemistryExperimentLabView: React.FC = () => {
               </optgroup>
             ))}
             <optgroup label="Công cụ bổ trợ">
+              <option value="molecule_3d">Mô Hình Phân Tử 3D Tương Tác</option>
               <option value="equation_writer">Viết &amp; Cân Bằng PTHH</option>
             </optgroup>
           </select>
@@ -529,6 +620,22 @@ export const ChemistryExperimentLabView: React.FC = () => {
           }
         >
           <ChemicalEquationStudio />
+        </Suspense>
+      ) : activeModule === 'molecule_3d' || viewMode === '3d' ? (
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm font-semibold text-slate-600">
+              Đang khởi tạo không gian phân tử 3D tương tác...
+            </div>
+          }
+        >
+          <MolecularReaction3DView
+            initialReactionId={
+              activeModule === 'molecule_3d'
+                ? 'esterification'
+                : getDefault3DReactionForModule(activeModule)
+            }
+          />
         </Suspense>
       ) : activeModule === 'aluminum_prod' || activeModule === 'industrial_prod' ? (
         <Suspense
