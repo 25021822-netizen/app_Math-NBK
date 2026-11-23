@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
@@ -22,24 +22,195 @@ import {
   FileText,
   FileSpreadsheet,
   FileCheck,
-  Award,
-  Users,
   CheckCircle2,
   AlertTriangle,
-  GraduationCap,
-  Calendar,
-  Clock,
   ShieldCheck,
   Check,
   Loader2,
-  Settings,
-  Sparkles,
   Info,
 } from 'lucide-react';
 import { Classroom, StudentExamSubmission, Exam } from '../../types/math';
 
 export type ReportFileFormat = 'pdf' | 'excel' | 'word';
 export type ReportType = 'class_summary' | 'individual_student';
+
+interface ExtractedAnswerRow {
+  key: string;
+  questionNumber: number | null;
+  label: string;
+  partType: 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' | 'unknown';
+  partShort: string;
+  studentAnswer: string;
+  correctAnswer: string;
+  status: 'correct' | 'partial' | 'wrong' | 'unanswered' | 'unknown';
+}
+
+const formatDurationSpent = (seconds?: number): string => {
+  const safeSec = Math.max(0, Math.round(seconds || 0));
+  const mins = Math.floor(safeSec / 60);
+  const secs = safeSec % 60;
+  if (mins === 0) return `${secs} giây`;
+  if (secs === 0) return `${mins} phút`;
+  return `${mins} phút ${secs.toString().padStart(2, '0')} giây`;
+};
+
+const formatTFValue = (val: unknown): string => {
+  if (val === undefined || val === null || val === '') return '—';
+  if (val === true || val === 'true' || val === 'Đ') return 'Đ';
+  if (val === false || val === 'false' || val === 'S') return 'S';
+  return String(val);
+};
+
+const extractStudentQuestionAnswers = (
+  sub: StudentExamSubmission,
+  examsList: Exam[]
+): ExtractedAnswerRow[] => {
+  const ansMap = sub.answers || {};
+  const exam = examsList.find((e) => e.id === sub.examId) || null;
+
+  if (exam && Array.isArray(exam.questions) && exam.questions.length > 0) {
+    const sortedQuestions = [...exam.questions].sort((a, b) => a.questionNumber - b.questionNumber);
+    return sortedQuestions.map((q) => {
+      if (q.part === 'part_1_mcq') {
+        const raw = ansMap[q.id];
+        const hasVal = raw !== undefined && raw !== null && String(raw).trim() !== '';
+        const studentAnswer = hasVal ? String(raw).trim() : 'Bỏ trống';
+        const correctAnswer = q.correctAnswer || '—';
+        const status: ExtractedAnswerRow['status'] = !hasVal
+          ? 'unanswered'
+          : studentAnswer === correctAnswer
+          ? 'correct'
+          : 'wrong';
+        return {
+          key: q.id,
+          questionNumber: q.questionNumber,
+          label: `Câu ${q.questionNumber}`,
+          partType: 'part_1_mcq',
+          partShort: 'P.I (MCQ)',
+          studentAnswer,
+          correctAnswer,
+          status,
+        };
+      }
+
+      if (q.part === 'part_2_true_false') {
+        const items = Array.isArray(q.items) && q.items.length > 0 ? q.items : [];
+        const subKeys: ('a' | 'b' | 'c' | 'd')[] =
+          items.length > 0 ? items.map((it) => it.subKey) : ['a', 'b', 'c', 'd'];
+
+        let answeredCount = 0;
+        let matchedCount = 0;
+
+        const studentParts = subKeys.map((sk) => {
+          const rawVal = ansMap[`${q.id}_${sk}`];
+          const fmt = formatTFValue(rawVal);
+          if (fmt !== '—') answeredCount += 1;
+          const itemDef = items.find((it) => it.subKey === sk);
+          if (itemDef) {
+            const expected = itemDef.isCorrect ? 'Đ' : 'S';
+            if (fmt === expected) matchedCount += 1;
+          }
+          return `${sk}:${fmt}`;
+        });
+
+        const correctParts = items.map((it) => `${it.subKey}:${it.isCorrect ? 'Đ' : 'S'}`);
+        const status: ExtractedAnswerRow['status'] =
+          answeredCount === 0
+            ? 'unanswered'
+            : items.length > 0 && matchedCount === items.length
+            ? 'correct'
+            : matchedCount > 0
+            ? 'partial'
+            : 'wrong';
+
+        return {
+          key: q.id,
+          questionNumber: q.questionNumber,
+          label: `Câu ${q.questionNumber}`,
+          partType: 'part_2_true_false',
+          partShort: 'P.II (Đ/S)',
+          studentAnswer: studentParts.join(' '),
+          correctAnswer: correctParts.length > 0 ? correctParts.join(' ') : '—',
+          status,
+        };
+      }
+
+      const raw = ansMap[q.id];
+      const hasVal = raw !== undefined && raw !== null && String(raw).trim() !== '';
+      const studentAnswer = hasVal ? String(raw).trim() : 'Bỏ trống';
+      const correctAnswer = (q.correctAnswer ?? '—').toString().trim();
+      const normStudent = studentAnswer.replace(',', '.').toLowerCase();
+      const normCorrect = correctAnswer.replace(',', '.').toLowerCase();
+      const status: ExtractedAnswerRow['status'] = !hasVal
+        ? 'unanswered'
+        : normStudent === normCorrect
+        ? 'correct'
+        : 'wrong';
+
+      return {
+        key: q.id,
+        questionNumber: q.questionNumber,
+        label: `Câu ${q.questionNumber}`,
+        partType: 'part_3_short_answer',
+        partShort: 'P.III (Ngắn)',
+        studentAnswer,
+        correctAnswer,
+        status,
+      };
+    });
+  }
+
+  // Fallback khi đề thi gốc không còn trong hệ thống: nhóm theo key trong sub.answers
+  const entries = Object.entries(ansMap);
+  if (entries.length === 0) return [];
+
+  const groupedTF = new Map<string, Record<string, unknown>>();
+  const plainRows: ExtractedAnswerRow[] = [];
+
+  entries.forEach(([key, val]) => {
+    const tfMatch = key.match(/^(.+)_([abcd])$/);
+    if (tfMatch) {
+      const baseId = tfMatch[1];
+      const subKey = tfMatch[2];
+      if (!groupedTF.has(baseId)) groupedTF.set(baseId, {});
+      groupedTF.get(baseId)![subKey] = val;
+    } else {
+      const numMatch = key.match(/(\d+)$/);
+      const qNum = numMatch ? Number(numMatch[1]) : null;
+      const hasVal = val !== undefined && val !== null && String(val).trim() !== '';
+      plainRows.push({
+        key,
+        questionNumber: qNum,
+        label: qNum ? `Câu ${qNum}` : `Câu (${key.slice(0, 8)})`,
+        partType: 'unknown',
+        partShort: 'Đáp án',
+        studentAnswer: hasVal ? String(val).trim() : 'Bỏ trống',
+        correctAnswer: 'Không có đề gốc',
+        status: hasVal ? 'unknown' : 'unanswered',
+      });
+    }
+  });
+
+  groupedTF.forEach((subObj, baseId) => {
+    const numMatch = baseId.match(/(\d+)$/);
+    const qNum = numMatch ? Number(numMatch[1]) : null;
+    const tfText = (['a', 'b', 'c', 'd'] as const)
+      .map((sk) => `${sk}:${formatTFValue(subObj[sk])}`)
+      .join(' ');
+    plainRows.push({
+      key: baseId,
+      questionNumber: qNum,
+      label: qNum ? `Câu ${qNum}` : `Câu Đ/S (${baseId.slice(0, 6)})`,
+      partType: 'part_2_true_false',
+      partShort: 'P.II (Đ/S)',
+      studentAnswer: tfText,
+      correctAnswer: 'Không có đề gốc',
+      status: 'unknown',
+    });
+  });
+
+  return plainRows.sort((a, b) => (a.questionNumber ?? 9999) - (b.questionNumber ?? 9999));
+};
 
 interface GradebookPdfReportModalProps {
   isOpen: boolean;
@@ -88,10 +259,13 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
   );
 
   // Chiều giấy in PDF: 'landscape' cho bảng điểm nhiều cột, 'portrait' cho phiếu cá nhân
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('landscape');
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(
+    initialStudentSubmission ? 'portrait' : 'landscape'
+  );
 
   // Các tùy chọn bổ sung
   const [includeAnalyticsChart, setIncludeAnalyticsChart] = useState(true);
+  const [includeQuestionAnswers, setIncludeQuestionAnswers] = useState(true);
   const [includeTeacherSignature, setIncludeTeacherSignature] = useState(true);
   const [teacherCustomNotes, setTeacherCustomNotes] = useState(
     'Học sinh nắm vững các dạng toán cơ bản và vận dụng tốt ở Phần I và Phần II. Cần rèn luyện thêm kỹ năng tính toán nhanh ở Phần III (Trả lời ngắn).'
@@ -104,6 +278,19 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
 
   const reportPrintRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialStudentSubmission) {
+      setReportType('individual_student');
+      setSelectedStudentSubId(initialStudentSubmission.id);
+      setOrientation('portrait');
+    } else {
+      setReportType('class_summary');
+      setSelectedStudentSubId((prev) => prev || submissions[0]?.id || '');
+      setOrientation('landscape');
+    }
+  }, [isOpen, initialStudentSubmission, submissions]);
+
   if (!isOpen) return null;
 
   // Dữ liệu lớp và đề thi
@@ -111,9 +298,9 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
   const currentExam = examsList.find((e) => e.id === selectedExamId);
 
   const selectedIndividualSub = submissions.find((s) => s.id === selectedStudentSubId) || submissions[0];
-  const individualExam = selectedIndividualSub
-    ? examsList.find((e) => e.id === selectedIndividualSub.examId) || null
-    : null;
+  const individualAnswerRows = selectedIndividualSub
+    ? extractStudentQuestionAnswers(selectedIndividualSub, examsList)
+    : [];
 
   const classNameDisplay = currentClass ? currentClass.name : 'Tất Cả Các Lớp';
   const examTitleDisplay = currentExam ? currentExam.title : 'Tổng Hợp Tất Cả Đề Thi';
@@ -235,10 +422,11 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             'Phần I (MCQ 3đ)',
             'Phần II (Đ/S 4đ)',
             'Phần III (Ngắn 3đ)',
-            'Thời Gian Làm (phút)',
+            'Tổng Thời Gian Đã Làm',
             'Thời Gian Nộp Bài',
             'Vi Phạm Tab',
             'Xếp Loại',
+            'Chi Tiết Đáp Án Đã Chọn',
           ],
         ];
 
@@ -254,6 +442,9 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             year: 'numeric',
             hour12: false,
           });
+          const ansSummary = extractStudentQuestionAnswers(sub, examsList)
+            .map((r) => `${r.label}: ${r.studentAnswer}`)
+            .join(' | ');
           wsData.push([
             idx + 1,
             sub.studentId,
@@ -264,10 +455,11 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             Number(sub.partScores.part1.toFixed(2)),
             Number(sub.partScores.part2.toFixed(2)),
             Number(sub.partScores.part3.toFixed(2)),
-            Math.round(sub.timeSpentSeconds / 60),
+            formatDurationSpent(sub.timeSpentSeconds),
             submittedStr,
             sub.infractionCount,
             rank,
+            ansSummary || 'Không có dữ liệu',
           ]);
         });
 
@@ -290,10 +482,11 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           { wch: 16 }, // Phần I
           { wch: 16 }, // Phần II
           { wch: 16 }, // Phần III
-          { wch: 18 }, // Thời gian làm
+          { wch: 22 }, // Tổng thời gian làm
           { wch: 22 }, // Thời gian nộp
           { wch: 14 }, // Vi phạm
           { wch: 14 }, // Xếp loại
+          { wch: 64 }, // Chi tiết đáp án
         ];
 
         XLSX.utils.book_append_sheet(wb, ws, 'Bang_Diem_Lop');
@@ -301,6 +494,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         // Sheet cá nhân học sinh
         const sub = selectedIndividualSub;
         const rank = sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
+        const ansRows = extractStudentQuestionAnswers(sub, examsList);
         const wsData: (string | number)[][] = [
           ['HỆ THỐNG TOÁN THẦY NGUYỄN BÁ KỲ (MATH&NBK)', '', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'],
           ['TỔ TOÁN - TIN', '', 'Độc lập - Tự do - Hạnh phúc'],
@@ -311,13 +505,17 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           ['Họ và Tên:', sub.studentName, 'Mã Học Sinh:', sub.studentId],
           ['Lớp:', classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa', 'Email:', sub.studentEmail],
           ['Bài Kiểm Tra:', sub.examTitle, 'Ngày Nộp:', new Date(sub.submittedAt).toLocaleString('vi-VN')],
-          ['Thời Gian Làm Bài:', `${Math.round(sub.timeSpentSeconds / 60)} phút`, 'Cảnh Báo Vi Phạm Tab:', `${sub.infractionCount} lần`],
+          ['Tổng Thời Gian Đã Làm:', formatDurationSpent(sub.timeSpentSeconds), 'Cảnh Báo Vi Phạm Tab:', `${sub.infractionCount} lần`],
           [''],
           ['KẾT QUẢ ĐÁNH GIÁ', ''],
           ['ĐIỂM TỔNG KẾT:', `${sub.score.toFixed(2)} / 10.0`, 'XẾP LOẠI:', rank],
           ['Phần I (Trắc nghiệm 4 lựa chọn):', `${sub.partScores.part1.toFixed(2)} / 3.0 điểm`],
           ['Phần II (Đúng/Sai 4 ý):', `${sub.partScores.part2.toFixed(2)} / 4.0 điểm`],
           ['Phần III (Trả lời ngắn):', `${sub.partScores.part3.toFixed(2)} / 3.0 điểm`],
+          [''],
+          ['CHI TIẾT ĐÁP ÁN TỪNG CÂU ĐÃ CHỌN', '', '', ''],
+          ['Câu', 'Phần', 'Đáp Án Thí Sinh Chọn', 'Đáp Án Đúng'],
+          ...ansRows.map((r) => [r.label, r.partShort, r.studentAnswer, r.correctAnswer]),
           [''],
           ['NHẬN XÉT CỦA GIÁO VIÊN BỘ MÔN:'],
           [teacherCustomNotes],
@@ -327,7 +525,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         ];
 
         const ws = XLSX.utils.aoa_to_sheet(wsData);
-        ws['!cols'] = [{ wch: 32 }, { wch: 35 }, { wch: 25 }, { wch: 25 }];
+        ws['!cols'] = [{ wch: 32 }, { wch: 35 }, { wch: 28 }, { wch: 28 }];
         XLSX.utils.book_append_sheet(wb, ws, 'Phieu_Diem_Ca_Nhan');
       }
 
@@ -455,6 +653,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Phần I (MCQ)', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Phần II (Đ/S)', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Phần III (Ngắn)', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Tổng TG Làm', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Thời Gian Nộp', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Xếp Loại', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
             ],
@@ -482,6 +681,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part1.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part2.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part3.toFixed(2)}đ`)], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(formatDurationSpent(sub.timeSpentSeconds))], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(submittedStr)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(rank)], borders: borderConfig }),
               ],
@@ -614,8 +814,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
               children: [
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Lớp học:', bold: true })] })], borders: borderConfig, shading: { fill: 'F8FAFC' } }),
                 new TableCell({ children: [new Paragraph(classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Thời gian làm:', bold: true })] })], borders: borderConfig, shading: { fill: 'F8FAFC' } }),
-                new TableCell({ children: [new Paragraph(`${Math.round(sub.timeSpentSeconds / 60)} phút`)], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Tổng thời gian làm:', bold: true })] })], borders: borderConfig, shading: { fill: 'F8FAFC' } }),
+                new TableCell({ children: [new Paragraph(formatDurationSpent(sub.timeSpentSeconds))], borders: borderConfig }),
               ],
             }),
             new TableRow({
@@ -1075,6 +1275,16 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
               <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700">
                 <input
                   type="checkbox"
+                  checked={includeQuestionAnswers}
+                  onChange={(e) => setIncludeQuestionAnswers(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span>Đáp Án Từng Câu</span>
+              </label>
+
+              <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700">
+                <input
+                  type="checkbox"
                   checked={includeTeacherSignature}
                   onChange={(e) => setIncludeTeacherSignature(e.target.checked)}
                   className="rounded text-blue-600 focus:ring-blue-500"
@@ -1273,6 +1483,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                         <th className="py-2 px-2 border-r border-slate-300 text-center text-[11px]">P.I (MCQ)</th>
                         <th className="py-2 px-2 border-r border-slate-300 text-center text-[11px]">P.II (Đ/S)</th>
                         <th className="py-2 px-2 border-r border-slate-300 text-center text-[11px]">P.III (Ngắn)</th>
+                        <th className="py-2 px-2 border-r border-slate-300 text-center text-[11px] whitespace-nowrap">Tổng TG Làm</th>
                         <th className="py-2 px-2.5 border-r border-slate-300 text-center text-[11px]">Thời Gian Nộp</th>
                         <th className="py-2 px-2.5 border-r border-slate-300 text-center text-[11px]">Giám Sát</th>
                         <th className="py-2 px-2.5 text-center text-[11px]">Xếp Loại</th>
@@ -1325,6 +1536,9 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                             <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-[11px]">
                               {sub.partScores.part3.toFixed(2)}
                             </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-[10px] font-bold text-slate-800 whitespace-nowrap">
+                              {formatDurationSpent(sub.timeSpentSeconds)}
+                            </td>
                             <td className="py-1.5 px-2.5 border-r border-slate-300 text-center font-mono text-[10px] text-slate-600 whitespace-nowrap">
                               {submittedStr}
                             </td>
@@ -1357,6 +1571,136 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                   </table>
                 </div>
 
+                {/* 5B. CHI TIẾT TỔNG THỜI GIAN LÀM & ĐÁP ÁN TỪNG CÂU CỦA MỖI THÍ SINH */}
+                {includeQuestionAnswers && submissions.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-300">
+                      <span className="font-extrabold uppercase text-xs text-slate-800">
+                        Chi Tiết Tổng Thời Gian Đã Làm & Đáp Án Từng Câu Của Mỗi Thí Sinh
+                      </span>
+                      <span className="text-[11px] text-slate-500 italic">
+                        Ký hiệu: ✓ Đúng · ~ Đúng 1 phần · ✗ Sai · — Bỏ trống
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {submissions.map((sub, idx) => {
+                        const answerRows = extractStudentQuestionAnswers(sub, examsList);
+                        const correctCount = answerRows.filter((r) => r.status === 'correct').length;
+                        const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour12: false,
+                        });
+
+                        return (
+                          <div
+                            key={`ans-${sub.id}`}
+                            className="rounded-xl border border-slate-300 bg-white overflow-hidden"
+                          >
+                            <div className="px-3.5 py-2 bg-slate-100 border-b border-slate-300 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-white font-mono font-bold text-[10px]">
+                                  #{idx + 1}
+                                </span>
+                                <strong className="text-slate-900 font-extrabold">{sub.studentName}</strong>
+                                <span className="text-slate-500 font-mono">({sub.studentId})</span>
+                                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold">
+                                  {sub.score.toFixed(2)}đ
+                                </span>
+                                {answerRows.length > 0 && (
+                                  <span className="text-slate-600 font-semibold">
+                                    · Đúng {correctCount}/{answerRows.length} câu
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-3 font-mono text-[10px]">
+                                <span className="px-2 py-0.5 rounded bg-white border border-slate-300 text-slate-900 font-bold">
+                                  Tổng TG đã làm: {formatDurationSpent(sub.timeSpentSeconds)}
+                                </span>
+                                <span className="text-slate-500">Nộp: {submittedStr}</span>
+                              </div>
+                            </div>
+
+                            <div className="p-2.5">
+                              {answerRows.length === 0 ? (
+                                <p className="text-[11px] text-slate-500 italic">
+                                  Không có dữ liệu đáp án từng câu cho bài nộp này.
+                                </p>
+                              ) : (
+                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 text-[10px]">
+                                  {answerRows.map((row) => {
+                                    const cardTone =
+                                      row.status === 'correct'
+                                        ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                                        : row.status === 'partial'
+                                        ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                                        : row.status === 'wrong'
+                                        ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                                        : 'bg-slate-50 border-slate-200 text-slate-700';
+
+                                    const badgeSymbol =
+                                      row.status === 'correct'
+                                        ? '✓'
+                                        : row.status === 'partial'
+                                        ? '~'
+                                        : row.status === 'wrong'
+                                        ? '✗'
+                                        : row.status === 'unanswered'
+                                        ? '—'
+                                        : '•';
+
+                                    const badgeColor =
+                                      row.status === 'correct'
+                                        ? 'text-emerald-700'
+                                        : row.status === 'partial'
+                                        ? 'text-amber-700'
+                                        : row.status === 'wrong'
+                                        ? 'text-rose-700'
+                                        : 'text-slate-400';
+
+                                    return (
+                                      <div
+                                        key={row.key}
+                                        className={`px-2 py-1 rounded-lg border font-mono ${cardTone} ${
+                                          row.partType === 'part_2_true_false' ? 'col-span-2' : ''
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="font-bold text-[9px] text-slate-500 uppercase">
+                                            {row.label}
+                                          </span>
+                                          <span className={`font-black text-[10px] ${badgeColor}`}>{badgeSymbol}</span>
+                                        </div>
+                                        <div className="font-extrabold text-[10px] leading-tight mt-0.5 break-all">
+                                          {row.studentAnswer}
+                                        </div>
+                                        {(row.status === 'wrong' ||
+                                          row.status === 'unanswered' ||
+                                          row.status === 'partial') &&
+                                          row.correctAnswer !== '—' &&
+                                          row.correctAnswer !== 'Không có đề gốc' && (
+                                            <div className="text-[9px] text-slate-500 mt-0.5">
+                                              Đúng: <strong className="text-slate-700">{row.correctAnswer}</strong>
+                                            </div>
+                                          )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* 6. GHI CHÚ NHẬN XÉT CỦA GIÁO VIÊN */}
                 {teacherCustomNotes && (
                   <div className="p-3.5 rounded-2xl border border-slate-300 bg-slate-50 space-y-1 text-xs">
@@ -1381,16 +1725,21 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                     <strong className="text-base text-slate-900 block mt-0.5 font-bold">
                       {selectedIndividualSub.studentName}
                     </strong>
-                    <span className="text-slate-500 font-mono">{selectedIndividualSub.studentEmail}</span>
+                    <span className="text-slate-500 font-mono">
+                      Mã HS: {selectedIndividualSub.studentId} · {selectedIndividualSub.studentEmail}
+                    </span>
                   </div>
 
                   <div>
-                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Lớp Học & Khối:</span>
+                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Lớp Học & Thời Gian Làm Bài:</span>
                     <strong className="text-base text-slate-900 block mt-0.5 font-bold">
                       {classrooms.find((c) => c.id === selectedIndividualSub.classId)?.name || 'Tự luyện / Lớp đã xóa'}
                     </strong>
-                    <span className="text-slate-500">
-                      Thời gian làm: {Math.round(selectedIndividualSub.timeSpentSeconds / 60)} phút
+                    <span className="text-slate-800 font-semibold block mt-0.5">
+                      Tổng thời gian đã làm:{' '}
+                      <strong className="font-mono text-blue-700">
+                        {formatDurationSpent(selectedIndividualSub.timeSpentSeconds)}
+                      </strong>
                     </span>
                   </div>
                 </div>
@@ -1435,7 +1784,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                 </div>
 
                 {/* Giám sát an toàn thi cử */}
-                <div className="p-4 rounded-xl border border-slate-300 bg-slate-50 flex items-center justify-between text-xs">
+                <div className="p-4 rounded-xl border border-slate-300 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2">
                     <ShieldCheck size={18} className="text-emerald-600" />
                     <span>
@@ -1447,10 +1796,96 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                       </strong>
                     </span>
                   </div>
-                  <span className="text-slate-500 font-mono text-[11px]">
-                    Nộp bài: {new Date(selectedIndividualSub.submittedAt).toLocaleString('vi-VN')}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-slate-600">
+                    <span>
+                      Tổng TG làm: <strong className="text-slate-900">{formatDurationSpent(selectedIndividualSub.timeSpentSeconds)}</strong>
+                    </span>
+                    <span>·</span>
+                    <span>
+                      Nộp bài: {new Date(selectedIndividualSub.submittedAt).toLocaleString('vi-VN')}
+                    </span>
+                  </div>
                 </div>
+
+                {/* Chi tiết đáp án từng câu đã chọn của thí sinh */}
+                {includeQuestionAnswers && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-300">
+                      <span className="font-extrabold uppercase text-xs text-slate-800">
+                        Chi Tiết Đáp Án Từng Câu Đã Chọn
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        Tổng {individualAnswerRows.length} câu · Đúng hoàn toàn:{' '}
+                        {individualAnswerRows.filter((r) => r.status === 'correct').length}
+                      </span>
+                    </div>
+
+                    {individualAnswerRows.length === 0 ? (
+                      <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-500 italic text-center">
+                        Không có dữ liệu đáp án từng câu cho bài nộp này.
+                      </div>
+                    ) : (
+                      <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-800 font-extrabold border-b border-slate-300 text-[11px]">
+                            <th className="py-2 px-2.5 border-r border-slate-300 text-center w-20">Câu</th>
+                            <th className="py-2 px-2.5 border-r border-slate-300 text-center w-28">Phần</th>
+                            <th className="py-2 px-3 border-r border-slate-300">Đáp Án Thí Sinh Chọn</th>
+                            <th className="py-2 px-3 border-r border-slate-300">Đáp Án Đúng</th>
+                            <th className="py-2 px-2.5 text-center w-28">Kết Quả</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {individualAnswerRows.map((row, rIdx) => {
+                            const statusLabel =
+                              row.status === 'correct'
+                                ? 'Đúng ✓'
+                                : row.status === 'partial'
+                                ? 'Đúng 1 phần'
+                                : row.status === 'wrong'
+                                ? 'Sai ✗'
+                                : row.status === 'unanswered'
+                                ? 'Bỏ trống'
+                                : 'Đã chọn';
+                            const statusTone =
+                              row.status === 'correct'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : row.status === 'partial'
+                                ? 'bg-amber-100 text-amber-800'
+                                : row.status === 'wrong'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-slate-100 text-slate-600';
+
+                            return (
+                              <tr
+                                key={row.key}
+                                className={`border-b border-slate-200 ${rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}
+                              >
+                                <td className="py-1.5 px-2.5 border-r border-slate-300 text-center font-bold font-mono text-slate-900">
+                                  {row.label}
+                                </td>
+                                <td className="py-1.5 px-2.5 border-r border-slate-300 text-center text-[11px] text-slate-600">
+                                  {row.partShort}
+                                </td>
+                                <td className="py-1.5 px-3 border-r border-slate-300 font-mono font-bold text-slate-900">
+                                  {row.studentAnswer}
+                                </td>
+                                <td className="py-1.5 px-3 border-r border-slate-300 font-mono text-slate-700">
+                                  {row.correctAnswer}
+                                </td>
+                                <td className="py-1.5 px-2.5 text-center">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusTone}`}>
+                                    {statusLabel}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
 
                 {/* Nhận xét của giáo viên */}
                 <div className="p-4 rounded-xl border border-slate-300 bg-slate-50 space-y-1.5 text-xs">
