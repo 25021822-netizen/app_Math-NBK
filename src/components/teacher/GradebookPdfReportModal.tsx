@@ -30,6 +30,15 @@ import {
   Info,
 } from 'lucide-react';
 import { Classroom, StudentExamSubmission, Exam } from '../../types/math';
+import {
+  GradebookAnalytics,
+  classifyScoreByScale,
+  computeExamQuestionStats,
+  formatPointsNumber,
+  getExamScaleInfo,
+  getSubmissionScalePoints,
+  isAnswerEquivalent,
+} from '../../lib/scoringEngine';
 
 export type ReportFileFormat = 'pdf' | 'excel' | 'word';
 export type ReportType = 'class_summary' | 'individual_student';
@@ -139,11 +148,10 @@ const extractStudentQuestionAnswers = (
       const hasVal = raw !== undefined && raw !== null && String(raw).trim() !== '';
       const studentAnswer = hasVal ? String(raw).trim() : 'Bỏ trống';
       const correctAnswer = (q.correctAnswer ?? '—').toString().trim();
-      const normStudent = studentAnswer.replace(',', '.').toLowerCase();
-      const normCorrect = correctAnswer.replace(',', '.').toLowerCase();
+      const isMatch = hasVal && isAnswerEquivalent(studentAnswer, correctAnswer);
       const status: ExtractedAnswerRow['status'] = !hasVal
         ? 'unanswered'
-        : normStudent === normCorrect
+        : isMatch
         ? 'correct'
         : 'wrong';
 
@@ -220,17 +228,7 @@ interface GradebookPdfReportModalProps {
   selectedExamId: string;
   examsList: Exam[];
   submissions: StudentExamSubmission[];
-  analytics: {
-    total: number;
-    average: number;
-    max: number;
-    min: number;
-    excellentCount: number;
-    goodCount: number;
-    averageCount: number;
-    belowCount: number;
-    cheatingCount: number;
-  };
+  analytics: GradebookAnalytics;
   initialStudentSubmission?: StudentExamSubmission | null;
 }
 
@@ -265,6 +263,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
 
   // Các tùy chọn bổ sung
   const [includeAnalyticsChart, setIncludeAnalyticsChart] = useState(true);
+  const [includeQuestionStats, setIncludeQuestionStats] = useState(true);
   const [includeQuestionAnswers, setIncludeQuestionAnswers] = useState(true);
   const [includeTeacherSignature, setIncludeTeacherSignature] = useState(true);
   const [teacherCustomNotes, setTeacherCustomNotes] = useState(
@@ -298,9 +297,14 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
   const currentExam = examsList.find((e) => e.id === selectedExamId);
 
   const selectedIndividualSub = submissions.find((s) => s.id === selectedStudentSubId) || submissions[0];
+  const individualExam = selectedIndividualSub
+    ? examsList.find((e) => e.id === selectedIndividualSub.examId) || null
+    : null;
+  const individualScaleInfo = getExamScaleInfo(individualExam, selectedIndividualSub?.score);
   const individualAnswerRows = selectedIndividualSub
     ? extractStudentQuestionAnswers(selectedIndividualSub, examsList)
     : [];
+  const questionStatGroups = computeExamQuestionStats(submissions, examsList);
 
   const classNameDisplay = currentClass ? currentClass.name : 'Tất Cả Các Lớp';
   const examTitleDisplay = currentExam ? currentExam.title : 'Tổng Hợp Tất Cả Đề Thi';
@@ -394,6 +398,10 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
       const wb = XLSX.utils.book_new();
 
       if (reportType === 'class_summary') {
+        const scaleLabel = analytics.isUniformScale
+          ? `Thang điểm ${formatPointsNumber(analytics.scalePoints)}`
+          : `Nhiều thang điểm (${analytics.distinctScales.map((s) => `${formatPointsNumber(s)}đ`).join(', ')})`;
+
         // Sheet 1: Bảng điểm cả lớp
         const wsData: (string | number)[][] = [
           ['SỞ GIÁO DỤC VÀ ĐÀO TẠO', '', '', '', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'],
@@ -401,14 +409,46 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           ['TỔ CHUYÊN MÔN TOÁN - TIN', '', '', '', '-------------------'],
           [''],
           ['BÁO CÁO TỔNG HỢP ĐIỂM THI VÀ NĂNG LỰC TOÁN HỌC (GDPT 2018)'],
-          [`Lớp: ${classNameDisplay}`, `Đề thi: ${examTitleDisplay}`, `Ngày xuất: ${currentDateDisplay}`],
+          [`Lớp: ${classNameDisplay}`, `Đề thi: ${examTitleDisplay}`, `Thang điểm: ${scaleLabel}`, `Ngày xuất: ${currentDateDisplay}`],
           [''],
           ['--- I. THỐNG KÊ TỔNG QUAN & PHỔ ĐIỂM ---'],
           ['Chỉ số thống kê', 'Giá trị', '', 'Phân loại phổ điểm', 'Số lượng (HS)', 'Tỷ lệ (%)'],
-          ['Tổng số bài nộp', analytics.total, '', 'Giỏi (>= 8.0đ)', analytics.excellentCount, `${analytics.total ? ((analytics.excellentCount / analytics.total) * 100).toFixed(1) : 0}%`],
-          ['Điểm trung bình', Number(analytics.average.toFixed(2)), '', 'Khá (6.5 - 7.9đ)', analytics.goodCount, `${analytics.total ? ((analytics.goodCount / analytics.total) * 100).toFixed(1) : 0}%`],
-          ['Điểm cao nhất', Number(analytics.max.toFixed(2)), '', 'Trung bình (5.0 - 6.4đ)', analytics.averageCount, `${analytics.total ? ((analytics.averageCount / analytics.total) * 100).toFixed(1) : 0}%`],
-          ['Điểm thấp nhất', Number(analytics.min.toFixed(2)), '', 'Dưới trung bình (< 5.0đ)', analytics.belowCount, `${analytics.total ? ((analytics.belowCount / analytics.total) * 100).toFixed(1) : 0}%`],
+          [
+            'Tổng số bài nộp',
+            analytics.total,
+            '',
+            analytics.isUniformScale ? `Giỏi (>= ${formatPointsNumber(analytics.thresholds.excellentMin)}đ · >=80%)` : 'Giỏi (>= 80%)',
+            analytics.excellentCount,
+            `${analytics.total ? ((analytics.excellentCount / analytics.total) * 100).toFixed(1) : 0}%`,
+          ],
+          [
+            analytics.isUniformScale ? `Điểm trung bình (/${formatPointsNumber(analytics.scalePoints)}đ)` : 'Tỷ lệ đạt trung bình (%)',
+            analytics.isUniformScale ? Number(analytics.average.toFixed(2)) : `${analytics.averagePercent.toFixed(1)}%`,
+            '',
+            analytics.isUniformScale
+              ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - <${formatPointsNumber(analytics.thresholds.excellentMin)}đ)`
+              : 'Khá (65% - 79.9%)',
+            analytics.goodCount,
+            `${analytics.total ? ((analytics.goodCount / analytics.total) * 100).toFixed(1) : 0}%`,
+          ],
+          [
+            `Điểm cao nhất (/${formatPointsNumber(analytics.maxSubmissionScale)}đ)`,
+            Number(analytics.max.toFixed(2)),
+            '',
+            analytics.isUniformScale
+              ? `Trung bình (${formatPointsNumber(analytics.thresholds.averageMin)} - <${formatPointsNumber(analytics.thresholds.goodMin)}đ)`
+              : 'Trung bình (50% - 64.9%)',
+            analytics.averageCount,
+            `${analytics.total ? ((analytics.averageCount / analytics.total) * 100).toFixed(1) : 0}%`,
+          ],
+          [
+            `Điểm thấp nhất (/${formatPointsNumber(analytics.minSubmissionScale)}đ)`,
+            Number(analytics.min.toFixed(2)),
+            '',
+            analytics.isUniformScale ? `Dưới trung bình (< ${formatPointsNumber(analytics.thresholds.averageMin)}đ)` : 'Dưới trung bình (< 50%)',
+            analytics.belowCount,
+            `${analytics.total ? ((analytics.belowCount / analytics.total) * 100).toFixed(1) : 0}%`,
+          ],
           ['Học sinh có vi phạm chuyển tab', analytics.cheatingCount, '', '', '', ''],
           [''],
           ['--- II. DANH SÁCH CHI TIẾT BÀI NỘP HỌC SINH ---'],
@@ -418,10 +458,12 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             'Họ Và Tên',
             'Email',
             'Lớp',
-            'Điểm Tổng (/10)',
-            'Phần I (MCQ 3đ)',
-            'Phần II (Đ/S 4đ)',
-            'Phần III (Ngắn 3đ)',
+            'Điểm Tổng',
+            'Thang Điểm Đề',
+            'Tỷ Lệ (%)',
+            'Phần I (MCQ)',
+            'Phần II (Đ/S)',
+            'Phần III (Ngắn)',
             'Tổng Thời Gian Đã Làm',
             'Thời Gian Nộp Bài',
             'Vi Phạm Tab',
@@ -431,8 +473,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         ];
 
         submissions.forEach((sub, idx) => {
-          const rank =
-            sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
+          const subScale = getSubmissionScalePoints(sub, examsList);
+          const rankInfo = classifyScoreByScale(sub.score, subScale);
           const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
             hour: '2-digit',
             minute: '2-digit',
@@ -452,13 +494,15 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             sub.studentEmail,
             classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa',
             Number(sub.score.toFixed(2)),
+            subScale,
+            `${rankInfo.percent}%`,
             Number(sub.partScores.part1.toFixed(2)),
             Number(sub.partScores.part2.toFixed(2)),
             Number(sub.partScores.part3.toFixed(2)),
             formatDurationSpent(sub.timeSpentSeconds),
             submittedStr,
             sub.infractionCount,
-            rank,
+            rankInfo.label,
             ansSummary || 'Không có dữ liệu',
           ]);
         });
@@ -478,10 +522,12 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           { wch: 24 }, // Họ tên
           { wch: 26 }, // Email
           { wch: 12 }, // Lớp
-          { wch: 16 }, // Điểm tổng
-          { wch: 16 }, // Phần I
-          { wch: 16 }, // Phần II
-          { wch: 16 }, // Phần III
+          { wch: 14 }, // Điểm tổng
+          { wch: 14 }, // Thang điểm
+          { wch: 12 }, // Tỷ lệ
+          { wch: 14 }, // Phần I
+          { wch: 14 }, // Phần II
+          { wch: 14 }, // Phần III
           { wch: 22 }, // Tổng thời gian làm
           { wch: 22 }, // Thời gian nộp
           { wch: 14 }, // Vi phạm
@@ -490,10 +536,66 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         ];
 
         XLSX.utils.book_append_sheet(wb, ws, 'Bang_Diem_Lop');
+
+        // Sheet 2: Thống kê đáp án từng câu (số bạn đúng / sai)
+        if (questionStatGroups.length > 0) {
+          const qWsData: (string | number)[][] = [
+            ['THỐNG KÊ ĐÁP ÁN TỪNG CÂU (SỐ HỌC SINH LÀM ĐÚNG / LÀM SAI)'],
+            [''],
+            [
+              'Đề Thi',
+              'Câu',
+              'Phần',
+              'Đáp Án Đúng',
+              'Thống Kê Đáp Án Thí Sinh Đưa Ra',
+              'Số HS Đúng',
+              'Đúng 1 Phần (Đ/S)',
+              'Số HS Sai',
+              'Bỏ Trống',
+              'Tỷ Lệ Đúng (%)',
+            ],
+          ];
+          questionStatGroups.forEach((group) => {
+            group.questions.forEach((qStat) => {
+              const distText =
+                qStat.part === 'part_2_true_false' && qStat.tfSubItems
+                  ? qStat.tfSubItems
+                      .map((it) => `Ý ${it.subKey}(${it.expected}): ✓${it.correctCount} / ✗${it.wrongCount}`)
+                      .join(' | ')
+                  : qStat.optionStats.map((o) => `${o.label}: ${o.count} HS (${o.percent}%)`).join(' | ');
+              qWsData.push([
+                `${group.examTitle} (${formatPointsNumber(group.totalPoints)}đ)`,
+                `Câu ${qStat.questionNumber}`,
+                qStat.partLabel,
+                qStat.correctAnswerDisplay,
+                distText,
+                qStat.correctCount,
+                qStat.partialCount,
+                qStat.wrongCount,
+                qStat.unansweredCount,
+                `${qStat.correctRate}%`,
+              ]);
+            });
+          });
+          const qWs = XLSX.utils.aoa_to_sheet(qWsData);
+          qWs['!cols'] = [
+            { wch: 28 },
+            { wch: 10 },
+            { wch: 14 },
+            { wch: 22 },
+            { wch: 52 },
+            { wch: 12 },
+            { wch: 16 },
+            { wch: 12 },
+            { wch: 12 },
+            { wch: 14 },
+          ];
+          XLSX.utils.book_append_sheet(wb, qWs, 'Thong_Ke_Tung_Cau');
+        }
       } else {
         // Sheet cá nhân học sinh
         const sub = selectedIndividualSub;
-        const rank = sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
+        const rankInfo = classifyScoreByScale(sub.score, individualScaleInfo.totalPoints);
         const ansRows = extractStudentQuestionAnswers(sub, examsList);
         const wsData: (string | number)[][] = [
           ['HỆ THỐNG TOÁN THẦY NGUYỄN BÁ KỲ (MATH&NBK)', '', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'],
@@ -508,10 +610,24 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
           ['Tổng Thời Gian Đã Làm:', formatDurationSpent(sub.timeSpentSeconds), 'Cảnh Báo Vi Phạm Tab:', `${sub.infractionCount} lần`],
           [''],
           ['KẾT QUẢ ĐÁNH GIÁ', ''],
-          ['ĐIỂM TỔNG KẾT:', `${sub.score.toFixed(2)} / 10.0`, 'XẾP LOẠI:', rank],
-          ['Phần I (Trắc nghiệm 4 lựa chọn):', `${sub.partScores.part1.toFixed(2)} / 3.0 điểm`],
-          ['Phần II (Đúng/Sai 4 ý):', `${sub.partScores.part2.toFixed(2)} / 4.0 điểm`],
-          ['Phần III (Trả lời ngắn):', `${sub.partScores.part3.toFixed(2)} / 3.0 điểm`],
+          [
+            'ĐIỂM TỔNG KẾT:',
+            `${sub.score.toFixed(2)} / ${formatPointsNumber(individualScaleInfo.totalPoints)} (${rankInfo.percent}%)`,
+            'XẾP LOẠI:',
+            rankInfo.label,
+          ],
+          [
+            'Phần I (Trắc nghiệm 4 lựa chọn):',
+            `${sub.partScores.part1.toFixed(2)} / ${formatPointsNumber(individualScaleInfo.part1Max)} điểm`,
+          ],
+          [
+            'Phần II (Đúng/Sai 4 ý):',
+            `${sub.partScores.part2.toFixed(2)} / ${formatPointsNumber(individualScaleInfo.part2Max)} điểm`,
+          ],
+          [
+            'Phần III (Trả lời ngắn):',
+            `${sub.partScores.part3.toFixed(2)} / ${formatPointsNumber(individualScaleInfo.part3Max)} điểm`,
+          ],
           [''],
           ['CHI TIẾT ĐÁP ÁN TỪNG CÂU ĐÃ CHỌN', '', '', ''],
           ['Câu', 'Phần', 'Đáp Án Thí Sinh Chọn', 'Đáp Án Đúng'],
@@ -598,7 +714,16 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
               children: [
                 new TableCell({ children: [new Paragraph('Tổng số bài nộp')], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${analytics.total} học sinh`)], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('Giỏi (>= 8.0đ)')], borders: borderConfig }),
+                new TableCell({
+                  children: [
+                    new Paragraph(
+                      analytics.isUniformScale
+                        ? `Giỏi (>= ${formatPointsNumber(analytics.thresholds.excellentMin)}đ · >=80%)`
+                        : 'Giỏi (>= 80% thang đề)'
+                    ),
+                  ],
+                  borders: borderConfig,
+                }),
                 new TableCell({
                   children: [
                     new Paragraph(
@@ -611,9 +736,36 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             }),
             new TableRow({
               children: [
-                new TableCell({ children: [new Paragraph('Điểm trung bình')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph(`${analytics.average.toFixed(2)} / 10`)], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('Khá (6.5 - 7.9đ)')], borders: borderConfig }),
+                new TableCell({
+                  children: [
+                    new Paragraph(
+                      analytics.isUniformScale
+                        ? `Điểm trung bình (thang ${formatPointsNumber(analytics.scalePoints)}đ)`
+                        : 'Tỷ lệ đạt trung bình'
+                    ),
+                  ],
+                  borders: borderConfig,
+                }),
+                new TableCell({
+                  children: [
+                    new Paragraph(
+                      analytics.isUniformScale
+                        ? `${analytics.average.toFixed(2)} / ${formatPointsNumber(analytics.scalePoints)}đ (${analytics.averagePercent.toFixed(1)}%)`
+                        : `${analytics.averagePercent.toFixed(1)}% (Quy đổi ${analytics.average.toFixed(2)}/10)`
+                    ),
+                  ],
+                  borders: borderConfig,
+                }),
+                new TableCell({
+                  children: [
+                    new Paragraph(
+                      analytics.isUniformScale
+                        ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - <${formatPointsNumber(analytics.thresholds.excellentMin)}đ)`
+                        : 'Khá (65% - 79.9%)'
+                    ),
+                  ],
+                  borders: borderConfig,
+                }),
                 new TableCell({
                   children: [
                     new Paragraph(
@@ -627,7 +779,14 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             new TableRow({
               children: [
                 new TableCell({ children: [new Paragraph('Điểm cao nhất / thấp nhất')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph(`${analytics.max.toFixed(2)}đ / ${analytics.min.toFixed(2)}đ`)], borders: borderConfig }),
+                new TableCell({
+                  children: [
+                    new Paragraph(
+                      `${analytics.max.toFixed(2)}/${formatPointsNumber(analytics.maxSubmissionScale)}đ | ${analytics.min.toFixed(2)}/${formatPointsNumber(analytics.minSubmissionScale)}đ`
+                    ),
+                  ],
+                  borders: borderConfig,
+                }),
                 new TableCell({ children: [new Paragraph('Trung bình & Dưới TB')], borders: borderConfig }),
                 new TableCell({
                   children: [
@@ -661,8 +820,8 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
         ];
 
         submissions.forEach((sub, idx) => {
-          const rank =
-            sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
+          const subScale = getSubmissionScalePoints(sub, examsList);
+          const rankInfo = classifyScoreByScale(sub.score, subScale);
           const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
             hour: '2-digit',
             minute: '2-digit',
@@ -677,13 +836,16 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                 new TableCell({ children: [new Paragraph(`${idx + 1}`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(sub.studentName)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${sub.score.toFixed(2)}đ`, bold: true })] })], borders: borderConfig }),
+                new TableCell({
+                  children: [new Paragraph({ children: [new TextRun({ text: `${sub.score.toFixed(2)}/${formatPointsNumber(subScale)}đ`, bold: true })] })],
+                  borders: borderConfig,
+                }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part1.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part2.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(`${sub.partScores.part3.toFixed(2)}đ`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(formatDurationSpent(sub.timeSpentSeconds))], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph(submittedStr)], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph(rank)], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(rankInfo.label)], borders: borderConfig }),
               ],
             })
           );
@@ -728,6 +890,76 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             }),
           ],
         });
+
+        const questionStatParagraphs: (Paragraph | Table)[] = [];
+        if (questionStatGroups.length > 0) {
+          questionStatParagraphs.push(
+            new Paragraph(''),
+            new Paragraph({
+              text: 'III. THỐNG KÊ ĐÁP ÁN TỪNG CÂU (SỐ BẠN LÀM ĐÚNG / SAI)',
+              heading: HeadingLevel.HEADING_2,
+            }),
+            new Paragraph('')
+          );
+
+          questionStatGroups.forEach((group) => {
+            questionStatParagraphs.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `${group.examTitle} (Thang ${formatPointsNumber(group.totalPoints)} điểm · ${group.submissionCount} bài nộp)`,
+                    bold: true,
+                  }),
+                ],
+              })
+            );
+            const qRows = [
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Câu', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Phần', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Đáp án đúng', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Đáp án thí sinh đưa ra', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Đúng', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Sai', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Bỏ trống', bold: true })] })], shading: { fill: 'E2E8F0' }, borders: borderConfig }),
+                ],
+              }),
+              ...group.questions.map((qStat) => {
+                const distText =
+                  qStat.part === 'part_2_true_false' && qStat.tfSubItems
+                    ? qStat.tfSubItems
+                        .map((it) => `${it.subKey}(${it.expected}): ✓${it.correctCount}/✗${it.wrongCount}`)
+                        .join(' | ')
+                    : qStat.optionStats.map((o) => `${o.label}: ${o.count}`).join(', ');
+                return new TableRow({
+                  children: [
+                    new TableCell({ children: [new Paragraph(`Câu ${qStat.questionNumber}`)], borders: borderConfig }),
+                    new TableCell({ children: [new Paragraph(qStat.partLabel)], borders: borderConfig }),
+                    new TableCell({ children: [new Paragraph(qStat.correctAnswerDisplay)], borders: borderConfig }),
+                    new TableCell({ children: [new Paragraph(distText)], borders: borderConfig }),
+                    new TableCell({
+                      children: [
+                        new Paragraph(
+                          qStat.partialCount > 0
+                            ? `${qStat.correctCount} (+${qStat.partialCount} 1 phần)`
+                            : `${qStat.correctCount}`
+                        ),
+                      ],
+                      borders: borderConfig,
+                    }),
+                    new TableCell({ children: [new Paragraph(`${qStat.wrongCount}`)], borders: borderConfig }),
+                    new TableCell({ children: [new Paragraph(`${qStat.unansweredCount}`)], borders: borderConfig }),
+                  ],
+                });
+              }),
+            ];
+            questionStatParagraphs.push(
+              new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: qRows }),
+              new Paragraph('')
+            );
+          });
+        }
 
         const doc = new Document({
           sections: [
@@ -776,9 +1008,10 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                 }),
                 new Paragraph(''),
                 studentTable,
+                ...questionStatParagraphs,
                 new Paragraph(''),
                 new Paragraph({
-                  text: 'III. NHẬN XÉT CỦA GIÁO VIÊN BỘ MÔN',
+                  text: 'IV. NHẬN XÉT CỦA GIÁO VIÊN BỘ MÔN',
                   heading: HeadingLevel.HEADING_2,
                 }),
                 new Paragraph({
@@ -797,7 +1030,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
       } else {
         // Tài liệu Word cho học sinh cá nhân
         const sub = selectedIndividualSub;
-        const rank = sub.score >= 8.0 ? 'Giỏi' : sub.score >= 6.5 ? 'Khá' : sub.score >= 5.0 ? 'Trung bình' : 'Yếu';
+        const rankInfo = classifyScoreByScale(sub.score, individualScaleInfo.totalPoints);
 
         const studentInfoTable = new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
@@ -843,32 +1076,32 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
             new TableRow({
               children: [
                 new TableCell({ children: [new Paragraph('Phần I')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('Trắc nghiệm 4 lựa chọn (12 câu)')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('3.0 điểm')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph('Trắc nghiệm 4 lựa chọn')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(`${formatPointsNumber(individualScaleInfo.part1Max)} điểm`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${sub.partScores.part1.toFixed(2)}đ`, bold: true })] })], borders: borderConfig }),
               ],
             }),
             new TableRow({
               children: [
                 new TableCell({ children: [new Paragraph('Phần II')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('Đúng / Sai 4 ý (4 câu)')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('4.0 điểm')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph('Đúng / Sai 4 ý')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(`${formatPointsNumber(individualScaleInfo.part2Max)} điểm`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${sub.partScores.part2.toFixed(2)}đ`, bold: true })] })], borders: borderConfig }),
               ],
             }),
             new TableRow({
               children: [
                 new TableCell({ children: [new Paragraph('Phần III')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('Trả lời ngắn (6 câu)')], borders: borderConfig }),
-                new TableCell({ children: [new Paragraph('3.0 điểm')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph('Trả lời ngắn')], borders: borderConfig }),
+                new TableCell({ children: [new Paragraph(`${formatPointsNumber(individualScaleInfo.part3Max)} điểm`)], borders: borderConfig }),
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${sub.partScores.part3.toFixed(2)}đ`, bold: true })] })], borders: borderConfig }),
               ],
             }),
             new TableRow({
               children: [
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'TỔNG CỘNG', bold: true })] })], shading: { fill: 'EFF6FF' }, borders: borderConfig }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Xếp loại: ${rank}`, bold: true })] })], shading: { fill: 'EFF6FF' }, borders: borderConfig }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: '10.0 điểm', bold: true })] })], shading: { fill: 'EFF6FF' }, borders: borderConfig }),
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Xếp loại: ${rankInfo.label} (${rankInfo.percent}%)`, bold: true })] })], shading: { fill: 'EFF6FF' }, borders: borderConfig }),
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${formatPointsNumber(individualScaleInfo.totalPoints)} điểm`, bold: true })] })], shading: { fill: 'EFF6FF' }, borders: borderConfig }),
                 new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${sub.score.toFixed(2)}đ`, bold: true, color: '1D4ED8' })] })], shading: { fill: 'EFF6FF' }, borders: borderConfig }),
               ],
             }),
@@ -1272,6 +1505,18 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                 <span>Phổ Điểm</span>
               </label>
 
+              {reportType === 'class_summary' && (
+                <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={includeQuestionStats}
+                    onChange={(e) => setIncludeQuestionStats(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Thống Kê Câu Hỏi</span>
+                </label>
+              )}
+
               <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700">
                 <input
                   type="checkbox"
@@ -1392,38 +1637,56 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                     <div className="p-3.5 rounded-2xl border border-blue-200 bg-blue-50/70">
                       <span className="text-[10px] font-bold uppercase text-blue-600 block">Điểm Trung Bình</span>
                       <strong className="text-2xl font-black font-mono text-blue-700">
-                        {analytics.average.toFixed(2)}
+                        {analytics.isUniformScale
+                          ? `${analytics.average.toFixed(2)}/${formatPointsNumber(analytics.scalePoints)}`
+                          : `${analytics.averagePercent.toFixed(1)}%`}
                       </strong>
-                      <span className="text-[10px] text-blue-500 block mt-0.5">Thang 10</span>
+                      <span className="text-[10px] text-blue-500 block mt-0.5">
+                        {analytics.isUniformScale
+                          ? `Thang ${formatPointsNumber(analytics.scalePoints)}đ (${analytics.averagePercent.toFixed(1)}%)`
+                          : `Quy đổi ${analytics.average.toFixed(2)}/10`}
+                      </span>
                     </div>
 
                     <div className="p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/70">
                       <span className="text-[10px] font-bold uppercase text-emerald-700 block">Điểm Cao Nhất</span>
                       <strong className="text-2xl font-black font-mono text-emerald-800">
-                        {analytics.max.toFixed(2)}
+                        {analytics.max.toFixed(2)}/{formatPointsNumber(analytics.maxSubmissionScale)}
                       </strong>
-                      <span className="text-[10px] text-emerald-600 block mt-0.5">Điểm tuyệt đối</span>
+                      <span className="text-[10px] text-emerald-600 block mt-0.5">
+                        Đạt {analytics.maxPercent.toFixed(1)}% thang đề
+                      </span>
                     </div>
 
                     <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50/70">
                       <span className="text-[10px] font-bold uppercase text-amber-700 block">Điểm Thấp Nhất</span>
                       <strong className="text-2xl font-black font-mono text-amber-800">
-                        {analytics.min.toFixed(2)}
+                        {analytics.min.toFixed(2)}/{formatPointsNumber(analytics.minSubmissionScale)}
                       </strong>
-                      <span className="text-[10px] text-amber-600 block mt-0.5">Cần bồi dưỡng</span>
+                      <span className="text-[10px] text-amber-600 block mt-0.5">
+                        Đạt {analytics.minPercent.toFixed(1)}% · Cần bồi dưỡng
+                      </span>
                     </div>
                   </div>
                 )}
 
-                {/* 4. PHÂN TÍCH PHỔ ĐIỂM (XẾP LOẠI GDPT 2018) */}
+                {/* 4. PHÂN TÍCH PHỔ ĐIỂM (THEO THANG ĐIỂM CỦA ĐỀ) */}
                 {includeAnalyticsChart && (
                   <div className="p-4 rounded-2xl border border-slate-300 bg-slate-50 space-y-2 text-xs">
                     <span className="font-extrabold text-slate-800 block text-[11px] uppercase">
-                      Phân Bố Xếp Loại Học Lực (Theo Thang Điểm 10 Chuẩn)
+                      Phân Bố Xếp Loại Học Lực (
+                      {analytics.isUniformScale
+                        ? `Theo Thang ${formatPointsNumber(analytics.scalePoints)} Điểm`
+                        : `Theo Tỷ Lệ % Thang Điểm Từng Đề`}
+                      )
                     </span>
                     <div className="grid grid-cols-4 gap-2 text-center">
                       <div className="p-2 rounded-xl bg-white border border-emerald-200">
-                        <span className="text-emerald-700 font-bold block text-[11px]">Giỏi (&ge; 8.0)</span>
+                        <span className="text-emerald-700 font-bold block text-[11px]">
+                          {analytics.isUniformScale
+                            ? `Giỏi (≥ ${formatPointsNumber(analytics.thresholds.excellentMin)}đ)`
+                            : 'Giỏi (≥ 80%)'}
+                        </span>
                         <strong className="text-lg font-black font-mono text-emerald-900">
                           {analytics.excellentCount}
                         </strong>
@@ -1433,7 +1696,13 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                       </div>
 
                       <div className="p-2 rounded-xl bg-white border border-blue-200">
-                        <span className="text-blue-700 font-bold block text-[11px]">Khá (6.5 - 7.9)</span>
+                        <span className="text-blue-700 font-bold block text-[11px]">
+                          {analytics.isUniformScale
+                            ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - <${formatPointsNumber(
+                                analytics.thresholds.excellentMin
+                              )}đ)`
+                            : 'Khá (65% - 79.9%)'}
+                        </span>
                         <strong className="text-lg font-black font-mono text-blue-900">{analytics.goodCount}</strong>
                         <span className="text-[10px] text-slate-400 block">
                           ({analytics.total ? ((analytics.goodCount / analytics.total) * 100).toFixed(1) : 0}%)
@@ -1441,7 +1710,13 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                       </div>
 
                       <div className="p-2 rounded-xl bg-white border border-amber-200">
-                        <span className="text-amber-700 font-bold block text-[11px]">Trung bình (5.0 - 6.4)</span>
+                        <span className="text-amber-700 font-bold block text-[11px]">
+                          {analytics.isUniformScale
+                            ? `TB (${formatPointsNumber(analytics.thresholds.averageMin)} - <${formatPointsNumber(
+                                analytics.thresholds.goodMin
+                              )}đ)`
+                            : 'Trung bình (50% - 64.9%)'}
+                        </span>
                         <strong className="text-lg font-black font-mono text-amber-900">
                           {analytics.averageCount}
                         </strong>
@@ -1451,7 +1726,11 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                       </div>
 
                       <div className="p-2 rounded-xl bg-white border border-rose-200">
-                        <span className="text-rose-700 font-bold block text-[11px]">Dưới TB (&lt; 5.0)</span>
+                        <span className="text-rose-700 font-bold block text-[11px]">
+                          {analytics.isUniformScale
+                            ? `Dưới TB (< ${formatPointsNumber(analytics.thresholds.averageMin)}đ)`
+                            : 'Dưới TB (< 50%)'}
+                        </span>
                         <strong className="text-lg font-black font-mono text-rose-900">{analytics.belowCount}</strong>
                         <span className="text-[10px] text-slate-400 block">
                           ({analytics.total ? ((analytics.belowCount / analytics.total) * 100).toFixed(1) : 0}%)
@@ -1467,7 +1746,11 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                     <span className="font-extrabold uppercase text-xs text-slate-800">
                       Bảng Chi Tiết Kết Quả Đánh Giá Từng Học Sinh ({submissions.length} bài)
                     </span>
-                    <span className="text-[11px] text-slate-500 italic">Thang điểm 10 chuẩn GDPT</span>
+                    <span className="text-[11px] text-slate-500 italic">
+                      {analytics.isUniformScale
+                        ? `Thang điểm ${formatPointsNumber(analytics.scalePoints)}`
+                        : 'Hiển thị theo thang điểm từng đề'}
+                    </span>
                   </div>
 
                   <table className="w-full text-left text-xs border border-slate-300 border-collapse">
@@ -1491,14 +1774,9 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                     </thead>
                     <tbody>
                       {submissions.map((sub, idx) => {
-                        const rank =
-                          sub.score >= 8.0
-                            ? 'Giỏi'
-                            : sub.score >= 6.5
-                            ? 'Khá'
-                            : sub.score >= 5.0
-                            ? 'Trung bình'
-                            : 'Yếu';
+                        const subScale = getSubmissionScalePoints(sub, examsList);
+                        const rankInfo = classifyScoreByScale(sub.score, subScale);
+                        const rank = rankInfo.label;
                         const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -1524,8 +1802,11 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                             <td className="py-1.5 px-2.5 border-r border-slate-300 text-center text-slate-600 text-[11px]">
                               {classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa'}
                             </td>
-                            <td className="py-1.5 px-2.5 border-r border-slate-300 text-center font-black font-mono text-sm text-blue-700">
+                            <td className="py-1.5 px-2.5 border-r border-slate-300 text-center font-black font-mono text-sm text-blue-700 whitespace-nowrap">
                               {sub.score.toFixed(2)}
+                              <span className="text-[10px] font-semibold text-slate-500">
+                                /{formatPointsNumber(subScale)}
+                              </span>
                             </td>
                             <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-[11px]">
                               {sub.partScores.part1.toFixed(2)}
@@ -1552,11 +1833,11 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                             <td className="py-1.5 px-2.5 text-center font-bold text-[11px]">
                               <span
                                 className={`px-2 py-0.5 rounded text-[10px] ${
-                                  rank === 'Giỏi'
+                                  rankInfo.key === 'excellent'
                                     ? 'bg-emerald-100 text-emerald-800'
-                                    : rank === 'Khá'
+                                    : rankInfo.key === 'good'
                                     ? 'bg-blue-100 text-blue-800'
-                                    : rank === 'Trung bình'
+                                    : rankInfo.key === 'average'
                                     ? 'bg-amber-100 text-amber-800'
                                     : 'bg-rose-100 text-rose-800'
                                 }`}
@@ -1570,6 +1851,100 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                     </tbody>
                   </table>
                 </div>
+
+                {/* 5A. THỐNG KÊ ĐÁP ÁN TỪNG CÂU (SỐ BẠN LÀM ĐÚNG / LÀM SAI) */}
+                {includeQuestionStats && questionStatGroups.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-300">
+                      <span className="font-extrabold uppercase text-xs text-slate-800">
+                        Thống Kê Đáp Án Từng Câu (Số Bạn Làm Đúng / Làm Sai & Đáp Án Đưa Ra)
+                      </span>
+                      <span className="text-[11px] text-slate-500 italic">
+                        Tổng hợp theo từng câu hỏi trong đề thi
+                      </span>
+                    </div>
+
+                    <div className="space-y-4">
+                      {questionStatGroups.map((group) => (
+                        <div key={`pdf-qstat-${group.examId}`} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-300">
+                            <span>{group.examTitle}</span>
+                            <span className="font-mono text-blue-800">
+                              Thang {formatPointsNumber(group.totalPoints)} điểm · {group.submissionCount} bài nộp
+                            </span>
+                          </div>
+
+                          <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-800 font-extrabold border-b border-slate-300">
+                                <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14">Câu</th>
+                                <th className="py-1.5 px-2 border-r border-slate-300 text-center w-20">Phần</th>
+                                <th className="py-1.5 px-2 border-r border-slate-300 w-28">Đáp Án Đúng</th>
+                                <th className="py-1.5 px-2 border-r border-slate-300">Đáp Án Thí Sinh Đưa Ra</th>
+                                <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16 text-emerald-800">Đúng</th>
+                                <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14 text-rose-800">Sai</th>
+                                <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16">Bỏ Trống</th>
+                                <th className="py-1.5 px-2 text-center w-16">Tỷ Lệ</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.questions.map((qStat, qIdx) => (
+                                <tr
+                                  key={`pdf-q-${qStat.questionId}`}
+                                  className={`border-b border-slate-200 ${qIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}
+                                >
+                                  <td className="py-1.5 px-2 border-r border-slate-300 text-center font-bold font-mono">
+                                    Câu {qStat.questionNumber}
+                                  </td>
+                                  <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-600">
+                                    {qStat.partLabel}
+                                  </td>
+                                  <td className="py-1.5 px-2 border-r border-slate-300 font-mono font-bold text-emerald-800">
+                                    {qStat.correctAnswerDisplay}
+                                  </td>
+                                  <td className="py-1.5 px-2 border-r border-slate-300 font-mono">
+                                    {qStat.part === 'part_2_true_false' && qStat.tfSubItems ? (
+                                      <span>
+                                        {qStat.tfSubItems
+                                          .map(
+                                            (it) =>
+                                              `${it.subKey}(${it.expected}): ✓${it.correctCount}/✗${it.wrongCount}`
+                                          )
+                                          .join(' · ')}
+                                      </span>
+                                    ) : (
+                                      <span>
+                                        {qStat.optionStats
+                                          .map(
+                                            (opt) =>
+                                              `${opt.label}: ${opt.count} (${opt.percent}%)${opt.isCorrect ? '✓' : ''}`
+                                          )
+                                          .join(' · ')}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono font-bold text-emerald-800">
+                                    {qStat.correctCount}
+                                    {qStat.partialCount > 0 ? ` (+${qStat.partialCount})` : ''}
+                                  </td>
+                                  <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono font-bold text-rose-700">
+                                    {qStat.wrongCount}
+                                  </td>
+                                  <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-slate-500">
+                                    {qStat.unansweredCount}
+                                  </td>
+                                  <td className="py-1.5 px-2 text-center font-mono font-bold text-slate-800">
+                                    {qStat.correctRate}%
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* 5B. CHI TIẾT TỔNG THỜI GIAN LÀM & ĐÁP ÁN TỪNG CÂU CỦA MỖI THÍ SINH */}
                 {includeQuestionAnswers && submissions.length > 0 && (
@@ -1585,6 +1960,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
 
                     <div className="space-y-3">
                       {submissions.map((sub, idx) => {
+                        const subScale = getSubmissionScalePoints(sub, examsList);
                         const answerRows = extractStudentQuestionAnswers(sub, examsList);
                         const correctCount = answerRows.filter((r) => r.status === 'correct').length;
                         const submittedStr = new Date(sub.submittedAt).toLocaleString('vi-VN', {
@@ -1609,7 +1985,7 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                                 <strong className="text-slate-900 font-extrabold">{sub.studentName}</strong>
                                 <span className="text-slate-500 font-mono">({sub.studentId})</span>
                                 <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold">
-                                  {sub.score.toFixed(2)}đ
+                                  {sub.score.toFixed(2)}/{formatPointsNumber(subScale)}đ
                                 </span>
                                 {answerRows.length > 0 && (
                                   <span className="text-slate-600 font-semibold">
@@ -1750,34 +2126,43 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
                     Kết Quả Đánh Giá Tổng Hợp
                   </span>
                   <div className="text-4xl font-black font-mono text-blue-700">
-                    {selectedIndividualSub.score.toFixed(2)} <span className="text-lg text-slate-400">/ 10 điểm</span>
+                    {selectedIndividualSub.score.toFixed(2)}{' '}
+                    <span className="text-lg text-slate-400">
+                      / {formatPointsNumber(individualScaleInfo.totalPoints)} điểm
+                    </span>
                   </div>
-                  <span className="inline-block px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-800">
-                    Xếp loại:{' '}
-                    {selectedIndividualSub.score >= 8
-                      ? 'Giỏi (Xuất Sắc)'
-                      : selectedIndividualSub.score >= 6.5
-                      ? 'Khá'
-                      : 'Đạt Chuẩn'}
-                  </span>
+                  {(() => {
+                    const indRank = classifyScoreByScale(
+                      selectedIndividualSub.score,
+                      individualScaleInfo.totalPoints
+                    );
+                    return (
+                      <span className="inline-block px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-800">
+                        Xếp loại: {indRank.label === 'Giỏi' ? 'Giỏi (Xuất Sắc)' : indRank.label} ({indRank.percent}%)
+                      </span>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-200 text-xs">
                     <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
                       <span className="text-[10px] font-bold text-blue-700 block">Phần I: Trắc Nghiệm 4 Lựa Chọn</span>
                       <strong className="text-base font-black font-mono text-blue-900">
-                        {selectedIndividualSub.partScores.part1.toFixed(2)}đ
+                        {selectedIndividualSub.partScores.part1.toFixed(2)}/
+                        {formatPointsNumber(individualScaleInfo.part1Max)}đ
                       </strong>
                     </div>
                     <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200">
                       <span className="text-[10px] font-bold text-purple-700 block">Phần II: Đúng / Sai 4 Ý</span>
                       <strong className="text-base font-black font-mono text-purple-900">
-                        {selectedIndividualSub.partScores.part2.toFixed(2)}đ
+                        {selectedIndividualSub.partScores.part2.toFixed(2)}/
+                        {formatPointsNumber(individualScaleInfo.part2Max)}đ
                       </strong>
                     </div>
                     <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
                       <span className="text-[10px] font-bold text-amber-700 block">Phần III: Trả Lời Ngắn</span>
                       <strong className="text-base font-black font-mono text-amber-900">
-                        {selectedIndividualSub.partScores.part3.toFixed(2)}đ
+                        {selectedIndividualSub.partScores.part3.toFixed(2)}/
+                        {formatPointsNumber(individualScaleInfo.part3Max)}đ
                       </strong>
                     </div>
                   </div>

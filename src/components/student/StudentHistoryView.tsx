@@ -1,5 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { StudentExamSubmission, Exam, Classroom, canStudentViewExamScore } from '../../types/math';
+import {
+  classifyScoreByScale,
+  computeGradebookAnalytics,
+  formatPointsNumber,
+  getExamScaleInfo,
+  getSubmissionScalePoints,
+  isAnswerEquivalent,
+} from '../../lib/scoringEngine';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
 import {
@@ -63,14 +71,19 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
     return submissions.filter((s) => s.studentId === currentStudentId);
   }, [submissions, currentStudentId]);
 
-  // Bộ lọc tìm kiếm và mức điểm
+  // Bộ lọc tìm kiếm và mức điểm (theo % thang điểm thực của đề)
   const filteredSubmissions = useMemo(() => {
     return studentSubmissions.filter((sub) => {
       const canView = canViewSubmissionScore(sub);
       if (scoreFilter !== 'all' && !canView) return false;
-      if (scoreFilter === 'high' && sub.score < 8.0) return false;
-      if (scoreFilter === 'medium' && (sub.score < 5.0 || sub.score >= 8.0)) return false;
-      if (scoreFilter === 'low' && sub.score >= 5.0) return false;
+
+      if (scoreFilter !== 'all') {
+        const subScale = getSubmissionScalePoints(sub, examsList);
+        const rank = classifyScoreByScale(sub.score, subScale);
+        if (scoreFilter === 'high' && rank.key !== 'excellent') return false;
+        if (scoreFilter === 'medium' && rank.key !== 'good' && rank.key !== 'average') return false;
+        if (scoreFilter === 'low' && rank.key !== 'below') return false;
+      }
 
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
@@ -78,31 +91,42 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
       }
       return true;
     }).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-  }, [studentSubmissions, scoreFilter, searchTerm, examById]);
+  }, [studentSubmissions, scoreFilter, searchTerm, examById, examsList]);
 
-  // Thống kê cá nhân (chỉ tính trên các bài thi được phép xem điểm)
+  // Thống kê cá nhân (tính theo thang điểm thực của từng đề)
   const stats = useMemo(() => {
     if (studentSubmissions.length === 0) {
-      return { total: 0, visibleCount: 0, avg: 0, max: 0, totalHours: '0.0', highCount: 0 };
+      return {
+        total: 0,
+        visibleCount: 0,
+        avg: 0,
+        max: 0,
+        totalHours: '0.0',
+        highCount: 0,
+        isUniformScale: true,
+        scalePoints: 10,
+        averagePercent: 0,
+        maxSubmissionScale: 10,
+      };
     }
     const visibleSubs = studentSubmissions.filter((s) => canViewSubmissionScore(s));
-    const scores = visibleSubs.map((s) => s.score);
-    const sum = scores.reduce((a, b) => a + b, 0);
-    const avg = scores.length > 0 ? sum / scores.length : 0;
-    const max = scores.length > 0 ? Math.max(...scores) : 0;
+    const analytics = computeGradebookAnalytics(visibleSubs, examsList);
     const totalSec = studentSubmissions.reduce((a, b) => a + b.timeSpentSeconds, 0);
     const totalHours = (totalSec / 3600).toFixed(1);
-    const highCount = scores.filter((s) => s >= 8.0).length;
 
     return {
       total: studentSubmissions.length,
-      visibleCount: scores.length,
-      avg: Number(avg.toFixed(2)),
-      max: Number(max.toFixed(2)),
+      visibleCount: visibleSubs.length,
+      avg: analytics.average,
+      max: analytics.max,
       totalHours,
-      highCount,
+      highCount: analytics.excellentCount,
+      isUniformScale: analytics.isUniformScale,
+      scalePoints: analytics.scalePoints,
+      averagePercent: analytics.averagePercent,
+      maxSubmissionScale: analytics.maxSubmissionScale,
     };
-  }, [studentSubmissions, examById]);
+  }, [studentSubmissions, examById, examsList]);
 
   // Đề thi của bài nộp đang xem
   const activeExam = useMemo(() => {
@@ -159,9 +183,18 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
           </div>
           <div className="text-2xl sm:text-3xl font-black text-blue-900 font-mono">
             {stats.visibleCount > 0 ? stats.avg.toFixed(2) : '--'}
+            {stats.visibleCount > 0 && (
+              <span className="text-xs font-sans font-bold text-blue-600 ml-1">
+                /{formatPointsNumber(stats.scalePoints)}đ
+              </span>
+            )}
           </div>
           <span className="text-[11px] text-blue-700 font-semibold mt-1 block">
-            {stats.visibleCount > 0 ? 'Thang 10 điểm BGD' : 'Chưa có bài công bố điểm'}
+            {stats.visibleCount > 0
+              ? stats.isUniformScale
+                ? `Thang ${formatPointsNumber(stats.scalePoints)}đ · Đạt ${stats.averagePercent}%`
+                : `Quy đổi thang 10 · Đạt ${stats.averagePercent}%`
+              : 'Chưa có bài công bố điểm'}
           </span>
         </div>
 
@@ -172,9 +205,14 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
           </div>
           <div className="text-2xl sm:text-3xl font-black text-emerald-900 font-mono">
             {stats.visibleCount > 0 ? stats.max.toFixed(2) : '--'}
+            {stats.visibleCount > 0 && (
+              <span className="text-xs font-sans font-bold text-emerald-600 ml-1">
+                /{formatPointsNumber(stats.maxSubmissionScale)}đ
+              </span>
+            )}
           </div>
           <span className="text-[11px] text-emerald-700 font-semibold mt-1 block">
-            {stats.visibleCount > 0 ? `${stats.highCount} bài đạt loại Giỏi` : 'Chờ giáo viên mở điểm'}
+            {stats.visibleCount > 0 ? `${stats.highCount} bài đạt loại Giỏi (≥80%)` : 'Chờ giáo viên mở điểm'}
           </span>
         </div>
 
@@ -209,10 +247,10 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
               {filter === 'all'
                 ? 'Tất cả'
                 : filter === 'high'
-                ? 'Giỏi (≥8.0)'
+                ? 'Giỏi (≥80%)'
                 : filter === 'medium'
-                ? 'Trung bình (5-7.9)'
-                : 'Cần ôn lại (<5.0)'}
+                ? 'TB - Khá (50-79%)'
+                : 'Cần ôn lại (<50%)'}
             </button>
           ))}
         </div>
@@ -236,8 +274,8 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
             const cls = classrooms.find((c) => c.id === sub.classId);
             const examObj = examById.get(sub.examId);
             const canViewScore = canViewSubmissionScore(sub);
-            const isExcellent = sub.score >= 8.0;
-            const isGood = sub.score >= 6.5 && sub.score < 8.0;
+            const subScale = getExamScaleInfo(examObj, sub.score).totalPoints;
+            const rankInfo = classifyScoreByScale(sub.score, subScale);
 
             return (
               <div
@@ -305,20 +343,27 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                   <div className="text-center md:text-right">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">Kết quả</span>
                     {canViewScore ? (
-                      <span
-                        className={`text-2xl font-black font-mono block ${
-                          isExcellent
-                            ? 'text-emerald-600'
-                            : isGood
-                            ? 'text-blue-600'
-                            : sub.score >= 5.0
-                            ? 'text-amber-600'
-                            : 'text-rose-600'
-                        }`}
-                      >
-                        {sub.score.toFixed(2)}
-                        <span className="text-xs text-slate-400 font-sans font-normal">/10đ</span>
-                      </span>
+                      <div>
+                        <span
+                          className={`text-2xl font-black font-mono block ${
+                            rankInfo.key === 'excellent'
+                              ? 'text-emerald-600'
+                              : rankInfo.key === 'good'
+                              ? 'text-blue-600'
+                              : rankInfo.key === 'average'
+                              ? 'text-amber-600'
+                              : 'text-rose-600'
+                          }`}
+                        >
+                          {sub.score.toFixed(2)}
+                          <span className="text-xs text-slate-400 font-sans font-normal">
+                            /{formatPointsNumber(subScale)}đ
+                          </span>
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          {rankInfo.percent}% · {rankInfo.label}
+                        </span>
+                      </div>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-extrabold mt-0.5">
                         <Lock size={12} />
@@ -414,7 +459,11 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                   <span className="text-xs text-slate-400 font-semibold block">Điểm số:</span>
                   {canViewActiveScore ? (
                     <span className="text-2xl font-black font-mono text-blue-600">
-                      {selectedSubmission.score.toFixed(2)} / {activeExam?.totalPoints ?? 10} điểm
+                      {selectedSubmission.score.toFixed(2)} /{' '}
+                      {formatPointsNumber(
+                        getExamScaleInfo(activeExam, selectedSubmission.score).totalPoints
+                      )}{' '}
+                      điểm
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-extrabold">
@@ -463,7 +512,9 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                 } else if (q.part === 'part_3_short_answer') {
                   studentDisplayAns = selectedSubmission.answers[q.id] || 'Chưa trả lời';
                   correctDisplayAns = q.correctAnswer;
-                  isQuestionCorrect = studentDisplayAns.toString().trim() === correctDisplayAns.toString().trim();
+                  isQuestionCorrect =
+                    Boolean(selectedSubmission.answers[q.id]) &&
+                    isAnswerEquivalent(String(studentDisplayAns), String(correctDisplayAns));
                 }
 
                 return (

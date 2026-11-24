@@ -1,9 +1,16 @@
 import React, { useState, useMemo, lazy, Suspense } from 'react';
 import { Classroom, StudentExamSubmission, Exam, UserRole } from '../../types/math';
-import { SAMPLE_STUDENTS } from '../../data/mockData';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
+import {
+  classifyScoreByScale,
+  computeExamQuestionStats,
+  computeGradebookAnalytics,
+  formatPointsNumber,
+  getExamScaleInfo,
+  getSubmissionScalePoints,
+} from '../../lib/scoringEngine';
 import {
   Award,
   Users,
@@ -22,6 +29,7 @@ import {
   X,
   FileText,
   Trash2,
+  ClipboardList,
 } from 'lucide-react';
 const GradebookPdfReportModal = lazy(() =>
   import('./GradebookPdfReportModal').then((m) => ({ default: m.GradebookPdfReportModal }))
@@ -100,86 +108,72 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState<boolean>(false);
   const [isDeletingSubmission, setIsDeletingSubmission] = useState<boolean>(false);
 
+  // Bộ lọc bảng thống kê từng câu hỏi
+  const [questionStatsFilter, setQuestionStatsFilter] = useState<
+    'all' | 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' | 'has_wrong'
+  >('all');
+
   // Lọc danh sách bài nộp theo bộ lọc
   const filteredSubmissions = useMemo(() => {
-    return submissions.filter((sub) => {
-      // Lọc theo lớp
-      if (selectedClassId !== 'all' && sub.classId !== selectedClassId) {
-        return false;
-      }
-      // Lọc theo đề thi
-      if (selectedExamId !== 'all' && sub.examId !== selectedExamId) {
-        return false;
-      }
-      // Lọc theo khoảng điểm
-      if (scoreRangeFilter === 'excellent' && sub.score < 8.0) return false;
-      if (scoreRangeFilter === 'good' && (sub.score < 6.5 || sub.score >= 8.0)) return false;
-      if (scoreRangeFilter === 'average' && (sub.score < 5.0 || sub.score >= 6.5)) return false;
-      if (scoreRangeFilter === 'below' && sub.score >= 5.0) return false;
+    return submissions
+      .filter((sub) => {
+        // Lọc theo lớp
+        if (selectedClassId !== 'all' && sub.classId !== selectedClassId) {
+          return false;
+        }
+        // Lọc theo đề thi
+        if (selectedExamId !== 'all' && sub.examId !== selectedExamId) {
+          return false;
+        }
+        // Lọc theo khoảng điểm dựa trên thang điểm thực tế của đề thi
+        if (scoreRangeFilter !== 'all') {
+          const subScale = getSubmissionScalePoints(sub, examsList);
+          const rankKey = classifyScoreByScale(sub.score, subScale).key;
+          if (rankKey !== scoreRangeFilter) return false;
+        }
 
-      // Lọc theo từ khóa tìm kiếm học sinh
-      if (searchStudentTerm.trim()) {
-        const query = searchStudentTerm.toLowerCase();
-        return (
-          sub.studentName.toLowerCase().includes(query) ||
-          sub.studentEmail.toLowerCase().includes(query) ||
-          sub.examTitle.toLowerCase().includes(query)
-        );
-      }
-      return true;
-    }).sort((a, b) => {
-      if (sortField === 'score') {
-        return sortOrder === 'desc' ? b.score - a.score : a.score - b.score;
-      } else if (sortField === 'time') {
-        return sortOrder === 'desc' ? b.timeSpentSeconds - a.timeSpentSeconds : a.timeSpentSeconds - b.timeSpentSeconds;
-      } else {
-        return sortOrder === 'desc'
-          ? new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-          : new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
-      }
-    });
-  }, [submissions, selectedClassId, selectedExamId, scoreRangeFilter, searchStudentTerm, sortField, sortOrder]);
+        // Lọc theo từ khóa tìm kiếm học sinh
+        if (searchStudentTerm.trim()) {
+          const query = searchStudentTerm.toLowerCase();
+          return (
+            sub.studentName.toLowerCase().includes(query) ||
+            sub.studentEmail.toLowerCase().includes(query) ||
+            sub.examTitle.toLowerCase().includes(query)
+          );
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortField === 'score') {
+          const ratioA = a.score / (getSubmissionScalePoints(a, examsList) || 10);
+          const ratioB = b.score / (getSubmissionScalePoints(b, examsList) || 10);
+          if (Math.abs(ratioA - ratioB) > 1e-6) {
+            return sortOrder === 'desc' ? ratioB - ratioA : ratioA - ratioB;
+          }
+          return sortOrder === 'desc' ? b.score - a.score : a.score - b.score;
+        } else if (sortField === 'time') {
+          return sortOrder === 'desc'
+            ? b.timeSpentSeconds - a.timeSpentSeconds
+            : a.timeSpentSeconds - b.timeSpentSeconds;
+        } else {
+          return sortOrder === 'desc'
+            ? new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+            : new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
+        }
+      });
+  }, [submissions, examsList, selectedClassId, selectedExamId, scoreRangeFilter, searchStudentTerm, sortField, sortOrder]);
 
-  // Thống kê phân tích
-  const analytics = useMemo(() => {
-    if (filteredSubmissions.length === 0) {
-      return {
-        total: 0,
-        average: 0,
-        max: 0,
-        min: 0,
-        excellentCount: 0,
-        goodCount: 0,
-        averageCount: 0,
-        belowCount: 0,
-        cheatingCount: 0,
-      };
-    }
+  // Thống kê phân tích theo thang điểm thực tế của đề thi
+  const analytics = useMemo(
+    () => computeGradebookAnalytics(filteredSubmissions, examsList, selectedExamId),
+    [filteredSubmissions, examsList, selectedExamId]
+  );
 
-    const scores = filteredSubmissions.map((s) => s.score);
-    const sum = scores.reduce((acc, val) => acc + val, 0);
-    const avg = sum / scores.length;
-    const max = Math.max(...scores);
-    const min = Math.min(...scores);
-
-    const excellentCount = scores.filter((s) => s >= 8.0).length;
-    const goodCount = scores.filter((s) => s >= 6.5 && s < 8.0).length;
-    const averageCount = scores.filter((s) => s >= 5.0 && s < 6.5).length;
-    const belowCount = scores.filter((s) => s < 5.0).length;
-    const cheatingCount = filteredSubmissions.filter((s) => s.infractionCount > 0 || s.isDisqualified).length;
-
-    return {
-      total: scores.length,
-      average: Number(avg.toFixed(2)),
-      max,
-      min,
-      excellentCount,
-      goodCount,
-      averageCount,
-      belowCount,
-      cheatingCount,
-    };
-  }, [filteredSubmissions]);
+  // Thống kê đáp án đưa ra, số bạn làm đúng / làm sai của từng câu
+  const questionStatGroups = useMemo(
+    () => computeExamQuestionStats(filteredSubmissions, examsList),
+    [filteredSubmissions, examsList]
+  );
 
   // Tìm thông tin đề thi của bài nộp đang xem
   const currentViewingExam = useMemo(() => {
@@ -187,15 +181,25 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
     return examsList.find((e) => e.id === viewingSubmission.examId) || null;
   }, [viewingSubmission, examsList]);
 
+  const currentViewingScaleInfo = useMemo(() => {
+    if (!viewingSubmission) return getExamScaleInfo(null);
+    return getExamScaleInfo(currentViewingExam, viewingSubmission.score);
+  }, [viewingSubmission, currentViewingExam]);
+
   // Xuất bảng điểm CSV (In-browser download)
   const handleExportCSV = () => {
-    const headers = 'Hạng,Họ và tên,Email,Lớp,Đề thi,Điểm tổng,Phần 1,Phần 2,Phần 3,Thời gian làm bài,Thời gian nộp bài,Vi phạm\n';
-    const rows = filteredSubmissions.map((sub, idx) => {
-      const cls = classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa';
-      const durationText = formatDurationSpent(sub.timeSpentSeconds);
-      const submittedText = formatSubmissionDateTime(sub.submittedAt).full;
-      return `${idx + 1},"${sub.studentName}","${sub.studentEmail}","${cls}","${sub.examTitle}",${sub.score},${sub.partScores.part1},${sub.partScores.part2},${sub.partScores.part3},"${durationText}","${submittedText}",${sub.infractionCount}`;
-    }).join('\n');
+    const headers =
+      'Hạng,Họ và tên,Email,Lớp,Đề thi,Điểm tổng,Thang điểm đề,Tỷ lệ (%),Phần 1,Phần 2,Phần 3,Thời gian làm bài,Thời gian nộp bài,Vi phạm\n';
+    const rows = filteredSubmissions
+      .map((sub, idx) => {
+        const cls = classrooms.find((c) => c.id === sub.classId)?.name || 'Tự luyện / Lớp đã xóa';
+        const subScale = getSubmissionScalePoints(sub, examsList);
+        const pct = subScale > 0 ? ((sub.score / subScale) * 100).toFixed(1) : '0.0';
+        const durationText = formatDurationSpent(sub.timeSpentSeconds);
+        const submittedText = formatSubmissionDateTime(sub.submittedAt).full;
+        return `${idx + 1},"${sub.studentName}","${sub.studentEmail}","${cls}","${sub.examTitle}",${sub.score},${subScale},${pct}%,${sub.partScores.part1},${sub.partScores.part2},${sub.partScores.part3},"${durationText}","${submittedText}",${sub.infractionCount}`;
+      })
+      .join('\n');
 
     const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -355,10 +359,21 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             <TrendingUp size={18} />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-blue-900 font-mono">
-            {analytics.average.toFixed(2)}
+            {analytics.isUniformScale ? (
+              <>
+                {analytics.average.toFixed(2)}
+                <span className="text-sm font-bold text-blue-600">/{formatPointsNumber(analytics.scalePoints)}</span>
+              </>
+            ) : (
+              `${analytics.averagePercent.toFixed(1)}%`
+            )}
           </div>
           <span className="text-[11px] text-blue-700 font-semibold mt-1 block">
-            Thang điểm 10
+            {analytics.isUniformScale
+              ? `Thang điểm ${formatPointsNumber(analytics.scalePoints)} (${analytics.averagePercent.toFixed(1)}%)`
+              : `Quy đổi ${analytics.average.toFixed(2)}/10 · Nhiều thang (${analytics.distinctScales
+                  .map((s) => `${formatPointsNumber(s)}đ`)
+                  .join(', ')})`}
           </span>
         </div>
 
@@ -370,16 +385,26 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
           </div>
           <div className="text-2xl sm:text-3xl font-black text-emerald-900 font-mono">
             {analytics.max.toFixed(2)}
+            <span className="text-sm font-bold text-emerald-700">
+              /{formatPointsNumber(analytics.maxSubmissionScale)}
+            </span>
           </div>
           <span className="text-[11px] text-emerald-700 font-semibold mt-1 block">
-            Thấp nhất: {analytics.min.toFixed(2)}đ
+            Thấp nhất: {analytics.min.toFixed(2)}/{formatPointsNumber(analytics.minSubmissionScale)}đ
+            {!analytics.isUniformScale ? ` (${analytics.minPercent.toFixed(1)}%)` : ''}
           </span>
         </div>
 
-        {/* Tỉ lệ Giỏi (>= 8.0) */}
+        {/* Tỉ lệ Giỏi (>= 80% thang đề) */}
         <div className="p-5 rounded-3xl bg-purple-50/70 border border-purple-200 shadow-xs">
           <div className="flex items-center justify-between text-purple-600 mb-1">
-            <span className="text-xs font-bold">Tỉ Lệ Giỏi (≥ 8.0đ)</span>
+            <span className="text-xs font-bold">
+              Tỉ Lệ Giỏi (
+              {analytics.isUniformScale
+                ? `≥ ${formatPointsNumber(analytics.thresholds.excellentMin)}đ`
+                : '≥ 80%'}
+              )
+            </span>
             <GraduationCap size={18} />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-purple-900 font-mono">
@@ -407,12 +432,17 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
 
       {/* Phổ điểm trực quan (Score distribution bars) */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
             <BarChart3 size={18} className="text-blue-600" />
             <span>Phân Bố Phổ Điểm Lớp Học</span>
           </h3>
-          <span className="text-xs text-slate-400 font-medium">Thống kê trên {analytics.total} bài nộp</span>
+          <span className="text-xs text-slate-500 font-medium">
+            Thống kê trên {analytics.total} bài nộp ·{' '}
+            {analytics.isUniformScale
+              ? `Thang điểm ${formatPointsNumber(analytics.scalePoints)}`
+              : `Xếp loại theo % thang điểm từng đề`}
+          </span>
         </div>
 
         <div className="space-y-3 text-xs">
@@ -421,9 +451,18 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             <div className="flex justify-between font-bold text-slate-700 mb-1">
               <span className="flex items-center gap-1.5 text-emerald-700">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span>Giỏi (8.0 - 10.0 điểm)</span>
+                <span>
+                  {analytics.isUniformScale
+                    ? `Giỏi (${formatPointsNumber(analytics.thresholds.excellentMin)} - ${formatPointsNumber(
+                        analytics.scalePoints
+                      )} điểm · ≥ 80%)`
+                    : 'Giỏi (≥ 80% thang điểm đề)'}
+                </span>
               </span>
-              <span>{analytics.excellentCount} HS ({analytics.total > 0 ? Math.round((analytics.excellentCount / analytics.total) * 100) : 0}%)</span>
+              <span>
+                {analytics.excellentCount} HS (
+                {analytics.total > 0 ? Math.round((analytics.excellentCount / analytics.total) * 100) : 0}%)
+              </span>
             </div>
             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
               <div
@@ -438,9 +477,18 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             <div className="flex justify-between font-bold text-slate-700 mb-1">
               <span className="flex items-center gap-1.5 text-blue-700">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                <span>Khá (6.5 - 7.9 điểm)</span>
+                <span>
+                  {analytics.isUniformScale
+                    ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - dưới ${formatPointsNumber(
+                        analytics.thresholds.excellentMin
+                      )} điểm · 65% - 79.9%)`
+                    : 'Khá (65% - 79.9% thang điểm đề)'}
+                </span>
               </span>
-              <span>{analytics.goodCount} HS ({analytics.total > 0 ? Math.round((analytics.goodCount / analytics.total) * 100) : 0}%)</span>
+              <span>
+                {analytics.goodCount} HS (
+                {analytics.total > 0 ? Math.round((analytics.goodCount / analytics.total) * 100) : 0}%)
+              </span>
             </div>
             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
               <div
@@ -455,9 +503,18 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             <div className="flex justify-between font-bold text-slate-700 mb-1">
               <span className="flex items-center gap-1.5 text-amber-700">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span>Trung bình (5.0 - 6.4 điểm)</span>
+                <span>
+                  {analytics.isUniformScale
+                    ? `Trung bình (${formatPointsNumber(analytics.thresholds.averageMin)} - dưới ${formatPointsNumber(
+                        analytics.thresholds.goodMin
+                      )} điểm · 50% - 64.9%)`
+                    : 'Trung bình (50% - 64.9% thang điểm đề)'}
+                </span>
               </span>
-              <span>{analytics.averageCount} HS ({analytics.total > 0 ? Math.round((analytics.averageCount / analytics.total) * 100) : 0}%)</span>
+              <span>
+                {analytics.averageCount} HS (
+                {analytics.total > 0 ? Math.round((analytics.averageCount / analytics.total) * 100) : 0}%)
+              </span>
             </div>
             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
               <div
@@ -472,9 +529,16 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             <div className="flex justify-between font-bold text-slate-700 mb-1">
               <span className="flex items-center gap-1.5 text-rose-700">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                <span>Dưới trung bình (&lt; 5.0 điểm)</span>
+                <span>
+                  {analytics.isUniformScale
+                    ? `Dưới trung bình (< ${formatPointsNumber(analytics.thresholds.averageMin)} điểm · < 50%)`
+                    : 'Dưới trung bình (< 50% thang điểm đề)'}
+                </span>
               </span>
-              <span>{analytics.belowCount} HS ({analytics.total > 0 ? Math.round((analytics.belowCount / analytics.total) * 100) : 0}%)</span>
+              <span>
+                {analytics.belowCount} HS (
+                {analytics.total > 0 ? Math.round((analytics.belowCount / analytics.total) * 100) : 0}%)
+              </span>
             </div>
             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
               <div
@@ -485,6 +549,266 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Thống kê đáp án đưa ra của từng câu: Số bạn làm đúng / làm sai */}
+      {questionStatGroups.length > 0 && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                <ClipboardList size={18} className="text-indigo-600" />
+                <span>Thống Kê Đáp Án Từng Câu (Số Bạn Làm Đúng / Làm Sai)</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Phân tích số học sinh trả lời đúng, trả lời sai, bỏ trống và phân bố các đáp án thí sinh đã chọn theo từng câu.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+              {(
+                [
+                  { id: 'all', label: 'Tất cả câu' },
+                  { id: 'part_1_mcq', label: 'Phần I (MCQ)' },
+                  { id: 'part_2_true_false', label: 'Phần II (Đ/S)' },
+                  { id: 'part_3_short_answer', label: 'Phần III (Ngắn)' },
+                  { id: 'has_wrong', label: 'Có HS làm sai' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setQuestionStatsFilter(tab.id)}
+                  className={`px-2.5 py-1.5 rounded-xl border transition-colors cursor-pointer ${
+                    questionStatsFilter === tab.id
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            {questionStatGroups.map((group) => {
+              const visibleQuestions = group.questions.filter((q) => {
+                if (questionStatsFilter === 'all') return true;
+                if (questionStatsFilter === 'has_wrong') return q.wrongCount > 0 || q.partialCount > 0;
+                return q.part === questionStatsFilter;
+              });
+
+              const sortedByWrong = group.hasExamDefinition
+                ? [...group.questions].sort((a, b) => b.wrongCount + b.unansweredCount - (a.wrongCount + a.unansweredCount))
+                : [];
+              const hardestQuestion = sortedByWrong[0];
+              const easiestQuestion = group.hasExamDefinition
+                ? [...group.questions].sort((a, b) => b.correctRate - a.correctRate)[0]
+                : undefined;
+
+              return (
+                <div key={group.examId} className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-extrabold text-slate-900">{group.examTitle}</span>
+                      <span className="px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 font-mono font-bold text-[11px]">
+                        Thang {formatPointsNumber(group.totalPoints)} điểm
+                      </span>
+                      <span className="text-slate-500 font-semibold">
+                        · {group.submissionCount} bài nộp · {group.questions.length} câu
+                      </span>
+                    </div>
+
+                    {group.hasExamDefinition && hardestQuestion && easiestQuestion && (
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                          Đúng nhiều nhất: Câu {easiestQuestion.questionNumber} ({easiestQuestion.correctCount}/
+                          {easiestQuestion.totalSubmissions} HS)
+                        </span>
+                        {hardestQuestion.wrongCount + hardestQuestion.unansweredCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-semibold">
+                            Sai/Chưa đúng nhiều: Câu {hardestQuestion.questionNumber} (
+                            {hardestQuestion.wrongCount + hardestQuestion.unansweredCount} HS)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {visibleQuestions.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-slate-400">
+                      Không có câu hỏi nào thuộc bộ lọc hiện tại.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-600 font-bold text-[11px]">
+                            <th className="py-2.5 px-3 w-20 text-center">Câu</th>
+                            <th className="py-2.5 px-3 w-24 text-center">Phần</th>
+                            <th className="py-2.5 px-3 w-36">Đáp Án Đúng</th>
+                            <th className="py-2.5 px-3 min-w-[240px]">Thống Kê Đáp Án Thí Sinh Đưa Ra</th>
+                            <th className="py-2.5 px-3 w-24 text-center text-emerald-700">Làm Đúng</th>
+                            <th className="py-2.5 px-3 w-24 text-center text-rose-700">Làm Sai</th>
+                            <th className="py-2.5 px-3 w-20 text-center text-slate-500">Bỏ Trống</th>
+                            <th className="py-2.5 px-3 w-32 text-center">Tỷ Lệ Đúng</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {visibleQuestions.map((qStat) => {
+                            const correctPct =
+                              qStat.totalSubmissions > 0 ? (qStat.correctCount / qStat.totalSubmissions) * 100 : 0;
+                            const partialPct =
+                              qStat.totalSubmissions > 0 ? (qStat.partialCount / qStat.totalSubmissions) * 100 : 0;
+                            const wrongPct =
+                              qStat.totalSubmissions > 0 ? (qStat.wrongCount / qStat.totalSubmissions) * 100 : 0;
+
+                            return (
+                              <tr key={qStat.questionId} className="hover:bg-slate-50/70 align-top">
+                                <td className="py-2.5 px-3 text-center">
+                                  <span className="font-black font-mono text-slate-900 block">
+                                    Câu {qStat.questionNumber}
+                                  </span>
+                                  {qStat.points > 0 && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      ({formatPointsNumber(qStat.points)}đ)
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center">
+                                  <span
+                                    className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                      qStat.part === 'part_1_mcq'
+                                        ? 'bg-blue-50 text-blue-700'
+                                        : qStat.part === 'part_2_true_false'
+                                        ? 'bg-purple-50 text-purple-700'
+                                        : qStat.part === 'part_3_short_answer'
+                                        ? 'bg-amber-50 text-amber-700'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                  >
+                                    {qStat.partLabel}
+                                  </span>
+                                </td>
+
+                                <td className="py-2.5 px-3 font-mono font-bold text-emerald-700 text-[11px]">
+                                  {qStat.correctAnswerDisplay}
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  {qStat.part === 'part_2_true_false' && qStat.tfSubItems ? (
+                                    <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
+                                      {qStat.tfSubItems.map((subIt) => (
+                                        <div
+                                          key={subIt.subKey}
+                                          className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-1"
+                                        >
+                                          <span className="font-bold text-slate-700">
+                                            Ý {subIt.subKey} ({subIt.expected}):
+                                          </span>
+                                          <span>
+                                            <strong className="text-emerald-700">✓{subIt.correctCount}</strong>{' '}
+                                            <span className="text-slate-300">|</span>{' '}
+                                            <strong className="text-rose-600">✗{subIt.wrongCount}</strong>
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
+                                      {qStat.optionStats.map((opt) => (
+                                        <span
+                                          key={opt.key}
+                                          className={`px-2 py-0.5 rounded-lg border font-bold ${
+                                            opt.key === '__blank__'
+                                              ? 'bg-slate-100 border-slate-200 text-slate-500'
+                                              : opt.isCorrect
+                                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                              : opt.count > 0
+                                              ? 'bg-rose-50/70 border-rose-200 text-rose-800'
+                                              : 'bg-slate-50 border-slate-200 text-slate-400'
+                                          }`}
+                                        >
+                                          {opt.label}: {opt.count} HS ({opt.percent}%)
+                                          {opt.isCorrect ? ' ✓' : ''}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center">
+                                  <span className="inline-block px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-black font-mono">
+                                    {qStat.correctCount}
+                                  </span>
+                                  {qStat.partialCount > 0 && (
+                                    <span className="block text-[10px] text-amber-700 font-semibold mt-0.5">
+                                      +1 phần: {qStat.partialCount}
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center">
+                                  <span
+                                    className={`inline-block px-2.5 py-0.5 rounded-lg font-black font-mono ${
+                                      qStat.wrongCount > 0
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : 'bg-slate-100 text-slate-400'
+                                    }`}
+                                  >
+                                    {qStat.wrongCount}
+                                  </span>
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center font-mono text-slate-500">
+                                  {qStat.unansweredCount}
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between font-mono text-[10px] font-bold">
+                                      <span className="text-emerald-700">{qStat.correctRate}%</span>
+                                      <span className="text-slate-400">
+                                        {qStat.correctCount}/{qStat.totalSubmissions}
+                                      </span>
+                                    </div>
+                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+                                      <div
+                                        className="h-full bg-emerald-500"
+                                        style={{ width: `${correctPct}%` }}
+                                        title={`Đúng: ${qStat.correctCount}`}
+                                      />
+                                      {partialPct > 0 && (
+                                        <div
+                                          className="h-full bg-amber-400"
+                                          style={{ width: `${partialPct}%` }}
+                                          title={`Đúng 1 phần: ${qStat.partialCount}`}
+                                        />
+                                      )}
+                                      {wrongPct > 0 && (
+                                        <div
+                                          className="h-full bg-rose-500"
+                                          style={{ width: `${wrongPct}%` }}
+                                          title={`Sai: ${qStat.wrongCount}`}
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
@@ -517,7 +841,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
               <option value="all">Tất cả đề thi</option>
               {examsList.map((ex) => (
                 <option key={ex.id} value={ex.id}>
-                  {ex.title}
+                  {ex.title} ({formatPointsNumber(getExamScaleInfo(ex).totalPoints)}đ)
                 </option>
               ))}
             </select>
@@ -532,10 +856,30 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
               className="h-10 px-3 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-blue-600"
             >
               <option value="all">Tất cả mức điểm</option>
-              <option value="excellent">Giỏi (≥ 8.0 điểm)</option>
-              <option value="good">Khá (6.5 - 7.9 điểm)</option>
-              <option value="average">Trung bình (5.0 - 6.4 điểm)</option>
-              <option value="below">Dưới trung bình (&lt; 5.0)</option>
+              <option value="excellent">
+                {analytics.isUniformScale
+                  ? `Giỏi (≥ ${formatPointsNumber(analytics.thresholds.excellentMin)}đ · ≥80%)`
+                  : 'Giỏi (≥ 80% thang đề)'}
+              </option>
+              <option value="good">
+                {analytics.isUniformScale
+                  ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - <${formatPointsNumber(
+                      analytics.thresholds.excellentMin
+                    )}đ)`
+                  : 'Khá (65% - 79.9%)'}
+              </option>
+              <option value="average">
+                {analytics.isUniformScale
+                  ? `Trung bình (${formatPointsNumber(analytics.thresholds.averageMin)} - <${formatPointsNumber(
+                      analytics.thresholds.goodMin
+                    )}đ)`
+                  : 'Trung bình (50% - 64.9%)'}
+              </option>
+              <option value="below">
+                {analytics.isUniformScale
+                  ? `Dưới trung bình (< ${formatPointsNumber(analytics.thresholds.averageMin)}đ)`
+                  : 'Dưới trung bình (< 50%)'}
+              </option>
             </select>
           </div>
         </div>
@@ -716,19 +1060,28 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
 
                       {/* Total Score */}
                       <td className="py-3.5 px-4 text-center">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-xl font-black font-mono text-sm ${
-                            sub.score >= 8.0
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : sub.score >= 6.5
-                              ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                              : sub.score >= 5.0
-                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                              : 'bg-rose-100 text-rose-800 border border-rose-300'
-                          }`}
-                        >
-                          {sub.score.toFixed(2)}
-                        </span>
+                        {(() => {
+                          const subScale = getSubmissionScalePoints(sub, examsList);
+                          const rankInfo = classifyScoreByScale(sub.score, subScale);
+                          return (
+                            <span
+                              className={`inline-block px-3 py-1 rounded-xl font-black font-mono text-sm whitespace-nowrap ${
+                                rankInfo.key === 'excellent'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : rankInfo.key === 'good'
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                  : rankInfo.key === 'average'
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : 'bg-rose-100 text-rose-800 border border-rose-300'
+                              }`}
+                            >
+                              {sub.score.toFixed(2)}
+                              <span className="text-[10px] font-semibold opacity-75">
+                                /{formatPointsNumber(subScale)}
+                              </span>
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Part Scores */}
@@ -847,7 +1200,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
                 <div className="text-right">
                   <span className="text-xs text-slate-400 font-semibold block">Tổng Điểm:</span>
                   <span className="text-2xl font-black font-mono text-blue-600">
-                    {viewingSubmission.score.toFixed(2)}/10
+                    {viewingSubmission.score.toFixed(2)}/{formatPointsNumber(currentViewingScaleInfo.totalPoints)}
                   </span>
                 </div>
                 <button
@@ -859,19 +1212,40 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
               </div>
             </div>
 
-            {/* Score Breakdown Pills (3 phần chuẩn hóa) */}
+            {/* Score Breakdown Pills (3 phần theo thang điểm của đề) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200">
                 <span className="text-[10px] font-bold text-blue-600 block">Phần I (MCQ)</span>
-                <span className="text-lg font-black font-mono text-blue-900">{viewingSubmission.partScores.part1}đ</span>
+                <span className="text-lg font-black font-mono text-blue-900">
+                  {viewingSubmission.partScores.part1}đ
+                  {currentViewingExam && (
+                    <span className="text-xs font-semibold text-blue-600">
+                      /{formatPointsNumber(currentViewingScaleInfo.part1Max)}đ
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200">
                 <span className="text-[10px] font-bold text-purple-600 block">Phần II (Đúng/Sai)</span>
-                <span className="text-lg font-black font-mono text-purple-900">{viewingSubmission.partScores.part2}đ</span>
+                <span className="text-lg font-black font-mono text-purple-900">
+                  {viewingSubmission.partScores.part2}đ
+                  {currentViewingExam && (
+                    <span className="text-xs font-semibold text-purple-600">
+                      /{formatPointsNumber(currentViewingScaleInfo.part2Max)}đ
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200">
                 <span className="text-[10px] font-bold text-amber-600 block">Phần III (Ngắn)</span>
-                <span className="text-lg font-black font-mono text-amber-900">{viewingSubmission.partScores.part3}đ</span>
+                <span className="text-lg font-black font-mono text-amber-900">
+                  {viewingSubmission.partScores.part3}đ
+                  {currentViewingExam && (
+                    <span className="text-xs font-semibold text-amber-600">
+                      /{formatPointsNumber(currentViewingScaleInfo.part3Max)}đ
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
 
@@ -1041,7 +1415,9 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
         }
         itemSubtitle={
           submissionToDelete
-            ? `Điểm: ${submissionToDelete.score.toFixed(2)}/10 · Nộp lúc: ${formatSubmissionDateTime(submissionToDelete.submittedAt).full}`
+            ? `Điểm: ${submissionToDelete.score.toFixed(2)}/${formatPointsNumber(
+                getSubmissionScalePoints(submissionToDelete, examsList)
+              )} · Nộp lúc: ${formatSubmissionDateTime(submissionToDelete.submittedAt).full}`
             : undefined
         }
         impactDetails={[

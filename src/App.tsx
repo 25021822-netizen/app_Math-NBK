@@ -20,6 +20,11 @@ import {
   getTeacherSubjectTab,
 } from './types/math';
 import {
+  classifyScoreByScale,
+  formatPointsNumber,
+  getExamScaleInfo,
+} from './lib/scoringEngine';
+import {
   INITIAL_USER_PROFILE,
   SAMPLE_CHEAT_LOGS,
   SAMPLE_CLASSROOMS,
@@ -1586,9 +1591,15 @@ export default function App() {
     const answersCount = Object.keys(submission.answers || {}).length;
 
     if (canViewScore) {
-      const formattedScore = submission.score.toFixed(1);
+      const examScale = getExamScaleInfo(targetExam, submission.score);
+      const rankInfo = classifyScoreByScale(submission.score, examScale.totalPoints);
+      const formattedScore = submission.score.toFixed(2);
       triggerPushNotification(`Kết quả chấm bài: ${submission.examTitle}`, {
-        message: `Điểm số của bạn: ${formattedScore}/10 (${answersCount} câu đã làm). ${submission.score >= 8 ? 'Thành tích xuất sắc! 🎉' : 'Đã lưu học bạ. Nhấn để xem chi tiết lời giải.'}`,
+        message: `Điểm số của bạn: ${formattedScore}/${formatPointsNumber(examScale.totalPoints)} (${rankInfo.percent}% · ${answersCount} câu đã làm). ${
+          rankInfo.key === 'excellent'
+            ? 'Thành tích xuất sắc! 🎉'
+            : 'Đã lưu học bạ. Nhấn để xem chi tiết lời giải.'
+        }`,
         type: 'exam_graded',
         targetTab: 'student_history',
         examId: submission.examId,

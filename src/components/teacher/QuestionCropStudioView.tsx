@@ -1765,7 +1765,7 @@ export const QuestionCropStudioView: React.FC<QuestionCropStudioViewProps> = ({
               <div className="flex items-center gap-2 text-xs font-bold">
                 <span className="text-slate-500">Tổng điểm:</span>
                 <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-mono">
-                  {totalPoints.toFixed(2)} / 10.0 đ
+                  {totalPoints.toFixed(2)} điểm
                 </span>
                 <button
                   type="button"
