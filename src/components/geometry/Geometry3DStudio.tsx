@@ -126,12 +126,12 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   const [ratioPointA, setRatioPointA] = useState<string>('');
   const [ratioPointB, setRatioPointB] = useState<string>('');
   const [ratioK, setRatioK] = useState<number>(0.5);
-  const [ratioPointLabel, setRatioPointLabel] = useState<string>('M');
+  const [ratioPointLabel, setRatioPointLabel] = useState<string>('');
 
   const [centroidA, setCentroidA] = useState<string>('');
   const [centroidB, setCentroidB] = useState<string>('');
   const [centroidC, setCentroidC] = useState<string>('');
-  const [centroidLabel, setCentroidLabel] = useState<string>('G');
+  const [centroidLabel, setCentroidLabel] = useState<string>('');
 
   // Giao của 2 đoạn / đường thẳng
   const [seg1PointA, setSeg1PointA] = useState<string>('');
@@ -140,7 +140,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   const [seg2PointB, setSeg2PointB] = useState<string>('');
   const [intersectSegExtend, setIntersectSegExtend] = useState<boolean>(false);
   const [intersectSegDrawExt, setIntersectSegDrawExt] = useState<boolean>(true);
-  const [intersectSegLabel, setIntersectSegLabel] = useState<string>('I');
+  const [intersectSegLabel, setIntersectSegLabel] = useState<string>('');
   const [intersectSegColor, setIntersectSegColor] = useState<string>('#8b5cf6');
 
   // Giao của 1 đường thẳng với 1 mặt phẳng
@@ -151,10 +151,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   const [lpPlanePoint3, setLpPlanePoint3] = useState<string>('');
   const [lpRestrictSegment, setLpRestrictSegment] = useState<boolean>(false);
   const [lpDrawExtension, setLpDrawExtension] = useState<boolean>(true);
-  const [intersectLPLabel, setIntersectLPLabel] = useState<string>('K');
+  const [intersectLPLabel, setIntersectLPLabel] = useState<string>('');
   const [intersectLPColor, setIntersectLPColor] = useState<string>('#e11d48');
 
-  const [manualPointName, setManualPointName] = useState<string>('M');
+  const [manualPointName, setManualPointName] = useState<string>('');
   const [manualPointX, setManualPointX] = useState<number>(0);
   const [manualPointY, setManualPointY] = useState<number>(50);
   const [manualPointZ, setManualPointZ] = useState<number>(0);
@@ -654,30 +654,21 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     return `${basePrefix}${idx}`;
   };
 
-  // Tự động điền tên điểm hợp lệ (không trống, không trùng) khi đổi hình, đổi tab, hoặc thêm/xóa điểm
-  useEffect(() => {
-    const usedSet = new Set(allUsedPointTokens);
-    const shouldReplace = (val: string) => {
-      const clean = val.trim().toUpperCase();
-      return !clean || usedSet.has(clean);
-    };
-
-    if (shouldReplace(ratioPointLabel)) {
-      setRatioPointLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio));
+  // Kiểm tra tên điểm do người dùng tự nhập (không trống, không trùng)
+  const validateManualPointName = (rawName: string): string | null => {
+    const clean = rawName.trim();
+    if (!clean) {
+      setStatusMessage('Vui lòng tự nhập tên điểm trước khi tạo!');
+      setTimeout(() => setStatusMessage(null), 3500);
+      return null;
     }
-    if (shouldReplace(centroidLabel)) {
-      setCentroidLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid));
+    if (allUsedPointTokens.includes(clean.toUpperCase())) {
+      setStatusMessage(`Tên điểm [${clean}] đã tồn tại, vui lòng nhập tên khác!`);
+      setTimeout(() => setStatusMessage(null), 3500);
+      return null;
     }
-    if (shouldReplace(intersectSegLabel)) {
-      setIntersectSegLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments));
-    }
-    if (shouldReplace(intersectLPLabel)) {
-      setIntersectLPLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane));
-    }
-    if (shouldReplace(manualPointName)) {
-      setManualPointName(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual));
-    }
-  }, [allUsedPointTokens, selectedShape, quadBaseType, pointCreationMode]);
+    return clean;
+  };
 
   // ==========================================
   // 1. MỤC: TẠO ĐIỂM
@@ -689,6 +680,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       setStatusMessage('Vui lòng chọn 2 điểm khác nhau để chia tỉ lệ!');
       return;
     }
+    const name = validateManualPointName(ratioPointLabel);
+    if (!name) return;
+
     const p1 = allPointsMap[ratioPointA];
     const p2 = allPointsMap[ratioPointB];
     if (!p1 || !p2) return;
@@ -698,7 +692,6 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     const newY = Math.round(p1.y + k * (p2.y - p1.y));
     const newZ = Math.round(p1.z + k * (p2.z - p1.z));
 
-    const name = ratioPointLabel.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio);
     const dispA = p1.name || ratioPointA;
     const dispB = p2.name || ratioPointB;
     const newPoint: Point3D = {
@@ -711,13 +704,11 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       isCustom: true,
     };
 
-    setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+    setCustomPoints((prev) => [...prev, newPoint]);
     setSelectedPointName(name);
     setStatusMessage(`Đã tạo điểm [${name}] trên cạnh [${dispA}${dispB}] với tỉ lệ k=${k}!`);
     setTimeout(() => setStatusMessage(null), 3500);
-
-    const nextName = getNextFreePointName([...allUsedPointTokens, name], POINT_NAME_PREFERENCES.ratio);
-    setRatioPointLabel(nextName);
+    setRatioPointLabel('');
   };
 
   // b. Tạo trọng tâm 3 điểm / tam giác
@@ -731,6 +722,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       setStatusMessage('3 điểm tạo trọng tâm tam giác phải khác nhau!');
       return;
     }
+    const name = validateManualPointName(centroidLabel);
+    if (!name) return;
+
     const p1 = allPointsMap[centroidA];
     const p2 = allPointsMap[centroidB];
     const p3 = allPointsMap[centroidC];
@@ -740,7 +734,6 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     const gY = Math.round((p1.y + p2.y + p3.y) / 3);
     const gZ = Math.round((p1.z + p2.z + p3.z) / 3);
 
-    const name = centroidLabel.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid);
     const dispA = p1.name || centroidA;
     const dispB = p2.name || centroidB;
     const dispC = p3.name || centroidC;
@@ -754,13 +747,11 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       isCustom: true,
     };
 
-    setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+    setCustomPoints((prev) => [...prev, newPoint]);
     setSelectedPointName(name);
     setStatusMessage(`Đã tạo thành công Trọng tâm [${name}] của tam giác [${dispA}${dispB}${dispC}]!`);
     setTimeout(() => setStatusMessage(null), 3500);
-
-    const nextName = getNextFreePointName([...allUsedPointTokens, name], POINT_NAME_PREFERENCES.centroid);
-    setCentroidLabel(nextName);
+    setCentroidLabel('');
   };
 
   // Làm tròn tọa độ 1 chữ số thập phân (tránh -0)
@@ -1003,9 +994,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       return;
     }
 
-    const name =
-      intersectSegLabel.trim() ||
-      getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments);
+    const name = validateManualPointName(intersectSegLabel);
+    if (!name) return;
+
     const n1 = allPointsMap[seg1PointA]?.name || seg1PointA;
     const n2 = allPointsMap[seg1PointB]?.name || seg1PointB;
     const n3 = allPointsMap[seg2PointA]?.name || seg2PointA;
@@ -1021,7 +1012,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       isCustom: true,
     };
 
-    setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+    setCustomPoints((prev) => [...prev, newPoint]);
 
     // Tùy chọn tự vẽ nét đứt nối từ đầu mút gần hơn tới giao điểm nếu nằm trên phần kéo dài
     if (intersectSegDrawExt && res.t !== undefined && res.s !== undefined) {
@@ -1077,11 +1068,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     setStatusMessage(`Đã tạo giao điểm [${name}] = ${n1}${n2} ∩ ${n3}${n4} tại (${res.point.x}, ${res.point.y}, ${res.point.z})!`);
     setTimeout(() => setStatusMessage(null), 4000);
 
-    const nextName = getNextFreePointName(
-      [...allUsedPointTokens, name],
-      POINT_NAME_PREFERENCES.intersect_segments
-    );
-    setIntersectSegLabel(nextName);
+    setIntersectSegLabel('');
   };
 
   // Tạo điểm giao của 1 đường thẳng với 1 mặt phẳng
@@ -1101,9 +1088,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       return;
     }
 
-    const name =
-      intersectLPLabel.trim() ||
-      getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane);
+    const name = validateManualPointName(intersectLPLabel);
+    if (!name) return;
+
     const lA = allPointsMap[lpLinePointA]?.name || lpLinePointA;
     const lB = allPointsMap[lpLinePointB]?.name || lpLinePointB;
     const p1N = allPointsMap[lpPlanePoint1]?.name || lpPlanePoint1;
@@ -1120,7 +1107,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       isCustom: true,
     };
 
-    setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+    setCustomPoints((prev) => [...prev, newPoint]);
 
     if (lpDrawExtension && res.t !== undefined && (res.t < -0.02 || res.t > 1.02)) {
       const anchorPt = res.t < -0.02 ? lpLinePointA : lpLinePointB;
@@ -1145,11 +1132,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     );
     setTimeout(() => setStatusMessage(null), 4000);
 
-    const nextName = getNextFreePointName(
-      [...allUsedPointTokens, name],
-      POINT_NAME_PREFERENCES.intersect_line_plane
-    );
-    setIntersectLPLabel(nextName);
+    setIntersectLPLabel('');
   };
 
   // Tính toán tia chiếu 3D từ điểm ảnh màn hình SVG (svgX, svgY)
@@ -1472,8 +1455,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
 
   // c. Tạo điểm mới theo tọa độ tự do (hoặc dùng con trỏ ấn vào hình)
   const handleCreateManualPoint = () => {
-    const name =
-      manualPointName.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual);
+    const name = validateManualPointName(manualPointName);
+    if (!name) return;
+
     const newPoint: Point3D = {
       name,
       x: manualPointX,
@@ -1484,13 +1468,11 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       isCustom: true,
     };
 
-    setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+    setCustomPoints((prev) => [...prev, newPoint]);
     setSelectedPointName(name);
     setStatusMessage(`Đã tạo điểm mới [${name}] tại tọa độ (${manualPointX}, ${manualPointY}, ${manualPointZ})!`);
     setTimeout(() => setStatusMessage(null), 3500);
-
-    const nextName = getNextFreePointName([...allUsedPointTokens, name], POINT_NAME_PREFERENCES.manual);
-    setManualPointName(nextName);
+    setManualPointName('');
   };
 
   // ==========================================
@@ -2058,14 +2040,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={ratioPointLabel}
                       onChange={(e) => setRatioPointLabel(e.target.value.toUpperCase())}
-                      onBlur={(e) => {
-                        if (!e.target.value.trim()) {
-                          setRatioPointLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio));
-                        }
-                      }}
-                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio)}
+                      placeholder="Nhập tên..."
                       maxLength={4}
-                      className="w-16 h-8 px-2 rounded-xl border border-emerald-300 font-bold text-center text-xs bg-white text-slate-900"
+                      className="w-20 h-8 px-2 rounded-xl border border-emerald-300 font-bold text-center text-xs bg-white text-slate-900 placeholder:font-normal placeholder:text-slate-400"
                     />
                     <button
                       type="button"
@@ -2129,14 +2106,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={centroidLabel}
                       onChange={(e) => setCentroidLabel(e.target.value.toUpperCase())}
-                      onBlur={(e) => {
-                        if (!e.target.value.trim()) {
-                          setCentroidLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid));
-                        }
-                      }}
-                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid)}
+                      placeholder="Nhập tên..."
                       maxLength={4}
-                      className="w-16 h-8 px-2 rounded-xl border border-amber-300 font-bold text-center text-xs bg-white text-slate-900"
+                      className="w-20 h-8 px-2 rounded-xl border border-amber-300 font-bold text-center text-xs bg-white text-slate-900 placeholder:font-normal placeholder:text-slate-400"
                     />
                     <button
                       type="button"
@@ -2299,16 +2271,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={intersectSegLabel}
                       onChange={(e) => setIntersectSegLabel(e.target.value.toUpperCase())}
-                      onBlur={(e) => {
-                        if (!e.target.value.trim()) {
-                          setIntersectSegLabel(
-                            getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments)
-                          );
-                        }
-                      }}
-                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments)}
+                      placeholder="Nhập tên..."
                       maxLength={4}
-                      className="w-14 h-8 px-2 rounded-xl border border-violet-300 font-bold text-center text-xs bg-white text-slate-900"
+                      className="w-20 h-8 px-2 rounded-xl border border-violet-300 font-bold text-center text-xs bg-white text-slate-900 placeholder:font-normal placeholder:text-slate-400"
                     />
                     <input
                       type="color"
@@ -2491,16 +2456,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={intersectLPLabel}
                       onChange={(e) => setIntersectLPLabel(e.target.value.toUpperCase())}
-                      onBlur={(e) => {
-                        if (!e.target.value.trim()) {
-                          setIntersectLPLabel(
-                            getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane)
-                          );
-                        }
-                      }}
-                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane)}
+                      placeholder="Nhập tên..."
                       maxLength={4}
-                      className="w-14 h-8 px-2 rounded-xl border border-rose-300 font-bold text-center text-xs bg-white text-slate-900"
+                      className="w-20 h-8 px-2 rounded-xl border border-rose-300 font-bold text-center text-xs bg-white text-slate-900 placeholder:font-normal placeholder:text-slate-400"
                     />
                     <input
                       type="color"
@@ -2565,17 +2523,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                         type="text"
                         value={manualPointName}
                         onChange={(e) => setManualPointName(e.target.value.toUpperCase())}
-                        onBlur={(e) => {
-                          if (!e.target.value.trim()) {
-                            setManualPointName(
-                              getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)
-                            );
-                          }
-                        }}
-                        placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)}
+                        placeholder="Nhập tên..."
                         maxLength={4}
-                        className="w-14 h-8 px-2 rounded-xl border border-emerald-300 font-bold text-center text-xs bg-white text-slate-900"
-                        title="Tên điểm tiếp theo (sẽ tự động tăng M, N, P, Q... sau mỗi lần ấn)"
+                        className="w-20 h-8 px-2 rounded-xl border border-emerald-300 font-bold text-center text-xs bg-white text-slate-900 placeholder:font-normal placeholder:text-slate-400"
+                        title="Tự nhập tên điểm trước khi đặt điểm"
                       />
                     </div>
 
@@ -2593,9 +2544,8 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="button"
                       onClick={() => {
                         if (hover3DPoint) {
-                          const name =
-                            manualPointName.trim() ||
-                            getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual);
+                          const name = validateManualPointName(manualPointName);
+                          if (!name) return;
                           const newPoint: Point3D = {
                             name,
                             x: hover3DPoint.x,
@@ -2605,15 +2555,11 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                             color: manualPointColor || '#10b981',
                             isCustom: true,
                           };
-                          setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+                          setCustomPoints((prev) => [...prev, newPoint]);
                           setSelectedPointName(name);
                           setStatusMessage(`Đã tạo điểm tự do [${name}] trên ${hover3DPoint.surfaceName} tại (${hover3DPoint.x}, ${hover3DPoint.y}, ${hover3DPoint.z})!`);
                           setTimeout(() => setStatusMessage(null), 3500);
-                          const nextName = getNextFreePointName(
-                            [...allUsedPointTokens, name],
-                            POINT_NAME_PREFERENCES.manual
-                          );
-                          setManualPointName(nextName);
+                          setManualPointName('');
                         } else {
                           handleCreateManualPoint();
                         }
@@ -3290,8 +3236,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
               <span>
-                Chế độ tạo điểm: Nhấp vào hình để đặt [
-                {manualPointName.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)}]
+                {manualPointName.trim()
+                  ? `Chế độ tạo điểm: Nhấp vào hình để đặt [${manualPointName.trim()}]`
+                  : 'Chế độ tạo điểm: Tự nhập tên điểm ở bảng bên trái trước khi nhấp vào hình'}
               </span>
             </span>
           </div>
@@ -3340,10 +3287,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     const svgX = ((upEvent.clientX - rect.left) / rect.width) * 500;
                     const svgY = ((upEvent.clientY - rect.top) / rect.height) * 400;
                     if (svgX >= 0 && svgX <= 500 && svgY >= 0 && svgY <= 400) {
+                      const name = validateManualPointName(manualPointName);
+                      if (!name) return;
+
                       const calculated = calculate3DPointFromScreen(svgX, svgY);
-                      const name =
-                        manualPointName.trim() ||
-                        getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual);
                       const newPoint: Point3D = {
                         name,
                         x: calculated.x,
@@ -3353,16 +3300,11 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                         color: manualPointColor || '#10b981',
                         isCustom: true,
                       };
-                      setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
+                      setCustomPoints((prev) => [...prev, newPoint]);
                       setSelectedPointName(name);
                       setStatusMessage(`Đã tạo điểm tự do [${name}] trực tiếp trên ${calculated.surfaceName} tại tọa độ (${calculated.x}, ${calculated.y}, ${calculated.z})!`);
                       setTimeout(() => setStatusMessage(null), 3500);
-
-                      const nextName = getNextFreePointName(
-                        [...allUsedPointTokens, name],
-                        POINT_NAME_PREFERENCES.manual
-                      );
-                      setManualPointName(nextName);
+                      setManualPointName('');
                     }
                   }
                 }
@@ -4378,10 +4320,8 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                 pointCreationMode === 'intersect_segments' ? intersectSegColor : intersectLPColor;
               const previewLabel =
                 pointCreationMode === 'intersect_segments'
-                  ? intersectSegLabel.trim() ||
-                    getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments)
-                  : intersectLPLabel.trim() ||
-                    getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane);
+                  ? intersectSegLabel.trim()
+                  : intersectLPLabel.trim();
               if (!previewPt) return null;
               const p = project3D(previewPt.x, previewPt.y, previewPt.z);
               return (
@@ -4412,7 +4352,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     fontWeight="bold"
                     className="font-mono"
                   >
-                    {previewLabel}?
+                    {previewLabel ? `${previewLabel}?` : '?'}
                   </text>
                 </g>
               );
@@ -4472,13 +4412,15 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     strokeWidth="1.2"
                   />
                   <text x="8" y="13" fill="#34d399" fontSize="9.5" fontWeight="bold">
-                    Điểm [
-                    {manualPointName.trim() ||
-                      getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)}
-                    ]: ({hover3DPoint.x}, {hover3DPoint.y}, {hover3DPoint.z})
+                    {manualPointName.trim()
+                      ? `Điểm [${manualPointName.trim()}]`
+                      : 'Chưa nhập tên điểm'}
+                    : ({hover3DPoint.x}, {hover3DPoint.y}, {hover3DPoint.z})
                   </text>
                   <text x="8" y="25" fill="#e2e8f0" fontSize="8.5">
-                    {hover3DPoint.surfaceName} · Nhấp để tạo
+                    {manualPointName.trim()
+                      ? `${hover3DPoint.surfaceName} · Nhấp để tạo`
+                      : 'Hãy tự nhập tên điểm trước khi nhấp'}
                   </text>
                 </g>
               </g>
