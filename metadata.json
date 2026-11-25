@@ -1,6 +1,6 @@
 {
   "name": "Remix Math\u0026NBK",
-  "description": "Toán Học LIKI - Hệ thống học Toán THPT thông minh GDPT 2018, Trợ lý AI Liki với Google Search Grounding và Không gian Hình học 3D Three.js.",
+  "description": "Toán Học LIKI - Hệ thống học tập, luyện thi chuẩn BGD GDPT 2018, mô phỏng hình học 3D Oxyz, thí nghiệm Vật Lý và Hóa Học THPT.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

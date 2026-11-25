@@ -977,20 +977,23 @@ export default function App() {
     setIsAuthenticated(true);
     if (user.role === 'admin') {
       // BẢO MẬT: KHÔNG LƯU TÀI KHOẢN ADMIN VÀO LOCALSTORAGE
-      // Tránh tuyệt đối lỗi khi mở trang web bị tự động đăng nhập vào tài khoản admin
-      localStorage.removeItem('math_nbk_auth_user');
-      sessionStorage.removeItem('math_nbk_auth_session');
-      sessionStorage.setItem('math_nbk_admin_session', 'true');
+      try {
+        localStorage.removeItem('math_nbk_auth_user');
+        sessionStorage.removeItem('math_nbk_auth_session');
+        sessionStorage.setItem('math_nbk_admin_session', 'true');
+      } catch {}
       setCurrentTab('admin_dashboard');
     } else {
       rememberSessionRef.current = rememberMe;
-      if (rememberMe) {
-        localStorage.setItem('math_nbk_auth_user', JSON.stringify(user));
-        sessionStorage.removeItem('math_nbk_auth_session');
-      } else {
-        sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(user));
-        localStorage.removeItem('math_nbk_auth_user');
-      }
+      try {
+        if (rememberMe) {
+          localStorage.setItem('math_nbk_auth_user', JSON.stringify(user));
+          sessionStorage.removeItem('math_nbk_auth_session');
+        } else {
+          sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(user));
+          localStorage.removeItem('math_nbk_auth_user');
+        }
+      } catch {}
       setCurrentTab('classroom');
     }
   };
@@ -1081,11 +1084,13 @@ export default function App() {
     setUserProfile(updated);
     setAllUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
     if (updated.role !== 'admin') {
-      if (rememberSessionRef.current) {
-        localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
-      } else {
-        sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updated));
-      }
+      try {
+        if (rememberSessionRef.current) {
+          localStorage.setItem('math_nbk_auth_user', JSON.stringify(updated));
+        } else {
+          sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updated));
+        }
+      } catch {}
     }
     dbUpdateUser(updated).catch(console.error);
   };
@@ -1103,11 +1108,13 @@ export default function App() {
     if (userProfile.id === updatedUser.id) {
       setUserProfile(updatedUser);
       if (updatedUser.role !== 'admin') {
-        if (rememberSessionRef.current) {
-          localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
-        } else {
-          sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updatedUser));
-        }
+        try {
+          if (rememberSessionRef.current) {
+            localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
+          } else {
+            sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updatedUser));
+          }
+        } catch {}
       }
     }
   };
@@ -1577,11 +1584,13 @@ export default function App() {
     setUserProfile(updatedUser);
     setAllUsers((all) => all.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)));
     if (updatedUser.role !== 'admin') {
-      if (rememberSessionRef.current) {
-        localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
-      } else {
-        sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updatedUser));
-      }
+      try {
+        if (rememberSessionRef.current) {
+          localStorage.setItem('math_nbk_auth_user', JSON.stringify(updatedUser));
+        } else {
+          sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(updatedUser));
+        }
+      } catch {}
     }
     dbUpdateUser(updatedUser).catch(console.error);
 
@@ -1643,6 +1652,7 @@ export default function App() {
           onUpdateProfile={handleUpdateProfile}
           classrooms={visibleClassrooms}
           submissions={submissions}
+          examsList={examsList}
           onNavigateToClassroom={() => setCurrentTab('classroom')}
           onLogout={handleLogout}
         />

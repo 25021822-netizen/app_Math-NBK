@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, UserRole, FriendRelation, FriendRequest } from '../../types/math';
+import { copyTextSafe } from '../../utils/clipboard';
 import {
   Users,
   UserPlus,
@@ -93,7 +94,7 @@ export const FriendsModalView: React.FC<FriendsModalViewProps> = ({
   );
 
   const handleCopyOwnId = () => {
-    navigator.clipboard.writeText(currentUser.id);
+    copyTextSafe(currentUser.id);
     setHasCopiedOwnId(true);
     setTimeout(() => setHasCopiedOwnId(false), 2500);
   };
@@ -406,26 +407,6 @@ export const FriendsModalView: React.FC<FriendsModalViewProps> = ({
                   </button>
                 </div>
 
-                {/* Quick suggestions to test easily */}
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
-                  <span className="text-slate-400 font-semibold">Gợi ý ID mẫu để thử nghiệm:</span>
-                  {allUsers
-                    .filter((u) => u.id !== currentUser.id && !myFriendIds.includes(u.id))
-                    .slice(0, 4)
-                    .map((sampleUser) => (
-                      <button
-                        key={sampleUser.id}
-                        type="button"
-                        onClick={() => {
-                          setTargetUserIdInput(sampleUser.id);
-                          setIdFeedbackMessage(null);
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 font-mono text-[11px] border border-slate-200 transition-colors"
-                      >
-                        {sampleUser.id} ({sampleUser.role === 'teacher' ? 'GV' : 'HS'})
-                      </button>
-                    ))}
-                </div>
               </div>
 
               {/* Feedback Alert */}
@@ -616,8 +597,7 @@ export const FriendsModalView: React.FC<FriendsModalViewProps> = ({
         </div>
 
         {/* Footer info */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 shrink-0">
-          <span>Quyền riêng tư: Mã ID được cấp phát chính thống theo hồ sơ THPT NBK</span>
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-end text-xs text-slate-500 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs"

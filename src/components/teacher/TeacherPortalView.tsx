@@ -1070,7 +1070,7 @@ Câu 5. Quãng đường vật thể đi được trong khoảng thời gian t�
         : 'cho các nhóm lớp và Kho đề cá nhân';
 
     setPublishSuccessMessage(
-      `Đã xuất bản thành công "${manualTitle}" với tổng ${calculatedTotalPoints} điểm (${targetDesc})!`
+      `Đã xuất bản thành công "${newExam.title}" với tổng ${calculatedTotalPoints} điểm (${targetDesc})!`
     );
     setTimeout(() => setPublishSuccessMessage(null), 5000);
   };

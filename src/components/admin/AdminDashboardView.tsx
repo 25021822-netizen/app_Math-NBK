@@ -3,7 +3,6 @@ import { UserProfile, CheatLog, UserRole, AutoApprovalSettings, TeachingSubject,
 import {
   Users,
   ShieldAlert,
-  Cpu,
   Database,
   CheckCircle2,
   Clock,
@@ -46,6 +45,8 @@ interface AdminDashboardViewProps {
   onApproveAllUsers?: (targetRole?: 'all' | 'student' | 'teacher') => void;
 }
 
+import { copyTextSafe } from '../../utils/clipboard';
+
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   cheatLogs,
   users: propUsers,
@@ -58,7 +59,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onUpdateAutoApprovalSettings,
   onApproveAllUsers,
 }) => {
-  const [activeTab, setActiveTab] = useState<'tokens' | 'users' | 'pending_requests' | 'cheat_logs'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'pending_requests' | 'cheat_logs'>('users');
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
 
@@ -220,7 +221,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
   const handleCopyPassword = (userId: string, password?: string) => {
     if (!password) return;
-    navigator.clipboard.writeText(password);
+    copyTextSafe(password);
     setCopiedPasswordUserId(userId);
     setTimeout(() => setCopiedPasswordUserId(null), 2000);
   };
@@ -375,7 +376,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </span>
           <h1 className="text-2xl font-extrabold text-slate-900 mt-1">Math&NBK Admin Center</h1>
           <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
-            Độc quyền quyền hạn cấp tài khoản Giáo viên & Học sinh, quản lý token AI và nhật ký thi.
+            Quản lý tài khoản Giáo viên, Học sinh và theo dõi nhật ký thi.
           </p>
         </div>
 
@@ -403,15 +404,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 {pendingCount}
               </span>
             )}
-          </button>
-          <button
-            onClick={() => setActiveTab('tokens')}
-            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
-              activeTab === 'tokens' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-            }`}
-          >
-            <Cpu size={14} />
-            <span>Token & Cache</span>
           </button>
           <button
             onClick={() => setActiveTab('cheat_logs')}
@@ -472,28 +464,23 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
           )}
 
-          {/* Security Banner regarding Admin Exclusive User Provisioning */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50 to-slate-50 border border-rose-200 text-xs text-rose-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
-                <ShieldAlert size={20} />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                <Users size={18} />
               </div>
               <div>
-                <h4 className="font-extrabold text-sm text-rose-900">
-                  Phân Quyền Tuyệt Đối: Chỉ Admin Mới Được Cấp Tài Khoản
-                </h4>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                  Chỉ Quản Trị Viên (Admin) mới có quyền tạo và cấp phát tài khoản cho Giáo viên và Học sinh.
-                </p>
+                <h4 className="font-extrabold text-sm text-slate-900">Danh Sách Tài Khoản Hệ Thống</h4>
+                <p className="text-[11px] text-slate-500">Quản lý và cấp tài khoản Giáo viên, Học sinh</p>
               </div>
             </div>
 
             <button
               onClick={handleOpenCreateModal}
-              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs whitespace-nowrap transition-colors"
+              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap transition-colors cursor-pointer"
             >
               <UserPlus size={16} />
-              <span>+ Cấp Tài Khoản Mới</span>
+              <span>Cấp Tài Khoản Mới</span>
             </button>
           </div>
 
@@ -940,53 +927,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       )}
 
-      {/* TAB 2: AI TOKEN & CACHE */}
-      {activeTab === 'tokens' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs">
-              <span className="text-xs font-bold text-slate-500 block">Tổng Token Đã Dùng</span>
-              <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
-                124,580 <span className="text-xs font-medium text-slate-400">tk</span>
-              </span>
-              <span className="text-[11px] text-blue-600 font-semibold mt-1 block">
-                Xử lý AI hệ thống
-              </span>
-            </div>
-
-            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs">
-              <span className="text-xs font-bold text-slate-500 block">Tỷ Lệ Dùng Lại Bộ Nhớ Đệm</span>
-              <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block">
-                68.4%
-              </span>
-              <span className="text-[11px] text-emerald-700 font-semibold mt-1 block">
-                Tiết kiệm 85,200 token gọi lại
-              </span>
-            </div>
-
-            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs">
-              <span className="text-xs font-bold text-slate-500 block">Chi Phí Ước Tính</span>
-              <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
-                $1.24
-              </span>
-              <span className="text-[11px] text-slate-500 font-semibold mt-1 block">
-                Ngân sách trường: $500/tháng
-              </span>
-            </div>
-
-            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs">
-              <span className="text-xs font-bold text-slate-500 block">Người Dùng Hoạt Động</span>
-              <span className="text-2xl font-black text-blue-600 font-mono mt-1 block">
-                {usersList.length}
-              </span>
-              <span className="text-[11px] text-blue-700 font-semibold mt-1 block">
-                Tài khoản chính quy
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* TAB 3: CHEAT LOGS */}
       {activeTab === 'cheat_logs' && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs space-y-4 p-6">
@@ -1406,11 +1346,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   ). Dữ liệu cá nhân và quyền truy cập của tài khoản này sẽ bị thu hồi hoàn toàn.
                 </p>
               </div>
-            </div>
-
-            <div className="p-3 bg-rose-50/70 border border-rose-200/80 rounded-2xl text-[11px] text-rose-800 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-rose-600 shrink-0" />
-              <span>Chỉ Quản trị viên cấp cao mới có quyền thực hiện thao tác xóa tài khoản này.</span>
             </div>
 
             <div className="flex gap-2 pt-2">

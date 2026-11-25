@@ -356,7 +356,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       : 'hover:text-slate-900'
                   }`}
                 >
-                  Trung Tâm Quản Trị & Token AI
+                  Trung Tâm Quản Trị Hệ Thống
                 </button>
                 <button
                   onClick={() => onSelectTab('profile')}
@@ -1052,7 +1052,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
                         <div>
                           <div className="text-xs font-extrabold">Trung Tâm Quản Trị Hệ Thống</div>
-                          <div className="text-[10px] text-slate-400">Phê duyệt người dùng, quản trị & token AI</div>
+                          <div className="text-[10px] text-slate-400">Phê duyệt và quản lý người dùng hệ thống</div>
                         </div>
                       </div>
                       <ChevronRight size={16} className="opacity-60" />

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { copyTextSafe } from '../../utils/clipboard';
 import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention } from '../../types/math';
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
@@ -2039,7 +2040,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   // Sao chép mã lớp học
   const handleCopyClassCode = () => {
     if (!currentClass) return;
-    navigator.clipboard.writeText(currentClass.code);
+    copyTextSafe(currentClass.code);
     setHasCopiedCode(true);
     setTimeout(() => setHasCopiedCode(false), 2000);
   };
@@ -3997,17 +3998,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               <button onClick={() => setShowAddStudentModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
-            </div>
-
-            {/* Phân quyền an ninh: Chỉ admin mới có quyền tạo tài khoản */}
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                <ShieldAlert size={16} className="text-amber-600" />
-                <span>Quy định phân quyền RBAC:</span>
-              </div>
-              <p className="text-[11px] leading-relaxed">
-                Chỉ <strong>Quản Trị Viên (Admin)</strong> mới có quyền cấp mới tài khoản cho Giáo viên và Học sinh. Giáo viên chỉ thêm học sinh đã có tài khoản vào lớp học.
-              </p>
             </div>
 
             {studentLookupError && (

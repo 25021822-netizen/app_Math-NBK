@@ -888,7 +888,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
               }`}
             >
               <Sparkles size={15} />
-              <span>Three.js WebGL 3D Studio (PBR Đa Diện & Mặt Cong)</span>
+              <span>Không Gian 3D Trực Quan (Đa Diện &amp; Mặt Cong)</span>
             </button>
             <button
               type="button"

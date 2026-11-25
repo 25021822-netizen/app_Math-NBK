@@ -383,7 +383,7 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                     <button
                       onClick={() => {
                         try {
-                          if (document.documentElement.requestFullscreen) {
+                          if (examObj?.enableScreenMonitoring !== false && document.documentElement.requestFullscreen) {
                             document.documentElement.requestFullscreen().catch(() => {});
                           }
                         } catch (e) {}
@@ -538,7 +538,9 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                       <span className="font-semibold text-slate-500">Thang điểm: {q.points}đ</span>
                     </div>
 
-                    <p className="font-semibold text-slate-900">{q.prompt}</p>
+                    <div className="font-semibold text-slate-900 leading-relaxed">
+                      <MathView math={q.prompt} />
+                    </div>
 
                     {/* Ảnh đính kèm nếu có */}
                     {(q.pdfAttachmentUrl || q.imageAttachment) && (
@@ -588,7 +590,9 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({
                     {canRevealActiveAnswers && q.explanation && (
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-[11px] space-y-1">
                         <span className="font-bold text-slate-900 block">Lời giải chi tiết:</span>
-                        <p>{q.explanation}</p>
+                        <div className="leading-relaxed">
+                          <MathView math={q.explanation} />
+                        </div>
                       </div>
                     )}
                   </div>

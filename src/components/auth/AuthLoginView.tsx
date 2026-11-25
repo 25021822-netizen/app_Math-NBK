@@ -230,7 +230,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-slate-100 flex flex-col justify-between selection:bg-blue-600 selection:text-white relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-slate-900 bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-slate-100 flex flex-col justify-between selection:bg-blue-600 selection:text-white relative overflow-hidden font-sans">
       {/* Decorative ambient background glows */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
@@ -260,9 +260,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
           <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
-              Đăng nhập để luyện thi, giải toán và học cùng{' '}
+              Học tập, luyện thi &amp; thực hành{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-300">
-                Trợ Lý AI Liki 24/7
+                Toán · Lý · Hóa THPT
               </span>
             </h1>
 
@@ -272,24 +272,24 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                 <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-cyan-400 flex items-center justify-center">
                   <FileCheck size={16} />
                 </div>
-                <h4 className="font-extrabold text-xs text-white">Đề Thi BGD 2025</h4>
-                <p className="text-[11px] text-slate-400">Chấm điểm 3 phần tự động, bảng xếp hạng lớp.</p>
+                <h4 className="font-extrabold text-xs text-white">Đề Thi Chuẩn BGD</h4>
+                <p className="text-[11px] text-slate-400">Chấm điểm 3 phần tự động, thống kê điểm và câu hỏi.</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs text-left space-y-1">
                 <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center">
                   <Compass size={16} />
                 </div>
-                <h4 className="font-extrabold text-xs text-white">Three.js 3D & Oxyz</h4>
-                <p className="text-[11px] text-slate-400">Mô phỏng 3D PBR chóp, nón, trụ và đồ thị z = f(x,y).</p>
+                <h4 className="font-extrabold text-xs text-white">Hình Học 3D &amp; Oxyz</h4>
+                <p className="text-[11px] text-slate-400">Dựng hình không gian 2D/3D, đồ thị hàm số trực quan.</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs text-left space-y-1">
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
                   <Sparkles size={16} />
                 </div>
-                <h4 className="font-extrabold text-xs text-white">Trợ Lý AI Liki</h4>
-                <p className="text-[11px] text-slate-400">Gợi mở tư duy từng bước & tra cứu Google Search.</p>
+                <h4 className="font-extrabold text-xs text-white">Thí Nghiệm Lý · Hóa 3D</h4>
+                <p className="text-[11px] text-slate-400">Mô phỏng Vật Lý, Hóa Học &amp; phản ứng phân tử 3D.</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs text-left space-y-1">
@@ -829,15 +829,9 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1">
-                  <div className="font-bold flex items-center gap-1.5 text-amber-300">
-                    <AlertCircle size={15} />
-                    <span>Lưu ý bảo mật:</span>
-                  </div>
-                  <p className="text-[11px] text-slate-300">
-                    Quản Trị Viên sẽ đối chiếu thông tin và phê duyệt tài khoản. Bạn sẽ có thể đăng nhập ngay sau khi được duyệt.
-                  </p>
-                </div>
+                <p className="text-[11px] text-slate-300">
+                  Quản Trị Viên sẽ đối chiếu thông tin và phê duyệt tài khoản. Bạn sẽ có thể đăng nhập ngay sau khi được duyệt.
+                </p>
 
                 <button
                   type="button"

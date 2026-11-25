@@ -294,7 +294,7 @@ export const ChemicalEquationStudio: React.FC = () => {
                   </span>
                   {balanceResult.hasMultipleSolutions && (
                     <span className="text-[11px] font-semibold text-amber-700">
-                      Lưu ý: Hệ có nhiều tỉ lệ kết hợp độc lập — đang hiển thị bộ hệ số nguyên nhỏ nhất.
+                      Hiển thị bộ hệ số nguyên nhỏ nhất.
                     </span>
                   )}
                 </div>
@@ -735,7 +735,7 @@ export const ChemicalEquationStudio: React.FC = () => {
         <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs text-slate-600">
           <div className="flex items-center gap-1.5 font-extrabold text-slate-900">
             <FlaskConical size={15} className="text-emerald-600" />
-            <span>Mẹo Viết Phương Trình Nhanh</span>
+            <span>Quy Ước Nhập Phương Trình</span>
           </div>
           <ul className="space-y-1 list-disc list-inside leading-relaxed">
             <li>Có thể viết thường hoặc viết liền không chỉ số (ví dụ: <code className="font-mono text-slate-800">fe + hno3 -&gt; fe(no3)3 + no + h2o</code>).</li>

@@ -1,5 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { UserProfile, Classroom, StudentExamSubmission, resolveTeacherSubject } from '../../types/math';
+import React, { useState, useEffect, useMemo } from 'react';
+import { UserProfile, Classroom, StudentExamSubmission, Exam, resolveTeacherSubject } from '../../types/math';
+import {
+  classifyScoreByScale,
+  computeGradebookAnalytics,
+  formatPointsNumber,
+  getSubmissionScalePoints,
+} from '../../lib/scoringEngine';
 import {
   User,
   Mail,
@@ -33,6 +39,7 @@ interface UserProfileViewProps {
   onUpdateProfile: (updated: UserProfile) => void;
   classrooms: Classroom[];
   submissions: StudentExamSubmission[];
+  examsList?: Exam[];
   onOpenFriendsModal?: () => void;
   onNavigateToClassroom?: () => void;
   onLogout?: () => void;
@@ -43,6 +50,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   onUpdateProfile,
   classrooms,
   submissions,
+  examsList = [],
   onOpenFriendsModal,
   onNavigateToClassroom,
   onLogout,
@@ -70,7 +78,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   // Đổi mật khẩu
-  const [currentPasswordDisplay, setCurrentPasswordDisplay] = useState(userProfile.password || 'AnNguyen@2025');
+  const [currentPasswordDisplay, setCurrentPasswordDisplay] = useState(userProfile.password || '');
 
   useEffect(() => {
     setName(userProfile.name);
@@ -88,7 +96,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     setAvatarUrl(
       userProfile.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userProfile.name)}`
     );
-    setCurrentPasswordDisplay(userProfile.password || 'AnNguyen@2025');
+    setCurrentPasswordDisplay(userProfile.password || '');
   }, [userProfile]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -97,12 +105,34 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
-  // Thống kê cá nhân
-  const mySubmissions = submissions.filter((s) => s.studentId === userProfile.id);
-  const avgScore =
-    mySubmissions.length > 0
-      ? (mySubmissions.reduce((acc, cur) => acc + cur.score, 0) / mySubmissions.length).toFixed(2)
-      : '0.00';
+  // Thống kê cá nhân (tính theo thang điểm thực của từng đề)
+  const mySubmissions = useMemo(
+    () => submissions.filter((s) => s.studentId === userProfile.id),
+    [submissions, userProfile.id]
+  );
+
+  const profileScoreStats = useMemo(() => {
+    if (mySubmissions.length === 0) {
+      return {
+        avgDisplay: '0.00',
+        scaleText: 'Chưa có bài nộp',
+        goodRatePercent: 0,
+      };
+    }
+    const analytics = computeGradebookAnalytics(mySubmissions, examsList);
+    const goodCount = mySubmissions.filter((s) => {
+      const scale = getSubmissionScalePoints(s, examsList);
+      const rank = classifyScoreByScale(s.score, scale);
+      return rank.key === 'excellent' || rank.key === 'good';
+    }).length;
+    return {
+      avgDisplay: analytics.average.toFixed(2),
+      scaleText: analytics.isUniformScale
+        ? `Điểm TB: ${analytics.average.toFixed(2)} / ${formatPointsNumber(analytics.scalePoints)}đ`
+        : `Điểm TB quy đổi: ${analytics.average.toFixed(2)} / 10 (${analytics.averagePercent}%)`,
+      goodRatePercent: Math.round((goodCount / mySubmissions.length) * 100),
+    };
+  }, [mySubmissions, examsList]);
 
   const myClassrooms = classrooms.filter((c) =>
     isTeacher ? c.teacherId === userProfile.id : c.studentIds.includes(userProfile.id)
@@ -174,7 +204,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto px-4 py-8 space-y-8 animate-in fade-in duration-200">
       {/* Top Profile Card Header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white p-6 sm:p-8 shadow-sm">
+      <div className="relative overflow-hidden rounded-3xl bg-blue-800 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white p-6 sm:p-8 shadow-sm">
         <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-6">
           {/* Avatar with role ring */}
           <div className="relative">
@@ -277,14 +307,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
                 {mySubmissions.length}
               </span>
-              <span className="text-[10px] text-blue-600 font-semibold">Điểm TB: {avgScore} / 10</span>
+              <span className="text-[10px] text-blue-600 font-semibold">{profileScoreStats.scaleText}</span>
             </div>
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
               <span className="text-[11px] font-bold text-slate-400 block uppercase">Tỉ Lệ Đạt Điểm Khá/Giỏi</span>
               <span className="text-2xl font-black text-indigo-600 font-mono mt-1 block">
-                {mySubmissions.length > 0
-                  ? `${Math.round((mySubmissions.filter((s) => s.score >= 6.5).length / mySubmissions.length) * 100)}%`
-                  : '100%'}
+                {mySubmissions.length > 0 ? `${profileScoreStats.goodRatePercent}%` : '0%'}
               </span>
               <span className="text-[10px] text-indigo-500 font-semibold">Mục tiêu thi THPT</span>
             </div>
@@ -417,7 +445,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                 <div className="relative">
                   <input
                     type="text"
-                    value={`${resolveTeacherSubject('teacher', userProfile.subject) || subject} (Cố định theo môn đăng ký · Chỉ xem phân hệ môn này)`}
+                    value={resolveTeacherSubject('teacher', userProfile.subject) || subject}
                     readOnly
                     disabled
                     className="w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-300 bg-slate-100/90 text-slate-800 font-bold cursor-not-allowed select-none shadow-inner"
@@ -430,7 +458,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                 <div className="relative">
                   <input
                     type="text"
-                    value={`Khối Lớp ${userProfile.grade} (Chương trình chuẩn GDPT 2018)`}
+                    value={`Khối Lớp ${userProfile.grade}`}
                     readOnly
                     disabled
                     className="w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-300 bg-slate-100/90 text-slate-800 font-bold cursor-not-allowed select-none shadow-inner"
@@ -522,10 +550,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-extrabold text-slate-900">Bảo Mật & Đổi Mật Khẩu</h2>
-              <p className="text-xs text-purple-700 font-semibold flex items-center gap-1 mt-0.5">
-                <ShieldCheck size={14} />
-                <span>Mật khẩu đổi tại đây được cập nhật đồng bộ trực tiếp lên tài khoản Quản Trị Viên (Admin)</span>
-              </p>
             </div>
           </div>
         </div>
@@ -625,17 +649,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             </div>
           </div>
 
-          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
-            <span className="text-[11px] text-slate-500">
-              Mật khẩu mới sẽ được bảo mật và tự động đồng bộ sang cơ sở dữ liệu Quản Trị Viên (Admin).
-            </span>
+          <div className="pt-2 flex justify-end border-t border-slate-100">
             <button
               type="submit"
               disabled={newPassword.length < 8 || newPassword !== confirmPassword}
               className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-xs flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer"
             >
               <Key size={15} />
-              <span>Cập Nhật Mật Khẩu Lên Hệ Thống</span>
+              <span>Cập Nhật Mật Khẩu</span>
             </button>
           </div>
         </form>

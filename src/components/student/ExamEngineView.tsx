@@ -292,7 +292,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
 
     const saveTimer = setInterval(() => {
       if (Object.keys(answersRef.current).length > 0) {
-        localStorage.setItem(`math_draft_${studentId}_${exam.id}`, JSON.stringify(answersRef.current));
+        try {
+          localStorage.setItem(`math_draft_${studentId}_${exam.id}`, JSON.stringify(answersRef.current));
+        } catch {}
       }
     }, 10000);
 
@@ -873,16 +875,28 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
             {!isMaxAttemptsReached && (
               <button
                 onClick={() => {
+                  const nextDurationSec = (exam.durationMinutes || 90) * 60;
+                  isSubmittedRef.current = false;
+                  isDisqualifiedRef.current = false;
+                  infractionCountRef.current = 0;
+                  lastInfractionAtRef.current = 0;
+                  timeLeftRef.current = nextDurationSec;
+                  answersRef.current = {};
                   setIsSubmitted(false);
                   setIsDisqualified(false);
                   setInfractionCount(0);
-                  setTimeLeft(exam.durationMinutes * 60);
+                  setTimeLeft(nextDurationSec);
                   setAnswers({});
+                  setScoreReport(null);
                   setFlaggedQuestionIds(new Set());
                   setPaletteFilter('all');
                   try {
+                    localStorage.removeItem(`math_draft_${studentId}_${exam.id}`);
                     localStorage.removeItem(`math_flags_${studentId}_${exam.id}`);
                   } catch {}
+                  if (isScreenMonitoringEnabled) {
+                    enterFullscreen();
+                  }
                 }}
                 className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
               >
@@ -1700,7 +1714,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
             </div>
             <div className="text-center space-y-1">
               <h4 className="text-lg font-black text-slate-900">CẢNH BÁO VI PHẠM QUY CHẾ</h4>
-              <p className="text-xs font-bold text-red-600">Số lần vi phạm: {infractionCount}/3</p>
+              <p className="text-xs font-bold text-red-600">
+                Số lần vi phạm: {infractionCount}/{maxAllowedInfractions}
+              </p>
             </div>
             <p className="text-sm text-slate-600 text-center leading-relaxed">{warningMessage}</p>
             <button
