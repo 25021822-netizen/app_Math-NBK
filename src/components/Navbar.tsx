@@ -38,7 +38,9 @@ import {
   Layers,
   Atom,
   FlaskConical,
+  HelpCircle,
 } from 'lucide-react';
+import { UserGuideModal } from './common/UserGuideModal';
 
 interface NavbarProps {
   currentTab: string;
@@ -84,6 +86,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const teacherSubject = resolveTeacherSubject(userRole, userSubject);
   const [showNotifDropdown, setShowNotifDropdown] = useState<boolean>(false);
   const [showMobileMenu, setShowMobileMenu] = useState<boolean>(false);
+  const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
   const [notificationsEnabled, setNotificationsEnabledState] = useState<boolean>(() => isNotificationsEnabled());
   const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => isNotificationSoundEnabled());
 
@@ -375,6 +378,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Zone 3: Controls, Icons & Mobile Menu Button */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* User Guide Button */}
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(true)}
+              title="Giới thiệu & Hướng dẫn sử dụng web"
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <HelpCircle size={16} className="text-blue-600" />
+              <span className="hidden lg:inline">Hướng Dẫn</span>
+            </button>
 
             {/* Friends Network Button */}
             {onOpenFriendsModal && (
@@ -1081,9 +1094,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 )}
               </div>
 
-              {/* Logout Button in Mobile Menu */}
-              {onLogout && (
-                <div className="pt-2 border-t border-slate-100">
+              {/* Guide & Logout Buttons in Mobile Menu */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setShowGuideModal(true);
+                  }}
+                  className="w-full py-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <HelpCircle size={16} />
+                  <span>Giới Thiệu &amp; Hướng Dẫn Sử Dụng</span>
+                </button>
+
+                {onLogout && (
                   <button
                     onClick={() => {
                       setShowMobileMenu(false);
@@ -1094,12 +1119,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <LogOut size={16} />
                     <span>Đăng Xuất Tài Khoản</span>
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         )}
       </header>
+
+      <UserGuideModal
+        isOpen={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+        defaultRole={userRole}
+      />
     </>
   );
 };

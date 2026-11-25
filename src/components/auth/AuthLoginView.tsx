@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, AutoApprovalSettings, TeachingSubject, TEACHING_SUBJECTS } from '../../types/math';
 import { dbRegisterUser } from '../../services/dbSyncService';
+import { UserGuideModal } from '../common/UserGuideModal';
 import {
   BookOpen,
   Lock,
@@ -66,6 +67,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   const [showForgotModal, setShowForgotModal] = useState<boolean>(false);
   const [forgotEmail, setForgotEmail] = useState<string>('');
   const [forgotSubmitted, setForgotSubmitted] = useState<boolean>(false);
+  const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
 
   // Handle Login
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -251,6 +253,14 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
           </div>
         </div>
 
+        <button
+          type="button"
+          onClick={() => setShowGuideModal(true)}
+          className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
+        >
+          <HelpCircle size={16} className="text-cyan-300" />
+          <span>Hướng Dẫn Sử Dụng</span>
+        </button>
       </header>
 
       {/* Main Center Content */}
@@ -861,6 +871,11 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
         <p>© 2026 Math&NBK Education Platform. Chuẩn chương trình giáo dục phổ thông mới.</p>
         <p className="text-slate-400">Hỗ trợ: cskh@thpt-nbk.edu.vn · Hotline: 024 3858 1234</p>
       </footer>
+
+      <UserGuideModal
+        isOpen={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+      />
     </div>
   );
 };
