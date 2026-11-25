@@ -64,6 +64,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
   const [regError, setRegError] = useState<string | null>(null);
   const [regSuccess, setRegSuccess] = useState<boolean>(false);
+  const [isRegistering, setIsRegistering] = useState<boolean>(false);
   const [pendingModalUser, setPendingModalUser] = useState<UserProfile | null>(null);
   const [regPendingNotice, setRegPendingNotice] = useState<string | null>(null);
 
@@ -89,11 +90,11 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
     setIsLoading(true);
 
     setTimeout(() => {
-      // Tìm người dùng theo email hoặc ID
+      // Tìm người dùng theo email hoặc ID (an toàn với khoảng trắng / giá trị thiếu)
       const user = allUsers.find(
         (u) =>
-          u.email.toLowerCase() === iden ||
-          u.id.toLowerCase() === iden
+          (u.email || '').trim().toLowerCase() === iden ||
+          (u.id || '').trim().toLowerCase() === iden
       );
 
       if (!user) {
@@ -127,19 +128,22 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   };
 
   // Handle Register (Gửi yêu cầu tới Admin, TUYỆT ĐỐI KHÔNG CÓ QUYỀN TẠO ADMIN)
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError(null);
 
-    if (!regCustomId.trim()) {
+    const trimmedRegId = regCustomId.trim().toLowerCase();
+    const trimmedRegEmail = regEmail.trim().toLowerCase();
+
+    if (!trimmedRegId) {
       setRegError('Vui lòng nhập Mã ID tài khoản!');
       return;
     }
-    if (/\s/.test(regCustomId.trim())) {
+    if (/\s/.test(trimmedRegId)) {
       setRegError('Mã ID tài khoản không được chứa khoảng trắng!');
       return;
     }
-    if (allUsers.some((u) => u.id.toLowerCase() === regCustomId.trim().toLowerCase())) {
+    if (allUsers.some((u) => (u.id || '').trim().toLowerCase() === trimmedRegId)) {
       setRegError('Mã ID này đã tồn tại trên hệ thống! Vui lòng chọn ID khác.');
       return;
     }
@@ -147,11 +151,11 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       setRegError('Vui lòng nhập họ và tên của bạn!');
       return;
     }
-    if (!regEmail.trim() || !regEmail.includes('@')) {
+    if (!trimmedRegEmail || !trimmedRegEmail.includes('@')) {
       setRegError('Vui lòng nhập địa chỉ email hợp lệ!');
       return;
     }
-    if (allUsers.some((u) => u.email.toLowerCase() === regEmail.trim().toLowerCase())) {
+    if (allUsers.some((u) => (u.email || '').trim().toLowerCase() === trimmedRegEmail)) {
       setRegError('Email này đã được sử dụng. Vui lòng đăng nhập hoặc dùng email khác!');
       return;
     }
@@ -164,7 +168,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       return;
     }
 
-    const finalId = regCustomId.trim().toLowerCase();
+    const finalId = trimmedRegId;
 
     // Kiểm tra cấu hình Duyệt Tự Động của Admin
     const isAutoApproved = Boolean(
@@ -178,7 +182,7 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
     const newApplicant: UserProfile = {
       id: finalId,
       name: regName.trim(),
-      email: regEmail.trim().toLowerCase(),
+      email: trimmedRegEmail,
       role: regRole, // 'student' or 'teacher' (TUYỆT ĐỐI KHÔNG CHO PHÉP TẠO ADMIN)
       tier: 'free',
       xp: 100,
@@ -197,42 +201,50 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
       ...(isAutoApproved ? { approvedAt: new Date().toISOString() } : {}),
     };
 
-    // 1. Cập nhật vào state React ứng dụng
-    onRegisterUser(newApplicant);
-
-    // 2. Đồng bộ trực tiếp lên Server Database để máy khác xem được ngay
-    dbRegisterUser(newApplicant).then((res) => {
+    setIsRegistering(true);
+    try {
+      // 1. Đồng bộ trực tiếp lên Server Database trước để kiểm tra trùng ID/Email trên server
+      const res = await dbRegisterUser(newApplicant);
       if (!res.success && res.error) {
         setRegError(res.error);
+        return;
       }
-    }).catch((err) => console.error('Lỗi sync đăng ký:', err));
 
-    // Kích hoạt thông báo đẩy tới Admin
-    try {
-      const event = new CustomEvent('math_nbk_push_notification', {
-        detail: {
-          id: `notif_${Date.now()}`,
-          title: isAutoApproved ? 'Tài Khoản Mới Đã Tự Động Kích Hoạt' : 'Yêu Cầu Cấp Tài Khoản Mới',
-          message: isAutoApproved
-            ? `Tài khoản ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ${newApplicant.email}) đã được hệ thống tự động phê duyệt và kích hoạt thành công.`
-            : `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ${newApplicant.email}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
-          type: 'system',
-          timestamp: new Date().toISOString(),
-          isRead: false,
-          targetTab: 'admin_dashboard',
-        },
-      });
-      window.dispatchEvent(event);
+      // 2. Cập nhật vào state React ứng dụng sau khi hợp lệ
+      onRegisterUser(newApplicant);
+
+      // 3. Kích hoạt thông báo đẩy tới Admin
+      try {
+        const event = new CustomEvent('math_nbk_push_notification', {
+          detail: {
+            id: `notif_${Date.now()}`,
+            title: isAutoApproved ? 'Tài Khoản Mới Đã Tự Động Kích Hoạt' : 'Yêu Cầu Cấp Tài Khoản Mới',
+            message: isAutoApproved
+              ? `Tài khoản ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ${newApplicant.email}) đã được hệ thống tự động phê duyệt và kích hoạt thành công.`
+              : `Người dùng ${newApplicant.name} (${regRole === 'teacher' ? 'Giáo viên' : 'Học sinh'} - ${newApplicant.email}) vừa gửi yêu cầu đăng ký. Vui lòng vào Trung tâm quản trị để duyệt.`,
+            type: 'system',
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            targetTab: 'admin_dashboard',
+          },
+        });
+        window.dispatchEvent(event);
+      } catch {
+        // ignore
+      }
+
+      setPendingModalUser(newApplicant);
+      setRegCustomId('');
+      setRegName('');
+      setRegEmail('');
+      setRegPassword('');
+      setRegConfirmPassword('');
     } catch (err) {
-      // ignore
+      console.error('Lỗi sync đăng ký:', err);
+      setRegError('Không thể gửi yêu cầu đăng ký lúc này. Vui lòng kiểm tra kết nối mạng!');
+    } finally {
+      setIsRegistering(false);
     }
-
-    setPendingModalUser(newApplicant);
-    setRegCustomId('');
-    setRegName('');
-    setRegEmail('');
-    setRegPassword('');
-    setRegConfirmPassword('');
   };
 
   return (
@@ -678,10 +690,11 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full h-11 mt-2 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-extrabold text-xs shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    disabled={isRegistering}
+                    className="w-full h-11 mt-2 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-50 text-white font-extrabold text-xs shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <ShieldCheck size={16} />
-                    <span>Gửi Yêu Cầu Đăng Ký Đến Admin</span>
+                    <span>{isRegistering ? 'Đang gửi yêu cầu...' : 'Gửi Yêu Cầu Đăng Ký Đến Admin'}</span>
                   </button>
                 </form>
               )}

@@ -1196,53 +1196,129 @@ export const GradebookPdfReportModal: React.FC<GradebookPdfReportModalProps> = (
     }
   };
 
-  // Mở cửa sổ in hệ thống (Print to PDF)
+  // Mở cửa sổ in hệ thống (Print to PDF) với cơ chế dự phòng iframe ẩn khi popup bị chặn (trong iFrame)
   const handlePrintSystem = () => {
     const reportElement = reportPrintRef.current;
     if (!reportElement) return;
 
+    const baseHeadCss = `
+      <title>Báo Cáo Điểm Số - Toán Học LIKI</title>
+      <meta charset="utf-8" />
+      <script src="https://cdn.tailwindcss.com"></script>
+      <style>
+        @page {
+          size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
+          margin: 12mm;
+        }
+        body {
+          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+          color: #0f172a;
+          background: #ffffff;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+      </style>
+    `;
+
     const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      setExportError('Trình duyệt đã chặn cửa sổ in popup. Vui lòng nhấn "Tải Về PDF" hoặc cho phép popup!');
-      setTimeout(() => setExportError(null), 4500);
+    if (printWindow) {
+      const popupHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>${baseHeadCss}</head>
+          <body class="p-4">
+            ${reportElement.innerHTML}
+            <script>
+              window.onload = function() {
+                window.print();
+                setTimeout(function() { window.close(); }, 500);
+              };
+            </script>
+          </body>
+        </html>
+      `;
+      printWindow.document.write(popupHtml);
+      printWindow.document.close();
       return;
     }
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Báo Cáo Điểm Số - Toán Học LIKI</title>
-          <meta charset="utf-8" />
-          <script src="https://cdn.tailwindcss.com"></script>
-          <style>
-            @page {
-              size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
-              margin: 12mm;
-            }
-            body {
-              font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-              color: #0f172a;
-              background: #ffffff;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-          </style>
-        </head>
-        <body class="p-4">
-          ${reportElement.innerHTML}
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `;
+    // Fallback in ngay qua iframe ẩn nếu trình duyệt/iFrame chặn window.open
+    try {
+      const existingFrame = document.getElementById('liki-hidden-print-frame');
+      if (existingFrame && existingFrame.parentNode) {
+        existingFrame.parentNode.removeChild(existingFrame);
+      }
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+      const iframe = document.createElement('iframe');
+      iframe.id = 'liki-hidden-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+
+      const frameDoc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (!frameDoc) {
+        document.body.removeChild(iframe);
+        setExportError('Không thể khởi tạo khung in. Vui lòng nhấn "Tải Về PDF"!');
+        setTimeout(() => setExportError(null), 4500);
+        return;
+      }
+
+      const clonedStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map((el) => el.outerHTML)
+        .join('\n');
+
+      frameDoc.open();
+      frameDoc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Báo Cáo Điểm Số - Toán Học LIKI</title>
+            <meta charset="utf-8" />
+            ${clonedStyles}
+            <style>
+              @page {
+                size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
+                margin: 12mm;
+              }
+              body {
+                font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+                color: #0f172a;
+                background: #ffffff;
+                padding: 16px;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            </style>
+          </head>
+          <body>${reportElement.innerHTML}</body>
+        </html>
+      `);
+      frameDoc.close();
+
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (err) {
+          console.error('Lỗi in từ iframe ẩn:', err);
+          setExportError('Trình duyệt không hỗ trợ in trực tiếp. Vui lòng nhấn "Tải Về PDF"!');
+          setTimeout(() => setExportError(null), 4500);
+        }
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            iframe.parentNode.removeChild(iframe);
+          }
+        }, 1500);
+      }, 350);
+    } catch (err) {
+      console.error('Lỗi fallback in hệ thống:', err);
+      setExportError('Không thể mở hộp thoại in. Vui lòng nhấn "Tải Về PDF"!');
+      setTimeout(() => setExportError(null), 4500);
+    }
   };
 
   return (

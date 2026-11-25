@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { UserProfile, CheatLog, UserRole, AutoApprovalSettings, TeachingSubject, TEACHING_SUBJECTS, AdminBroadcastMessage } from '../../types/math';
+import { UserProfile, CheatLog, UserRole, AutoApprovalSettings, TeachingSubject, TEACHING_SUBJECTS } from '../../types/math';
 import {
   Users,
   ShieldAlert,
@@ -30,9 +30,6 @@ import {
   SlidersHorizontal,
   CheckCheck,
   UserCheck,
-  Megaphone,
-  Send,
-  BellRing,
 } from 'lucide-react';
 
 interface AdminDashboardViewProps {
@@ -46,9 +43,6 @@ interface AdminDashboardViewProps {
   autoApprovalSettings?: AutoApprovalSettings;
   onUpdateAutoApprovalSettings?: (settings: AutoApprovalSettings) => void;
   onApproveAllUsers?: (targetRole?: 'all' | 'student' | 'teacher') => void;
-  adminBroadcasts?: AdminBroadcastMessage[];
-  onSendBroadcast?: (payload: { title: string; content: string; priority: 'normal' | 'important' }) => void | Promise<void>;
-  onDeleteBroadcastGlobally?: (broadcastId: string) => void | Promise<void>;
 }
 
 import { copyTextSafe } from '../../utils/clipboard';
@@ -64,42 +58,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   autoApprovalSettings: propAutoApprovalSettings,
   onUpdateAutoApprovalSettings,
   onApproveAllUsers,
-  adminBroadcasts = [],
-  onSendBroadcast,
-  onDeleteBroadcastGlobally,
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'pending_requests' | 'cheat_logs' | 'broadcasts'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'pending_requests' | 'cheat_logs'>('users');
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
 
-  // Admin Broadcast State
-  const [broadcastTitle, setBroadcastTitle] = useState('');
-  const [broadcastContent, setBroadcastContent] = useState('');
-  const [broadcastPriority, setBroadcastPriority] = useState<'normal' | 'important'>('normal');
-  const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
-  const [broadcastFeedback, setBroadcastFeedback] = useState<string | null>(null);
 
-  const handleSendBroadcastSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanTitle = broadcastTitle.trim();
-    const cleanContent = broadcastContent.trim();
-    if (!cleanTitle || !cleanContent || !onSendBroadcast) return;
-    setIsSendingBroadcast(true);
-    try {
-      await onSendBroadcast({
-        title: cleanTitle,
-        content: cleanContent,
-        priority: broadcastPriority,
-      });
-      setBroadcastTitle('');
-      setBroadcastContent('');
-      setBroadcastPriority('normal');
-      setBroadcastFeedback('Đã gửi thông báo đến tất cả tài khoản và hiển thị tại mục Nhóm Lớp!');
-      setTimeout(() => setBroadcastFeedback(null), 4000);
-    } finally {
-      setIsSendingBroadcast(false);
-    }
-  };
 
   // Auto-Approval Configuration State
   const [autoApproval, setAutoApproval] = useState<AutoApprovalSettings>(
@@ -340,7 +304,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       setCreateUserError('Mã ID không được chứa khoảng trắng!');
       return;
     }
-    if (usersList.some((u) => u.id.toLowerCase() === trimmedId)) {
+    if (usersList.some((u) => (u.id || '').trim().toLowerCase() === trimmedId)) {
       setCreateUserError('Mã ID này đã tồn tại trên hệ thống! Vui lòng nhập ID khác.');
       return;
     }
@@ -396,10 +360,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // Lọc danh sách người dùng hiển thị
   const filteredUsers = usersList.filter((u) => {
     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
+    const q = userSearchTerm.trim().toLowerCase();
     const matchesSearch =
-      u.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-      u.email.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-      u.id.toLowerCase().includes(userSearchTerm.toLowerCase());
+      !q ||
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.id || '').toLowerCase().includes(q);
     return matchesRole && matchesSearch;
   });
 
@@ -451,15 +417,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           >
             <ShieldAlert size={14} />
             <span>Nhật Ký Thi ({allLogs.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('broadcasts')}
-            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
-              activeTab === 'broadcasts' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600'
-            }`}
-          >
-            <Megaphone size={14} className={activeTab === 'broadcasts' ? 'text-blue-600' : ''} />
-            <span>Thông Báo Chung ({adminBroadcasts.length})</span>
           </button>
         </div>
       </div>
@@ -1035,172 +992,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: GỬI THÔNG BÁO TOÀN HỆ THỐNG ĐẾN TẤT CẢ TÀI KHOẢN (HIỂN THỊ TẠI NHÓM LỚP) */}
-      {activeTab === 'broadcasts' && (
-        <div className="space-y-6">
-          {/* Form soạn thông báo */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
-                  <Megaphone size={20} />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-base text-slate-900">
-                    Gửi Thông Báo Tin Nhắn Đến Tất Cả Tài Khoản
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Nội dung thông báo sẽ hiển thị trực tiếp trong phần Nhóm Lớp của Giáo viên và Học sinh. Khi từng tài khoản tự xóa thông báo, thông báo đó sẽ bị xóa hẳn ở tài khoản đó.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {broadcastFeedback && (
-              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                <span>{broadcastFeedback}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSendBroadcastSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2 space-y-1.5">
-                  <label className="font-bold text-slate-700 block">Tiêu đề thông báo *</label>
-                  <input
-                    type="text"
-                    value={broadcastTitle}
-                    onChange={(e) => setBroadcastTitle(e.target.value)}
-                    placeholder="VD: Thông báo lịch bảo trì hệ thống / Lịch thi thử tuần này..."
-                    required
-                    maxLength={140}
-                    className="w-full h-11 px-3.5 rounded-2xl border border-slate-300 text-xs font-semibold text-slate-900 focus:border-blue-600 focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700 block">Mức độ ưu tiên</label>
-                  <div className="grid grid-cols-2 gap-2 h-11">
-                    <button
-                      type="button"
-                      onClick={() => setBroadcastPriority('normal')}
-                      className={`rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
-                        broadcastPriority === 'normal'
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Thông thường
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBroadcastPriority('important')}
-                      className={`rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
-                        broadcastPriority === 'important'
-                          ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Quan trọng
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 block">Nội dung tin nhắn thông báo *</label>
-                <textarea
-                  value={broadcastContent}
-                  onChange={(e) => setBroadcastContent(e.target.value)}
-                  placeholder="Nhập nội dung chi tiết cần thông báo tới toàn bộ Giáo viên và Học sinh..."
-                  rows={4}
-                  required
-                  className="w-full p-3.5 rounded-2xl border border-slate-300 text-xs text-slate-900 focus:border-blue-600 focus:outline-none resize-y"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={isSendingBroadcast || !broadcastTitle.trim() || !broadcastContent.trim()}
-                  className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
-                >
-                  <Send size={15} />
-                  <span>{isSendingBroadcast ? 'Đang gửi thông báo...' : 'Gửi Thông Báo Đến Tất Cả Tài Khoản'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Danh sách thông báo đã gửi */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <BellRing size={18} className="text-blue-600" />
-                <h4 className="font-extrabold text-sm text-slate-900">
-                  Lịch Sử Thông Báo Đã Phát ({adminBroadcasts.length})
-                </h4>
-              </div>
-            </div>
-
-            {adminBroadcasts.length === 0 ? (
-              <div className="p-8 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500">
-                Chưa có thông báo toàn hệ thống nào được gửi. Hãy soạn thông báo ở khung phía trên.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {adminBroadcasts.map((item) => {
-                  const deletedCount = Array.isArray(item.deletedByUserIds) ? item.deletedByUserIds.length : 0;
-                  const isImportant = item.priority === 'important';
-                  return (
-                    <div
-                      key={item.id}
-                      className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-start justify-between gap-4 text-xs ${
-                        isImportant
-                          ? 'bg-rose-50/60 border-rose-200'
-                          : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
-                              isImportant
-                                ? 'bg-rose-600 text-white'
-                                : 'bg-blue-600 text-white'
-                            }`}
-                          >
-                            {isImportant ? 'Quan trọng' : 'Thông báo chung'}
-                          </span>
-                          <span className="font-extrabold text-sm text-slate-900">{item.title}</span>
-                          <span className="text-[11px] text-slate-500 font-mono">
-                            {new Date(item.createdAt).toLocaleString('vi-VN')}
-                          </span>
-                        </div>
-                        <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{item.content}</p>
-                        <div className="text-[11px] text-slate-500 pt-1">
-                          Đã có <strong className="text-slate-800">{deletedCount}</strong> tài khoản xóa thông báo này khỏi hộp thư cá nhân.
-                        </div>
-                      </div>
-
-                      {onDeleteBroadcastGlobally && (
-                        <button
-                          type="button"
-                          onClick={() => onDeleteBroadcastGlobally(item.id)}
-                          className="px-3 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
-                        >
-                          <Trash2 size={14} />
-                          <span>Thu hồi tất cả</span>
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
       )}

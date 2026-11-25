@@ -135,7 +135,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   }, [mySubmissions, examsList]);
 
   const myClassrooms = classrooms.filter((c) =>
-    isTeacher ? c.teacherId === userProfile.id : c.studentIds.includes(userProfile.id)
+    isTeacher ? c.teacherId === userProfile.id : (c.studentIds || []).includes(userProfile.id)
   );
 
   const handleSaveProfile = (e: React.FormEvent) => {
@@ -204,7 +204,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto px-4 py-8 space-y-8 animate-in fade-in duration-200">
       {/* Top Profile Card Header */}
-      <div className="relative overflow-hidden rounded-3xl bg-blue-800 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white p-6 sm:p-8 shadow-sm">
+      <div className="relative overflow-hidden rounded-3xl bg-[#1e40af] bg-gradient-to-r from-[#1d4ed8] via-[#4338ca] to-[#1e3a8a] text-white p-6 sm:p-8 shadow-sm">
         <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-6">
           {/* Avatar with role ring */}
           <div className="relative">

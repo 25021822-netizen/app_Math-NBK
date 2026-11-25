@@ -100,6 +100,9 @@ const ChemistryExperimentLabView = lazy(() =>
 const AdminDashboardView = lazy(() =>
   import('./components/admin/AdminDashboardView').then((m) => ({ default: m.AdminDashboardView }))
 );
+const AdminBroadcastView = lazy(() =>
+  import('./components/admin/AdminBroadcastView').then((m) => ({ default: m.AdminBroadcastView }))
+);
 const AuthLoginView = lazy(() =>
   import('./components/auth/AuthLoginView').then((m) => ({ default: m.AuthLoginView }))
 );
@@ -1044,15 +1047,16 @@ export default function App() {
                 const mentionsUser = m.mentions && m.mentions.some(
                   (mention) => mention.userId === curUser.id || mention.userId === 'all'
                 );
+                const contentText = typeof m.content === 'string' ? m.content : '';
                 const textMentionsUser =
-                  (curUser.name && m.content.toLowerCase().includes(`@${curUser.name.toLowerCase()}`)) ||
-                  m.content.includes('@Cả Lớp') ||
-                  m.content.toLowerCase().includes('@all') ||
-                  m.content.toLowerCase().includes('@everyone');
+                  (curUser.name && contentText.toLowerCase().includes(`@${curUser.name.toLowerCase()}`)) ||
+                  contentText.includes('@Cả Lớp') ||
+                  contentText.toLowerCase().includes('@all') ||
+                  contentText.toLowerCase().includes('@everyone');
 
                 if (mentionsUser || textMentionsUser) {
                   triggerPushNotification(`${m.senderName} đã nhắc đến bạn trong ${className}`, {
-                    message: `"${m.content.slice(0, 120)}${m.content.length > 120 ? '...' : ''}"`,
+                    message: `"${contentText.slice(0, 120)}${contentText.length > 120 ? '...' : ''}"`,
                     type: 'chat_message',
                     targetTab: 'classroom',
                   });
@@ -1143,7 +1147,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     if (userRole === 'admin') {
-      if (currentTab !== 'admin_dashboard' && currentTab !== 'profile') {
+      if (currentTab !== 'admin_dashboard' && currentTab !== 'admin_broadcasts' && currentTab !== 'profile') {
         setCurrentTab('admin_dashboard');
       }
     } else if (userRole === 'teacher') {
@@ -1235,6 +1239,11 @@ export default function App() {
     };
     setAdminBroadcasts((prev) => [newBroadcast, ...prev]);
     await dbSendAdminBroadcast(newBroadcast);
+    triggerPushNotification('Đã phát thông báo toàn hệ thống', {
+      message: `"${newBroadcast.title}" đã được gửi tới tất cả tài khoản và hiển thị tại Nhóm Lớp.`,
+      type: 'system',
+      targetTab: 'admin_broadcasts',
+    });
   };
 
   // Người dùng tự xóa hẳn thông báo khỏi tài khoản của riêng mình
@@ -1922,6 +1931,17 @@ export default function App() {
 
     // 3. Quản trị viên (Super Admin)
     if (userRole === 'admin') {
+      if (currentTab === 'admin_broadcasts') {
+        return (
+          <AdminBroadcastView
+            adminBroadcasts={adminBroadcasts}
+            totalRecipientsCount={allUsers.filter((u) => u.role !== 'admin' && u.status === 'active').length}
+            onSendBroadcast={handleSendAdminBroadcast}
+            onDeleteBroadcastGlobally={handleDeleteAdminBroadcastGlobally}
+          />
+        );
+      }
+
       return (
         <AdminDashboardView
           cheatLogs={cheatLogs}
@@ -1934,9 +1954,6 @@ export default function App() {
           autoApprovalSettings={autoApprovalSettings}
           onUpdateAutoApprovalSettings={handleUpdateAutoApprovalSettings}
           onApproveAllUsers={handleApproveAllUsers}
-          adminBroadcasts={adminBroadcasts}
-          onSendBroadcast={handleSendAdminBroadcast}
-          onDeleteBroadcastGlobally={handleDeleteAdminBroadcastGlobally}
         />
       );
     }
@@ -2199,6 +2216,7 @@ export default function App() {
           onClearNotifications={() => setNotifications([])}
           onRequestPushPermission={requestNotificationPermission}
           unreadClassroomMessagesCount={unreadClassroomMessagesCount}
+          adminBroadcastsCount={adminBroadcasts.length}
         />
       )}
 

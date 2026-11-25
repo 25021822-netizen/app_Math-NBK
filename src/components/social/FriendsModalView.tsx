@@ -88,9 +88,9 @@ export const FriendsModalView: React.FC<FriendsModalViewProps> = ({
   );
 
   // Kiểm tra user được tìm kiếm qua ID
-  const normalizedSearchId = targetUserIdInput.trim();
+  const normalizedSearchId = targetUserIdInput.trim().toLowerCase();
   const foundTargetUser = allUsers.find(
-    (u) => u.id.toLowerCase() === normalizedSearchId.toLowerCase()
+    (u) => (u.id || '').trim().toLowerCase() === normalizedSearchId
   );
 
   const handleCopyOwnId = () => {

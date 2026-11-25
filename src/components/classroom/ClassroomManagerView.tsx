@@ -224,6 +224,13 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   const [isDeletingItem, setIsDeletingItem] = useState<boolean>(false);
   const [deletedMessageIds, setDeletedMessageIds] = useState<Set<string>>(() => new Set());
   const [pdfPreviewError, setPdfPreviewError] = useState<string | null>(null);
+  const [pdfPreviewModal, setPdfPreviewModal] = useState<{
+    fileName: string;
+    url: string;
+    isBlob: boolean;
+    fileData?: string;
+    fileUrl?: string;
+  } | null>(null);
 
   // Tự động chọn lớp đầu tiên thuộc quyền truy cập của người dùng (trong danh sách được phép nhìn thấy)
   useEffect(() => {
@@ -945,18 +952,35 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     }
   };
 
-  // Mở xem trước PDF trực tiếp trong tab mới (Học sinh & Giáo viên có thể đọc ngay)
+  // Mở xem trước PDF trực tiếp (ưu tiên tab mới; nếu bị chặn trong iFrame thì mở trình xem PDF tích hợp)
+  const closePdfPreviewModal = () => {
+    setPdfPreviewModal((prev) => {
+      if (prev?.isBlob && prev.url.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(prev.url);
+        } catch {}
+      }
+      return null;
+    });
+  };
+
   const handlePreviewPdf = async (fileName: string, fileData?: string, fileUrl?: string) => {
     setPdfPreviewError(null);
-    const openOrWarn = (targetUrl: string) => {
+    const openOrEmbed = (targetUrl: string, isBlob: boolean) => {
       const opened = window.open(targetUrl, '_blank', 'noopener,noreferrer');
       if (!opened) {
-        setPdfPreviewError('Trình duyệt đã chặn cửa sổ xem trước PDF. Vui lòng nhấn nút "Tải PDF" để mở tài liệu!');
+        setPdfPreviewModal({
+          fileName: fileName || 'Tai_Lieu.pdf',
+          url: targetUrl,
+          isBlob,
+          fileData,
+          fileUrl,
+        });
       }
     };
     try {
       if (fileUrl) {
-        openOrWarn(fileUrl);
+        openOrEmbed(fileUrl, false);
         return;
       }
 
@@ -970,18 +994,18 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         }
         const blob = new Blob([bytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        openOrWarn(url);
+        openOrEmbed(url, true);
         return;
       }
 
       if (fileData && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
-        openOrWarn(fileData);
+        openOrEmbed(fileData, false);
         return;
       }
 
       const validPdfBlob = generateValidSamplePdf(fileName);
       const url = URL.createObjectURL(validPdfBlob);
-      openOrWarn(url);
+      openOrEmbed(url, true);
     } catch (err) {
       console.error('Lỗi khi mở xem trước PDF:', err);
       setPdfPreviewError('Không thể mở xem trước file PDF này. Vui lòng dùng nút "Tải PDF"!');
@@ -5363,6 +5387,55 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
               >
                 Đóng
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xem Trước PDF Tích Hợp (Dùng khi popup tab mới bị chặn trong iFrame) */}
+      {pdfPreviewModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-5 bg-slate-900/75 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-5xl h-[88vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">
+                  PDF
+                </div>
+                <span className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+                  {pdfPreviewModal.fileName}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleDownloadPdf(
+                      pdfPreviewModal.fileName,
+                      pdfPreviewModal.fileData,
+                      pdfPreviewModal.fileUrl
+                    )
+                  }
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Download size={14} />
+                  <span>Tải PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={closePdfPreviewModal}
+                  className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 transition-colors cursor-pointer"
+                  aria-label="Đóng xem trước PDF"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-slate-100">
+              <iframe
+                src={pdfPreviewModal.url}
+                title={pdfPreviewModal.fileName}
+                className="w-full h-full border-0"
+              />
             </div>
           </div>
         </div>

@@ -39,6 +39,7 @@ import {
   Atom,
   FlaskConical,
   HelpCircle,
+  Megaphone,
 } from 'lucide-react';
 import { UserGuideModal } from './common/UserGuideModal';
 
@@ -61,6 +62,7 @@ interface NavbarProps {
   onClearNotifications?: () => void;
   onRequestPushPermission?: () => void;
   unreadClassroomMessagesCount?: number;
+  adminBroadcastsCount?: number;
   userSubject?: string;
 }
 
@@ -81,6 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onClearNotifications,
   onRequestPushPermission,
   unreadClassroomMessagesCount = 0,
+  adminBroadcastsCount = 0,
   userSubject,
 }) => {
   const teacherSubject = resolveTeacherSubject(userRole, userSubject);
@@ -145,14 +148,13 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-6">
           {/* Zone 1: Brand Wordmark */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
+            <button
+              type="button"
+              onClick={() => {
                 if (userRole === 'admin') handleMobileTabSelect('admin_dashboard');
                 else handleMobileTabSelect('classroom');
               }}
-              className="flex items-center gap-2 sm:gap-2.5 group"
+              className="flex items-center gap-2 sm:gap-2.5 group text-left cursor-pointer"
             >
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform">
                 <BookOpen size={20} className="stroke-[2.5]" />
@@ -165,7 +167,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Toán · Vật Lý · Hóa Học THPT
                 </span>
               </div>
-            </a>
+            </button>
           </div>
 
           {/* Zone 2: Desktop Navigation Links (Single-line, whitespace-nowrap) */}
@@ -353,7 +355,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <>
                 <button
                   onClick={() => onSelectTab('admin_dashboard')}
-                  className={`whitespace-nowrap transition-colors py-1 ${
+                  className={`whitespace-nowrap transition-colors py-1 cursor-pointer ${
                     currentTab === 'admin_dashboard'
                       ? 'text-blue-600 font-bold border-b-2 border-blue-600'
                       : 'hover:text-slate-900'
@@ -362,8 +364,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Trung Tâm Quản Trị Hệ Thống
                 </button>
                 <button
+                  onClick={() => onSelectTab('admin_broadcasts')}
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1.5 cursor-pointer ${
+                    currentTab === 'admin_broadcasts'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <Megaphone size={14} className={currentTab === 'admin_broadcasts' ? 'text-blue-600' : 'text-slate-500'} />
+                  <span>Thông Báo Chung</span>
+                  {adminBroadcastsCount > 0 && (
+                    <span className="font-mono tabular-nums text-[11px] font-bold text-blue-600">
+                      ({adminBroadcastsCount})
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={() => onSelectTab('profile')}
-                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 ${
+                  className={`whitespace-nowrap transition-colors py-1 flex items-center gap-1 cursor-pointer ${
                     currentTab === 'profile'
                       ? 'text-blue-600 font-bold border-b-2 border-blue-600'
                       : 'hover:text-slate-900'
@@ -441,7 +459,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Notification Dropdown Panel */}
               {showNotifDropdown && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl border border-slate-200 shadow-2xl p-4 z-50 animate-in fade-in space-y-3.5">
+                <div className="fixed inset-x-3 top-[4.25rem] sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 bg-white rounded-3xl border border-slate-200 shadow-2xl p-4 z-50 animate-in fade-in space-y-3.5">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <div
@@ -1060,12 +1078,49 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'admin_dashboard' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-600'
+                        }`}>
                           <ShieldAlert size={18} />
                         </div>
                         <div>
                           <div className="text-xs font-extrabold">Trung Tâm Quản Trị Hệ Thống</div>
-                          <div className="text-[10px] text-slate-400">Phê duyệt và quản lý người dùng hệ thống</div>
+                          <div className={`text-[10px] ${currentTab === 'admin_dashboard' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Phê duyệt và quản lý người dùng hệ thống
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('admin_broadcasts')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'admin_broadcasts'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'admin_broadcasts' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'
+                        }`}>
+                          <Megaphone size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold flex items-center gap-2">
+                            <span>Thông Báo Chung</span>
+                            {adminBroadcastsCount > 0 && (
+                              <span className={`font-mono tabular-nums text-[10px] px-1.5 py-0.5 rounded-full ${
+                                currentTab === 'admin_broadcasts' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {adminBroadcastsCount}
+                              </span>
+                            )}
+                          </div>
+                          <div className={`text-[10px] ${currentTab === 'admin_broadcasts' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Gửi thông báo tin nhắn đến tất cả tài khoản &amp; Nhóm Lớp
+                          </div>
                         </div>
                       </div>
                       <ChevronRight size={16} className="opacity-60" />
@@ -1080,12 +1135,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'profile' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-600'
+                        }`}>
                           <User size={18} />
                         </div>
                         <div>
                           <div className="text-xs font-extrabold">Hồ Sơ Quản Trị Viên</div>
-                          <div className="text-[10px] text-slate-400">Thông tin bảo mật Admin & đổi mật khẩu</div>
+                          <div className={`text-[10px] ${currentTab === 'profile' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Thông tin bảo mật Admin & đổi mật khẩu
+                          </div>
                         </div>
                       </div>
                       <ChevronRight size={16} className="opacity-60" />
