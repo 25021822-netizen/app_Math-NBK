@@ -994,6 +994,8 @@ interface ServerDatabase {
   exams: any[];
   deletedExamIds?: string[];
   deletedSubmissionIds?: string[];
+  adminBroadcasts?: any[];
+  deletedBroadcastIds?: string[];
   adminSettings?: {
     autoApproval?: {
       enabled: boolean;
@@ -1048,6 +1050,8 @@ function getCleanInitialDb(): ServerDatabase {
     exams: [],
     deletedExamIds: [],
     deletedSubmissionIds: [],
+    adminBroadcasts: [],
+    deletedBroadcastIds: [],
     adminSettings: {
       autoApproval: {
         enabled: true,
@@ -1074,6 +1078,9 @@ function loadDatabase(): ServerDatabase {
     const parsed = JSON.parse(raw);
     parsed.exams = parsed.exams || [];
     parsed.deletedExamIds = Array.isArray(parsed.deletedExamIds) ? parsed.deletedExamIds : [];
+    parsed.deletedSubmissionIds = Array.isArray(parsed.deletedSubmissionIds) ? parsed.deletedSubmissionIds : [];
+    parsed.adminBroadcasts = Array.isArray(parsed.adminBroadcasts) ? parsed.adminBroadcasts : [];
+    parsed.deletedBroadcastIds = Array.isArray(parsed.deletedBroadcastIds) ? parsed.deletedBroadcastIds : [];
     // Cấu hình duyệt tự động mặc định nếu chưa có
     if (!parsed.adminSettings || !parsed.adminSettings.autoApproval) {
       parsed.adminSettings = {
@@ -1613,6 +1620,73 @@ app.post('/api/db/message/delete', (req, res) => {
     serverDb.version = (serverDb.version || 1) + 1;
     saveDatabase(serverDb);
   }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 11d. Hệ thống thông báo tin nhắn toàn hệ thống từ Admin (Hiển thị tại Nhóm Lớp & xóa hẳn theo từng tài khoản)
+app.get('/api/db/broadcasts', (_req, res) => {
+  res.json({ success: true, data: serverDb.adminBroadcasts || [] });
+});
+
+app.post('/api/db/broadcasts/send', (req, res) => {
+  const { broadcast } = req.body;
+  if (!broadcast || !broadcast.id || !broadcast.title || !broadcast.content) {
+    return res.status(400).json({ success: false, error: 'Thiếu thông tin thông báo!' });
+  }
+  const list = Array.isArray(serverDb.adminBroadcasts) ? serverDb.adminBroadcasts : [];
+  const existingIdx = list.findIndex((b: any) => b.id === broadcast.id);
+  const sanitized = {
+    ...broadcast,
+    deletedByUserIds: Array.isArray(broadcast.deletedByUserIds) ? broadcast.deletedByUserIds : [],
+    createdAt: broadcast.createdAt || new Date().toISOString(),
+  };
+  if (existingIdx >= 0) {
+    list[existingIdx] = { ...list[existingIdx], ...sanitized };
+  } else {
+    list.unshift(sanitized);
+  }
+  list.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  serverDb.adminBroadcasts = list;
+  serverDb.deletedBroadcastIds = (serverDb.deletedBroadcastIds || []).filter((id) => id !== broadcast.id);
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, data: sanitized, version: serverDb.version });
+});
+
+app.post('/api/db/broadcasts/dismiss', (req, res) => {
+  const { broadcastId, userId } = req.body;
+  const normUserId = typeof userId === 'string' ? userId.trim().toLowerCase() : '';
+  if (!broadcastId || !normUserId) {
+    return res.status(400).json({ success: false, error: 'Thiếu broadcastId hoặc userId!' });
+  }
+  const list = Array.isArray(serverDb.adminBroadcasts) ? serverDb.adminBroadcasts : [];
+  let updatedItem: any = null;
+  serverDb.adminBroadcasts = list.map((b: any) => {
+    if (b && b.id === broadcastId) {
+      const prevDeleted = Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [];
+      const hasAlready = prevDeleted.some((id: string) => String(id).trim().toLowerCase() === normUserId);
+      const nextDeleted = hasAlready ? prevDeleted : [...prevDeleted, normUserId];
+      updatedItem = { ...b, deletedByUserIds: nextDeleted };
+      return updatedItem;
+    }
+    return b;
+  });
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, data: updatedItem, version: serverDb.version });
+});
+
+app.post('/api/db/broadcasts/delete', (req, res) => {
+  const { broadcastId } = req.body;
+  if (!broadcastId) {
+    return res.status(400).json({ success: false, error: 'Thiếu broadcastId!' });
+  }
+  serverDb.adminBroadcasts = (serverDb.adminBroadcasts || []).filter((b: any) => b.id !== broadcastId);
+  const delSet = new Set(serverDb.deletedBroadcastIds || []);
+  delSet.add(broadcastId);
+  serverDb.deletedBroadcastIds = Array.from(delSet).slice(-500);
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
   res.json({ success: true, version: serverDb.version });
 });
 

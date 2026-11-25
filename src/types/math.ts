@@ -365,3 +365,14 @@ export interface FriendRelation {
   userId2: string;
   friendedAt: string;
 }
+
+export interface AdminBroadcastMessage {
+  id: string;
+  title: string;
+  content: string;
+  senderId: string;
+  senderName: string;
+  priority?: 'normal' | 'important';
+  createdAt: string;
+  deletedByUserIds: string[];
+}

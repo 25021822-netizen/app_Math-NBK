@@ -30,6 +30,8 @@ interface AuthLoginViewProps {
   onLoginSuccess: (user: UserProfile, rememberMe?: boolean) => void;
   onRegisterUser: (newUser: UserProfile) => void;
   autoApprovalSettings?: AutoApprovalSettings;
+  sessionExpiredNotice?: string | null;
+  onDismissSessionNotice?: () => void;
 }
 
 export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
@@ -37,6 +39,8 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
   onLoginSuccess,
   onRegisterUser,
   autoApprovalSettings,
+  sessionExpiredNotice,
+  onDismissSessionNotice,
 }) => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
@@ -353,6 +357,25 @@ export const AuthLoginView: React.FC<AuthLoginViewProps> = ({
                   <div>
                     <h3 className="text-xl font-black text-white">Chào mừng trở lại!</h3>
                   </div>
+
+                  {sessionExpiredNotice && (
+                    <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-start justify-between gap-2 animate-in fade-in">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle size={16} className="shrink-0 text-amber-400 mt-0.5" />
+                        <span>{sessionExpiredNotice}</span>
+                      </div>
+                      {onDismissSessionNotice && (
+                        <button
+                          type="button"
+                          onClick={onDismissSessionNotice}
+                          className="text-amber-300 hover:text-white shrink-0"
+                          aria-label="Đóng thông báo"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {regPendingNotice && (
                     <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-start gap-2 animate-in fade-in">

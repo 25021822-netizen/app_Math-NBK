@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   setDoc,
   updateDoc,
@@ -22,6 +23,7 @@ import {
   ClassroomChatMessage,
   Exam,
   AutoApprovalSettings,
+  AdminBroadcastMessage,
 } from '../types/math';
 import {
   persistExamImagesEverywhere,
@@ -82,6 +84,47 @@ function persistDeletedSubmissionIds() {
       const arr = Array.from(deletedSubmissionIdsSet).slice(-1000);
       localStorage.setItem(DELETED_SUBMISSIONS_STORAGE_KEY, JSON.stringify(arr));
     }
+  } catch {}
+}
+const DELETED_BROADCASTS_STORAGE_KEY = 'math_liki_deleted_broadcast_ids';
+const ADMIN_BROADCASTS_CACHE_KEY = 'math_liki_admin_broadcasts';
+const deletedBroadcastIdsSet: Set<string> = (() => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(DELETED_BROADCASTS_STORAGE_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed.filter((id) => typeof id === 'string'));
+    }
+  } catch {}
+  return new Set<string>();
+})();
+function persistDeletedBroadcastIds() {
+  try {
+    if (typeof window !== 'undefined') {
+      const arr = Array.from(deletedBroadcastIdsSet).slice(-500);
+      localStorage.setItem(DELETED_BROADCASTS_STORAGE_KEY, JSON.stringify(arr));
+    }
+  } catch {}
+}
+export function getLocallyDismissedBroadcastIds(userId: string): string[] {
+  const norm = (userId || '').trim().toLowerCase();
+  if (!norm || typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(`math_liki_dismissed_broadcasts_${norm}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((id) => typeof id === 'string');
+    }
+  } catch {}
+  return [];
+}
+export function markBroadcastDismissedLocally(userId: string, broadcastId: string) {
+  const norm = (userId || '').trim().toLowerCase();
+  if (!norm || !broadcastId || typeof window === 'undefined') return;
+  try {
+    const current = new Set(getLocallyDismissedBroadcastIds(norm));
+    current.add(broadcastId);
+    localStorage.setItem(`math_liki_dismissed_broadcasts_${norm}`, JSON.stringify(Array.from(current).slice(-500)));
   } catch {}
 }
 let lastClassroomSaveAt = 0;
@@ -203,6 +246,8 @@ export interface DatabaseState {
   exams: Exam[];
   deletedExamIds?: string[];
   deletedSubmissionIds?: string[];
+  adminBroadcasts?: AdminBroadcastMessage[];
+  deletedBroadcastIds?: string[];
 }
 
 export const DEFAULT_ADMIN_PROFILE: UserProfile = {
@@ -1778,6 +1823,193 @@ export async function dbFetchClassMessages(classId: string): Promise<ClassroomCh
   );
 }
 
+let connectionTested = false;
+async function testConnection() {
+  if (connectionTested) return;
+  connectionTested = true;
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration.');
+    }
+  }
+}
+
+function mergeAdminBroadcastLists(
+  existingList: AdminBroadcastMessage[],
+  incomingList: AdminBroadcastMessage[]
+): AdminBroadcastMessage[] {
+  const map = new Map<string, AdminBroadcastMessage>();
+  existingList.forEach((b) => {
+    if (b && b.id && !deletedBroadcastIdsSet.has(b.id)) {
+      map.set(b.id, {
+        ...b,
+        deletedByUserIds: Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [],
+      });
+    }
+  });
+  incomingList.forEach((b) => {
+    if (!b || !b.id || deletedBroadcastIdsSet.has(b.id)) return;
+    const prev = map.get(b.id);
+    const mergedDeletedSet = new Set<string>([
+      ...(prev?.deletedByUserIds || []).map((id) => String(id).trim().toLowerCase()).filter(Boolean),
+      ...(Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : []).map((id) => String(id).trim().toLowerCase()).filter(Boolean),
+    ]);
+    map.set(b.id, {
+      ...prev,
+      ...b,
+      deletedByUserIds: Array.from(mergedDeletedSet),
+    });
+  });
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+}
+
+/**
+ * Admin gửi thông báo tin nhắn đến toàn bộ tài khoản trên hệ thống
+ */
+export async function dbSendAdminBroadcast(broadcast: AdminBroadcastMessage): Promise<boolean> {
+  const payload = cleanForFirestore({
+    ...broadcast,
+    deletedByUserIds: Array.isArray(broadcast.deletedByUserIds) ? broadcast.deletedByUserIds : [],
+    createdAt: broadcast.createdAt || new Date().toISOString(),
+  });
+
+  if (deletedBroadcastIdsSet.delete(broadcast.id)) {
+    persistDeletedBroadcastIds();
+  }
+
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.adminBroadcasts = mergeAdminBroadcastLists(
+      activeAccumulatorRef.adminBroadcasts || [],
+      [payload]
+    );
+    try {
+      localStorage.setItem(ADMIN_BROADCASTS_CACHE_KEY, JSON.stringify(activeAccumulatorRef.adminBroadcasts));
+    } catch {}
+    activeDispatchRef?.();
+  }
+
+  const firestorePromise = setDoc(doc(db, 'admin_broadcasts', broadcast.id), payload, { merge: true }).catch((err) => {
+    try {
+      handleFirestoreError(err, OperationType.WRITE, `admin_broadcasts/${broadcast.id}`);
+    } catch (wrapped) {
+      console.warn('Lỗi dbSendAdminBroadcast Firestore:', wrapped);
+    }
+    return null;
+  });
+
+  const serverPromise = fetch('/api/db/broadcasts/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ broadcast: payload }),
+  }).catch((err) => {
+    console.warn('Lỗi dbSendAdminBroadcast Server API:', err);
+    return null;
+  });
+
+  await Promise.allSettled([firestorePromise, serverPromise]);
+  return true;
+}
+
+/**
+ * Người dùng xóa vĩnh viễn thông báo khỏi tài khoản của riêng mình (không ảnh hưởng tài khoản khác)
+ */
+export async function dbDismissBroadcastForUser(broadcastId: string, userId: string): Promise<boolean> {
+  const normUserId = (userId || '').trim().toLowerCase();
+  if (!broadcastId || !normUserId) return false;
+
+  markBroadcastDismissedLocally(normUserId, broadcastId);
+
+  if (activeAccumulatorRef && Array.isArray(activeAccumulatorRef.adminBroadcasts)) {
+    activeAccumulatorRef.adminBroadcasts = activeAccumulatorRef.adminBroadcasts.map((b) => {
+      if (b.id === broadcastId) {
+        const nextSet = new Set(
+          (b.deletedByUserIds || []).map((id) => String(id).trim().toLowerCase()).filter(Boolean)
+        );
+        nextSet.add(normUserId);
+        return { ...b, deletedByUserIds: Array.from(nextSet) };
+      }
+      return b;
+    });
+    try {
+      localStorage.setItem(ADMIN_BROADCASTS_CACHE_KEY, JSON.stringify(activeAccumulatorRef.adminBroadcasts));
+    } catch {}
+    activeDispatchRef?.();
+  }
+
+  const firestorePromise = (async () => {
+    const ref = doc(db, 'admin_broadcasts', broadcastId);
+    try {
+      await updateDoc(ref, {
+        deletedByUserIds: arrayUnion(normUserId),
+      });
+    } catch (err) {
+      try {
+        await setDoc(ref, { deletedByUserIds: arrayUnion(normUserId) }, { merge: true });
+      } catch (innerErr) {
+        try {
+          handleFirestoreError(innerErr, OperationType.UPDATE, `admin_broadcasts/${broadcastId}`);
+        } catch (wrapped) {
+          console.warn('Lỗi dbDismissBroadcastForUser Firestore:', wrapped);
+        }
+      }
+    }
+  })();
+
+  const serverPromise = fetch('/api/db/broadcasts/dismiss', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ broadcastId, userId: normUserId }),
+  }).catch((err) => {
+    console.warn('Lỗi dbDismissBroadcastForUser Server API:', err);
+    return null;
+  });
+
+  await Promise.allSettled([firestorePromise, serverPromise]);
+  return true;
+}
+
+/**
+ * Admin thu hồi / xóa vĩnh viễn một thông báo khỏi toàn hệ thống
+ */
+export async function dbDeleteAdminBroadcastGlobally(broadcastId: string): Promise<boolean> {
+  if (!broadcastId) return false;
+  deletedBroadcastIdsSet.add(broadcastId);
+  persistDeletedBroadcastIds();
+
+  if (activeAccumulatorRef && Array.isArray(activeAccumulatorRef.adminBroadcasts)) {
+    activeAccumulatorRef.adminBroadcasts = activeAccumulatorRef.adminBroadcasts.filter((b) => b.id !== broadcastId);
+    try {
+      localStorage.setItem(ADMIN_BROADCASTS_CACHE_KEY, JSON.stringify(activeAccumulatorRef.adminBroadcasts));
+    } catch {}
+    activeDispatchRef?.();
+  }
+
+  const firestorePromise = deleteDoc(doc(db, 'admin_broadcasts', broadcastId)).catch((err) => {
+    try {
+      handleFirestoreError(err, OperationType.DELETE, `admin_broadcasts/${broadcastId}`);
+    } catch (wrapped) {
+      console.warn('Lỗi dbDeleteAdminBroadcastGlobally Firestore:', wrapped);
+    }
+    return null;
+  });
+
+  const serverPromise = fetch('/api/db/broadcasts/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ broadcastId }),
+  }).catch((err) => {
+    console.warn('Lỗi dbDeleteAdminBroadcastGlobally Server API:', err);
+    return null;
+  });
+
+  await Promise.allSettled([firestorePromise, serverPromise]);
+  return true;
+}
+
 function smartMergeExamPair(localExam: Exam, remoteExam: Exam): Exam {
   if (!localExam) return remoteExam;
   if (!remoteExam) return localExam;
@@ -1879,17 +2111,21 @@ export function startDbPolling(
   onRemoteUpdate: (state: DatabaseState) => void,
   intervalMs = 1500
 ): () => void {
+  testConnection();
   ensureAdminSeeded();
   dbSyncExistingExamsToPublished();
 
   // Khởi tạo ngay từ localStorage cache để màn hình không bị chớp hay mất đề thi khi F5
   let initialCachedClassrooms: Classroom[] = [];
   let initialCachedExams: Exam[] = [];
+  let initialCachedBroadcasts: AdminBroadcastMessage[] = [];
   try {
     const sC = localStorage.getItem('math_liki_classrooms');
     if (sC) initialCachedClassrooms = JSON.parse(sC);
     const sE = localStorage.getItem('math_liki_exams');
     if (sE) initialCachedExams = JSON.parse(sE);
+    const sB = localStorage.getItem(ADMIN_BROADCASTS_CACHE_KEY);
+    if (sB) initialCachedBroadcasts = JSON.parse(sB);
   } catch {}
 
   const stateAccumulator: DatabaseState = {
@@ -1906,12 +2142,15 @@ export function startDbPolling(
     classroomMessages: {},
     exams: initialCachedExams.filter((e) => e && e.id && e.id !== 'exam_bgd_2025_01' && !deletedExamIdsSet.has(e.id)),
     deletedExamIds: Array.from(deletedExamIdsSet),
+    adminBroadcasts: initialCachedBroadcasts.filter((b) => b && b.id && !deletedBroadcastIdsSet.has(b.id)),
+    deletedBroadcastIds: Array.from(deletedBroadcastIdsSet),
   };
 
   const dispatchUpdate = () => {
     stateAccumulator.version += 1;
     stateAccumulator.lastUpdated = new Date().toISOString();
     stateAccumulator.deletedExamIds = Array.from(deletedExamIdsSet);
+    stateAccumulator.deletedBroadcastIds = Array.from(deletedBroadcastIdsSet);
     onRemoteUpdate({ ...stateAccumulator });
   };
 
@@ -2218,6 +2457,37 @@ export function startDbPolling(
     console.warn('Lỗi Firestore messages onSnapshot:', err);
   });
 
+  // 6b. Lắng nghe Thông báo chung của Admin trên Firestore Real-time
+  const unsubBroadcasts = onSnapshot(collection(db, 'admin_broadcasts'), (snapshot) => {
+    let removedUpdated = false;
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed' && !deletedBroadcastIdsSet.has(change.doc.id)) {
+        deletedBroadcastIdsSet.add(change.doc.id);
+        removedUpdated = true;
+      }
+    });
+    if (removedUpdated) {
+      persistDeletedBroadcastIds();
+    }
+
+    const incoming: AdminBroadcastMessage[] = [];
+    snapshot.forEach((d) => {
+      const item = d.data() as AdminBroadcastMessage;
+      if (item && item.id && !deletedBroadcastIdsSet.has(item.id)) {
+        incoming.push(item);
+      }
+    });
+
+    const filteredExisting = (stateAccumulator.adminBroadcasts || []).filter((b) => !deletedBroadcastIdsSet.has(b.id));
+    stateAccumulator.adminBroadcasts = mergeAdminBroadcastLists(filteredExisting, incoming);
+    try {
+      localStorage.setItem(ADMIN_BROADCASTS_CACHE_KEY, JSON.stringify(stateAccumulator.adminBroadcasts));
+    } catch {}
+    dispatchUpdate();
+  }, (err) => {
+    console.warn('Lỗi Firestore admin_broadcasts onSnapshot:', err);
+  });
+
   // 7. Polling dự phòng qua server endpoint song song (Bảo đảm luôn đồng bộ kể cả khi Firestore mất mạng)
   const fallbackPoll = async () => {
     try {
@@ -2369,6 +2639,35 @@ export function startDbPolling(
               }
             }
           }
+          if (Array.isArray(json.data.deletedBroadcastIds)) {
+            let delBUpdated = false;
+            json.data.deletedBroadcastIds.forEach((delId: unknown) => {
+              if (typeof delId === 'string' && delId && !deletedBroadcastIdsSet.has(delId)) {
+                deletedBroadcastIdsSet.add(delId);
+                delBUpdated = true;
+              }
+            });
+            if (delBUpdated) {
+              persistDeletedBroadcastIds();
+              stateAccumulator.adminBroadcasts = (stateAccumulator.adminBroadcasts || []).filter(
+                (b) => !deletedBroadcastIdsSet.has(b.id)
+              );
+              hasChanges = true;
+            }
+          }
+          if (Array.isArray(json.data.adminBroadcasts)) {
+            const mergedBroadcasts = mergeAdminBroadcastLists(
+              stateAccumulator.adminBroadcasts || [],
+              json.data.adminBroadcasts as AdminBroadcastMessage[]
+            );
+            if (JSON.stringify(mergedBroadcasts) !== JSON.stringify(stateAccumulator.adminBroadcasts || [])) {
+              stateAccumulator.adminBroadcasts = mergedBroadcasts;
+              try {
+                localStorage.setItem(ADMIN_BROADCASTS_CACHE_KEY, JSON.stringify(mergedBroadcasts));
+              } catch {}
+              hasChanges = true;
+            }
+          }
           if (hasChanges) {
             dispatchUpdate();
           }
@@ -2394,6 +2693,7 @@ export function startDbPolling(
     unsubExams();
     unsubPublishedExams();
     unsubMessages();
+    unsubBroadcasts();
     clearInterval(timer);
   };
 }

@@ -15,6 +15,7 @@ import {
   ClassroomChatMessage,
   AutoApprovalSettings,
   ScoreVisibilityMode,
+  AdminBroadcastMessage,
   canStudentViewExamScore,
   canAccessSubjectTab,
   getTeacherSubjectTab,
@@ -58,6 +59,11 @@ import {
   dbDeleteMessage,
   dbToggleMessageReaction,
   dbDisbandClassroom,
+  dbSendAdminBroadcast,
+  dbDismissBroadcastForUser,
+  dbDeleteAdminBroadcastGlobally,
+  getLocallyDismissedBroadcastIds,
+  markBroadcastDismissedLocally,
   isExamDeletedLocally,
   isExamRecentlySaved,
   clearExamDeletedLocally,
@@ -123,31 +129,76 @@ import {
   FlaskConical,
 } from 'lucide-react';
 
-function getRestoredAuthSession(): { isAuth: boolean; user: UserProfile; remembered: boolean } {
+const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const SESSION_LOGIN_AT_KEY = 'math_nbk_session_login_at';
+
+function clearStoredAuthSession() {
+  try {
+    localStorage.removeItem('math_nbk_auth_user');
+    localStorage.removeItem(SESSION_LOGIN_AT_KEY);
+    sessionStorage.removeItem('math_nbk_auth_session');
+    sessionStorage.removeItem('math_nbk_admin_session');
+    sessionStorage.removeItem(SESSION_LOGIN_AT_KEY);
+  } catch {}
+}
+
+function getRestoredAuthSession(): {
+  isAuth: boolean;
+  user: UserProfile;
+  remembered: boolean;
+  loginAt: number | null;
+  expiredNotice: string | null;
+} {
   try {
     const localSaved = localStorage.getItem('math_nbk_auth_user');
     const sessionSaved = sessionStorage.getItem('math_nbk_auth_session');
     const raw = localSaved || sessionSaved;
-    if (!raw) return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true };
+    if (!raw) {
+      return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true, loginAt: null, expiredNotice: null };
+    }
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.id || parsed.role === 'admin') {
-      localStorage.removeItem('math_nbk_auth_user');
-      sessionStorage.removeItem('math_nbk_auth_session');
-      return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true };
+      clearStoredAuthSession();
+      return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true, loginAt: null, expiredNotice: null };
     }
-    return { isAuth: true, user: parsed as UserProfile, remembered: Boolean(localSaved) };
+
+    const rawLoginAt = localSaved
+      ? localStorage.getItem(SESSION_LOGIN_AT_KEY)
+      : sessionStorage.getItem(SESSION_LOGIN_AT_KEY);
+    const loginAt = rawLoginAt ? Number(rawLoginAt) : Number(parsed._sessionLoginAt);
+
+    if (!Number.isFinite(loginAt) || loginAt <= 0 || Date.now() - loginAt >= SESSION_MAX_AGE_MS) {
+      const wasExpired = Number.isFinite(loginAt) && loginAt > 0 && Date.now() - loginAt >= SESSION_MAX_AGE_MS;
+      clearStoredAuthSession();
+      return {
+        isAuth: false,
+        user: INITIAL_USER_PROFILE,
+        remembered: true,
+        loginAt: null,
+        expiredNotice: wasExpired
+          ? 'Phiên đăng nhập đã hết hạn sau 24 giờ. Vui lòng đăng nhập lại để tiếp tục!'
+          : null,
+      };
+    }
+
+    return {
+      isAuth: true,
+      user: parsed as UserProfile,
+      remembered: Boolean(localSaved),
+      loginAt,
+      expiredNotice: null,
+    };
   } catch {
-    try {
-      localStorage.removeItem('math_nbk_auth_user');
-      sessionStorage.removeItem('math_nbk_auth_session');
-    } catch {}
-    return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true };
+    clearStoredAuthSession();
+    return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true, loginAt: null, expiredNotice: null };
   }
 }
 
 export default function App() {
   const [initialSession] = useState(() => getRestoredAuthSession());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(initialSession.isAuth);
+  const [sessionLoginAt, setSessionLoginAt] = useState<number | null>(initialSession.loginAt);
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(initialSession.expiredNotice);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
   const [currentTab, setCurrentTab] = useState<string>(
     initialSession.isAuth && initialSession.user.role === 'admin' ? 'admin_dashboard' : 'classroom'
@@ -191,6 +242,16 @@ export default function App() {
   const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
   const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
   const [classroomMessages, setClassroomMessages] = useState<Record<string, ClassroomChatMessage[]>>({});
+  const [adminBroadcasts, setAdminBroadcasts] = useState<AdminBroadcastMessage[]>(() => {
+    try {
+      const s = localStorage.getItem('math_liki_admin_broadcasts');
+      const parsed = s ? JSON.parse(s) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [broadcastDismissTick, setBroadcastDismissTick] = useState<number>(0);
 
   // Cấu hình Duyệt Tự Động của Admin (Auto-Approval Settings)
   const [autoApprovalSettings, setAutoApprovalSettings] = useState<AutoApprovalSettings>({
@@ -258,6 +319,73 @@ export default function App() {
       });
     }
   }, [currentTab, classrooms, isAuthenticated]);
+
+  // Kiểm tra thời hạn phiên đăng nhập 24 giờ liên tục (tự động đăng xuất khi đủ 24h, kể cả khi mở tab/ngủ máy)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const expireSessionNow = () => {
+      clearStoredAuthSession();
+      setShowLogoutConfirm(false);
+      setIsAuthenticated(false);
+      setUserProfile(INITIAL_USER_PROFILE);
+      setUserRole('student');
+      setCurrentTab('classroom');
+      setSessionLoginAt(null);
+      setSessionExpiredNotice('Phiên đăng nhập đã hết hạn sau 24 giờ. Vui lòng đăng nhập lại để tiếp tục!');
+    };
+
+    if (!sessionLoginAt || !Number.isFinite(sessionLoginAt)) {
+      expireSessionNow();
+      return;
+    }
+
+    const checkRemaining = () => {
+      const elapsed = Date.now() - sessionLoginAt;
+      if (elapsed >= SESSION_MAX_AGE_MS) {
+        expireSessionNow();
+        return true;
+      }
+      return false;
+    };
+
+    if (checkRemaining()) return;
+
+    const remainingMs = Math.max(0, sessionLoginAt + SESSION_MAX_AGE_MS - Date.now());
+    const exactTimer = setTimeout(expireSessionNow, remainingMs);
+    const interval = setInterval(checkRemaining, 30000);
+    const handleVisibilityOrFocus = () => {
+      checkRemaining();
+    };
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      clearTimeout(exactTimer);
+      clearInterval(interval);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [isAuthenticated, sessionLoginAt]);
+
+  // Danh sách thông báo Admin hiển thị ở Nhóm Lớp (lọc bỏ những thông báo tài khoản này đã xóa hẳn)
+  const visibleBroadcastsForUser = useMemo(() => {
+    const normId = (userProfile.id || '').trim().toLowerCase();
+    const normEmail = (userProfile.email || '').trim().toLowerCase();
+    const localDismissedSet = new Set(
+      getLocallyDismissedBroadcastIds(userProfile.id).map((id) => id.trim())
+    );
+    return (adminBroadcasts || []).filter((b) => {
+      if (!b || !b.id) return false;
+      if (localDismissedSet.has(b.id)) return false;
+      const deletedIds = Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [];
+      const isDeletedByMe = deletedIds.some((uid) => {
+        const lowerUid = String(uid || '').trim().toLowerCase();
+        return (normId && lowerUid === normId) || (normEmail && lowerUid === normEmail);
+      });
+      return !isDeletedByMe;
+    });
+  }, [adminBroadcasts, userProfile.id, userProfile.email, broadcastDismissTick]);
 
   // Kiểm tra quyền nhìn thấy / là thành viên hợp lệ của nhóm lớp
   // - Giáo viên: CHỈ được nhìn thấy và vào các lớp do chính mình tạo (kể cả lớp công khai của giáo viên khác)
@@ -494,22 +622,25 @@ export default function App() {
     let latestRemoteExams: Exam[] = examsListRef.current;
     let knownChatMessageIds = new Set<string>();
     let isInitialMessageLoad = true;
+    let knownBroadcastIds = new Set<string>();
+    let hasLoadedBroadcastsOnce = false;
 
-    const readSeenPosts = (uid: string): { lessons: Set<string>; exams: Set<string> } => {
+    const readSeenPosts = (uid: string): { lessons: Set<string>; exams: Set<string>; broadcasts: Set<string> } => {
       try {
         const raw = localStorage.getItem(`math_nbk_seen_posts_${uid}`);
-        if (!raw) return { lessons: new Set(), exams: new Set() };
+        if (!raw) return { lessons: new Set(), exams: new Set(), broadcasts: new Set() };
         const parsed = JSON.parse(raw);
         return {
           lessons: new Set(Array.isArray(parsed?.lessons) ? parsed.lessons : []),
           exams: new Set(Array.isArray(parsed?.exams) ? parsed.exams : []),
+          broadcasts: new Set(Array.isArray(parsed?.broadcasts) ? parsed.broadcasts : []),
         };
       } catch {
-        return { lessons: new Set(), exams: new Set() };
+        return { lessons: new Set(), exams: new Set(), broadcasts: new Set() };
       }
     };
 
-    const markPostSeen = (uid: string, kind: 'lessons' | 'exams', postId: string) => {
+    const markPostSeen = (uid: string, kind: 'lessons' | 'exams' | 'broadcasts', postId: string) => {
       if (!uid || !postId) return;
       try {
         const current = readSeenPosts(uid);
@@ -520,6 +651,7 @@ export default function App() {
           JSON.stringify({
             lessons: trimArr(current.lessons),
             exams: trimArr(current.exams),
+            broadcasts: trimArr(current.broadcasts),
           })
         );
       } catch {}
@@ -646,11 +778,11 @@ export default function App() {
           const fresh = remoteData.users.find((u) => u.id === curr.id);
           if (fresh) {
             if (fresh.status === 'rejected') {
+              clearStoredAuthSession();
+              setSessionLoginAt(null);
               setIsAuthenticated(false);
               setUserProfile(INITIAL_USER_PROFILE);
               setUserRole('student');
-              localStorage.removeItem('math_nbk_auth_user');
-              sessionStorage.removeItem('math_nbk_auth_session');
             } else {
               const mergedUser = { ...curr, ...fresh };
               if (JSON.stringify(mergedUser) !== JSON.stringify(curr)) {
@@ -939,6 +1071,67 @@ export default function App() {
 
         setClassroomMessages(remoteData.classroomMessages);
       }
+
+      // Đồng bộ Thông báo tin nhắn chung từ Admin (Hiển thị tại Nhóm Lớp & thông báo đẩy tới mọi tài khoản)
+      if (Array.isArray(remoteData.adminBroadcasts)) {
+        const curUser = userProfileRef.current;
+        const isLoggedInNonAdmin = Boolean(isAuthenticatedRef.current && curUser?.id && curUser.role !== 'admin');
+        const normCurId = (curUser?.id || '').trim().toLowerCase();
+        const normCurEmail = (curUser?.email || '').trim().toLowerCase();
+        const localDismissed = curUser?.id ? new Set(getLocallyDismissedBroadcastIds(curUser.id)) : new Set<string>();
+
+        const isDismissedForCurrentUser = (b: AdminBroadcastMessage) => {
+          if (localDismissed.has(b.id)) return true;
+          const delArr = Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [];
+          return delArr.some((uid) => {
+            const lu = String(uid || '').trim().toLowerCase();
+            return (normCurId && lu === normCurId) || (normCurEmail && lu === normCurEmail);
+          });
+        };
+
+        if (!hasLoadedBroadcastsOnce) {
+          if (isLoggedInNonAdmin) {
+            const seen = readSeenPosts(curUser.id);
+            const nowMs = Date.now();
+            remoteData.adminBroadcasts.forEach((b) => {
+              knownBroadcastIds.add(b.id);
+              if (isDismissedForCurrentUser(b) || seen.broadcasts.has(b.id)) return;
+              markPostSeen(curUser.id, 'broadcasts', b.id);
+              const createdMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              if (Number.isFinite(createdMs) && createdMs > 0 && nowMs - createdMs <= RECENT_WINDOW_MS) {
+                triggerPushNotification(`Thông báo từ Admin: ${b.title}`, {
+                  message: b.content.slice(0, 140) + (b.content.length > 140 ? '...' : ''),
+                  type: 'system',
+                  targetTab: 'classroom',
+                  actionLabel: 'Xem ở Nhóm Lớp',
+                });
+              }
+            });
+          } else {
+            remoteData.adminBroadcasts.forEach((b) => knownBroadcastIds.add(b.id));
+          }
+          hasLoadedBroadcastsOnce = true;
+        } else {
+          const freshBroadcasts = remoteData.adminBroadcasts.filter((b) => !knownBroadcastIds.has(b.id));
+          if (freshBroadcasts.length > 0 && isLoggedInNonAdmin) {
+            const seen = readSeenPosts(curUser.id);
+            freshBroadcasts.forEach((b) => {
+              knownBroadcastIds.add(b.id);
+              if (isDismissedForCurrentUser(b) || seen.broadcasts.has(b.id)) return;
+              markPostSeen(curUser.id, 'broadcasts', b.id);
+              triggerPushNotification(`Thông báo từ Admin: ${b.title}`, {
+                message: b.content.slice(0, 140) + (b.content.length > 140 ? '...' : ''),
+                type: 'system',
+                targetTab: 'classroom',
+                actionLabel: 'Xem ở Nhóm Lớp',
+              });
+            });
+          }
+          remoteData.adminBroadcasts.forEach((b) => knownBroadcastIds.add(b.id));
+        }
+
+        setAdminBroadcasts(remoteData.adminBroadcasts);
+      }
     });
 
     return () => {
@@ -970,17 +1163,22 @@ export default function App() {
     }
   }, [userRole, userProfile.subject, currentTab, isAuthenticated]);
 
-  // Đăng nhập thành công
+  // Đăng nhập thành công (Đặt mốc thời gian phiên 24 giờ)
   const handleLoginSuccess = (user: UserProfile, rememberMe = true) => {
+    const loginAt = Date.now();
     setUserProfile(user);
     setUserRole(user.role);
+    setSessionLoginAt(loginAt);
+    setSessionExpiredNotice(null);
     setIsAuthenticated(true);
     if (user.role === 'admin') {
       // BẢO MẬT: KHÔNG LƯU TÀI KHOẢN ADMIN VÀO LOCALSTORAGE
       try {
         localStorage.removeItem('math_nbk_auth_user');
+        localStorage.removeItem(SESSION_LOGIN_AT_KEY);
         sessionStorage.removeItem('math_nbk_auth_session');
         sessionStorage.setItem('math_nbk_admin_session', 'true');
+        sessionStorage.setItem(SESSION_LOGIN_AT_KEY, String(loginAt));
       } catch {}
       setCurrentTab('admin_dashboard');
     } else {
@@ -988,10 +1186,14 @@ export default function App() {
       try {
         if (rememberMe) {
           localStorage.setItem('math_nbk_auth_user', JSON.stringify(user));
+          localStorage.setItem(SESSION_LOGIN_AT_KEY, String(loginAt));
           sessionStorage.removeItem('math_nbk_auth_session');
+          sessionStorage.removeItem(SESSION_LOGIN_AT_KEY);
         } else {
           sessionStorage.setItem('math_nbk_auth_session', JSON.stringify(user));
+          sessionStorage.setItem(SESSION_LOGIN_AT_KEY, String(loginAt));
           localStorage.removeItem('math_nbk_auth_user');
+          localStorage.removeItem(SESSION_LOGIN_AT_KEY);
         }
       } catch {}
       setCurrentTab('classroom');
@@ -1007,12 +1209,58 @@ export default function App() {
   const handleConfirmLogout = () => {
     setShowLogoutConfirm(false);
     setIsAuthenticated(false);
+    setSessionLoginAt(null);
+    setSessionExpiredNotice(null);
     setUserProfile(INITIAL_USER_PROFILE);
     setUserRole('student');
     setCurrentTab('classroom');
-    localStorage.removeItem('math_nbk_auth_user');
-    sessionStorage.removeItem('math_nbk_auth_session');
-    sessionStorage.removeItem('math_nbk_admin_session');
+    clearStoredAuthSession();
+  };
+
+  // Admin gửi thông báo tin nhắn đến tất cả tài khoản (hiển thị trong Nhóm Lớp)
+  const handleSendAdminBroadcast = async (payload: {
+    title: string;
+    content: string;
+    priority: 'normal' | 'important';
+  }) => {
+    const newBroadcast: AdminBroadcastMessage = {
+      id: `bc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      title: payload.title,
+      content: payload.content,
+      priority: payload.priority,
+      senderId: userProfile.id,
+      senderName: userProfile.name || 'Ban Quản Trị Hệ Thống',
+      createdAt: new Date().toISOString(),
+      deletedByUserIds: [],
+    };
+    setAdminBroadcasts((prev) => [newBroadcast, ...prev]);
+    await dbSendAdminBroadcast(newBroadcast);
+  };
+
+  // Người dùng tự xóa hẳn thông báo khỏi tài khoản của riêng mình
+  const handleDismissBroadcastForUser = async (broadcastId: string) => {
+    const normId = (userProfile.id || '').trim().toLowerCase();
+    if (!broadcastId || !normId) return;
+    markBroadcastDismissedLocally(normId, broadcastId);
+    setBroadcastDismissTick((t) => t + 1);
+    setAdminBroadcasts((prev) =>
+      prev.map((b) => {
+        if (b.id === broadcastId) {
+          const next = new Set((b.deletedByUserIds || []).map((id) => String(id).trim().toLowerCase()));
+          next.add(normId);
+          return { ...b, deletedByUserIds: Array.from(next) };
+        }
+        return b;
+      })
+    );
+    await dbDismissBroadcastForUser(broadcastId, normId);
+  };
+
+  // Admin thu hồi/xóa vĩnh viễn một thông báo khỏi toàn hệ thống
+  const handleDeleteAdminBroadcastGlobally = async (broadcastId: string) => {
+    if (!broadcastId) return;
+    setAdminBroadcasts((prev) => prev.filter((b) => b.id !== broadcastId));
+    await dbDeleteAdminBroadcastGlobally(broadcastId);
   };
 
   // Admin phê duyệt kích hoạt tài khoản (Đồng bộ ngay lên Server DB)
@@ -1686,6 +1934,9 @@ export default function App() {
           autoApprovalSettings={autoApprovalSettings}
           onUpdateAutoApprovalSettings={handleUpdateAutoApprovalSettings}
           onApproveAllUsers={handleApproveAllUsers}
+          adminBroadcasts={adminBroadcasts}
+          onSendBroadcast={handleSendAdminBroadcast}
+          onDeleteBroadcastGlobally={handleDeleteAdminBroadcastGlobally}
         />
       );
     }
@@ -1722,6 +1973,8 @@ export default function App() {
             onDeleteLesson={handleDeleteLesson}
             onDisbandClassroom={handleDisbandClassroom}
             externalClassJump={externalClassJump}
+            adminBroadcasts={visibleBroadcastsForUser}
+            onDismissBroadcast={handleDismissBroadcastForUser}
           />
         );
       }
@@ -1831,6 +2084,8 @@ export default function App() {
             onDeleteLesson={handleDeleteLesson}
             onDisbandClassroom={handleDisbandClassroom}
             externalClassJump={externalClassJump}
+            adminBroadcasts={visibleBroadcastsForUser}
+            onDismissBroadcast={handleDismissBroadcastForUser}
           />
         );
       case 'student_history':
@@ -1893,6 +2148,8 @@ export default function App() {
             onDeleteLesson={handleDeleteLesson}
             onDisbandClassroom={handleDisbandClassroom}
             externalClassJump={externalClassJump}
+            adminBroadcasts={visibleBroadcastsForUser}
+            onDismissBroadcast={handleDismissBroadcastForUser}
           />
         );
     }
@@ -1915,6 +2172,8 @@ export default function App() {
           onLoginSuccess={handleLoginSuccess}
           onRegisterUser={handleCreateUser}
           autoApprovalSettings={autoApprovalSettings}
+          sessionExpiredNotice={sessionExpiredNotice}
+          onDismissSessionNotice={() => setSessionExpiredNotice(null)}
         />
       </Suspense>
     );

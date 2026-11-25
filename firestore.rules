@@ -31,5 +31,11 @@ service cloud.firestore {
     match /exam_images/{imageId} {
       allow read, write: if true;
     }
+    match /admin_broadcasts/{broadcastId} {
+      allow read, write: if true;
+    }
+    match /test/{docId} {
+      allow read: if true;
+    }
   }
 }

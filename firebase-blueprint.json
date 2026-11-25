@@ -159,6 +159,25 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "dataUrl"]
+    },
+    "AdminBroadcast": {
+      "title": "AdminBroadcast",
+      "description": "System-wide announcement message sent by Admin to all accounts with per-user permanent deletion tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "priority": { "type": "string", "enum": ["normal", "important"] },
+        "createdAt": { "type": "string" },
+        "deletedByUserIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "title", "content", "senderId", "createdAt"]
     }
   },
   "firestore": {
@@ -197,6 +216,10 @@
     "/messages/{msgId}": {
       "schema": { "$ref": "#/entities/ClassroomMessage" },
       "description": "Classroom chat messages"
+    },
+    "/admin_broadcasts/{broadcastId}": {
+      "schema": { "$ref": "#/entities/AdminBroadcast" },
+      "description": "Admin broadcast notification messages to all users"
     }
   }
 }

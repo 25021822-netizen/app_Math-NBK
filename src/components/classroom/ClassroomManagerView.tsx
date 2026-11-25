@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { copyTextSafe } from '../../utils/clipboard';
-import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention } from '../../types/math';
+import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention, AdminBroadcastMessage } from '../../types/math';
 import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
@@ -77,6 +77,7 @@ import {
   Shield,
   Globe,
   EyeOff,
+  Megaphone,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -110,6 +111,8 @@ interface ClassroomManagerViewProps {
     lessonId?: string;
     nonce: number;
   } | null;
+  adminBroadcasts?: AdminBroadcastMessage[];
+  onDismissBroadcast?: (broadcastId: string) => void;
 }
 
 export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
@@ -138,6 +141,8 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onDeleteChatMessage,
   onDisbandClassroom,
   externalClassJump,
+  adminBroadcasts = [],
+  onDismissBroadcast,
 }) => {
   // 1. Kiểm tra quyền thành viên chính thức của nhóm lớp
   const isMemberOfClass = (cls: Classroom | undefined | null): boolean => {
@@ -2099,6 +2104,74 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         >
           {joinMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
           <span>{joinMessage.text}</span>
+        </div>
+      )}
+
+      {/* Thông báo tin nhắn chung từ Admin (Hiển thị trực tiếp ở Nhóm Lớp & xóa hẳn theo từng tài khoản) */}
+      {adminBroadcasts.length > 0 && (
+        <div className="bg-white rounded-3xl border border-blue-200 shadow-xs p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                <Megaphone size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  Thông Báo Từ Ban Quản Trị ({adminBroadcasts.length})
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Tin nhắn thông báo chung dành cho toàn bộ tài khoản
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            {adminBroadcasts.map((msg) => {
+              const isImportant = msg.priority === 'important';
+              return (
+                <div
+                  key={msg.id}
+                  className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-start justify-between gap-3 transition-all ${
+                    isImportant
+                      ? 'bg-rose-50/70 border-rose-200'
+                      : 'bg-blue-50/50 border-blue-100'
+                  }`}
+                >
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                          isImportant ? 'bg-rose-600 text-white' : 'bg-blue-600 text-white'
+                        }`}
+                      >
+                        {isImportant ? 'Quan trọng' : 'Admin'}
+                      </span>
+                      <span className="font-extrabold text-sm text-slate-900">{msg.title}</span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {new Date(msg.createdAt).toLocaleString('vi-VN')}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                      {renderTextWithLinks(msg.content, 'text-blue-600 underline font-semibold hover:text-blue-800')}
+                    </p>
+                  </div>
+
+                  {onDismissBroadcast && (
+                    <button
+                      type="button"
+                      onClick={() => onDismissBroadcast(msg.id)}
+                      title="Xóa vĩnh viễn thông báo này khỏi tài khoản của bạn"
+                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-200 font-bold text-[11px] flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer self-end sm:self-start"
+                    >
+                      <Trash2 size={13} />
+                      <span>Xóa thông báo</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
