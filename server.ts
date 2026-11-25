@@ -1802,7 +1802,8 @@ app.get('/api/health', (_req, res) => {
 // Khởi chạy Vite Server Middleware
 async function startServer() {
   if (process.env.NODE_ENV !== 'production' && !IS_VERCEL) {
-    const { createServer: createViteServer } = await import('vite');
+    const viteModuleName = 'vite';
+    const { createServer: createViteServer } = await import(viteModuleName);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
