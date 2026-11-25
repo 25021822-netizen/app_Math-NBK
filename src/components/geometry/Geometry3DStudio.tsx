@@ -37,6 +37,23 @@ export type Shape3DType =
   | 'prism'        // Lăng trụ tam giác
   | 'cylinder';    // Khối trụ tròn xoay
 
+export type QuadBaseType = 'parallelogram' | 'trapezoid' | 'quadrilateral';
+
+const QUAD_BASE_META: Record<QuadBaseType, { label: string; shortDesc: string }> = {
+  parallelogram: { label: 'Hình bình hành', shortDesc: 'AB // CD, AD // BC' },
+  trapezoid: { label: 'Hình thang', shortDesc: 'AB // CD (AB > CD)' },
+  quadrilateral: { label: 'Tứ giác', shortDesc: 'Tứ giác lồi bất kỳ' },
+};
+
+const POINT_NAME_PREFERENCES = {
+  ratio: ['M', 'N', 'P', 'Q', 'I', 'J', 'K', 'H', 'E', 'F', 'R', 'T', 'U', 'V'],
+  centroid: ['G', 'G1', 'G2', 'G3', 'M', 'N', 'P', 'Q', 'I', 'J', 'K', 'E', 'F'],
+  intersect_segments: ['I', 'J', 'K', 'E', 'F', 'M', 'N', 'P', 'Q', 'H', 'R', 'T'],
+  intersect_line_plane: ['K', 'I', 'J', 'H', 'E', 'F', 'M', 'N', 'P', 'Q', 'R', 'T'],
+  manual: ['M', 'N', 'P', 'Q', 'E', 'F', 'I', 'J', 'K', 'H', 'R', 'T', 'U', 'V'],
+  perpendicular: ['H', 'H1', 'H2', 'H3', 'K', 'I', 'J'],
+} as const;
+
 export interface Point3D {
   name: string;
   x: number;
@@ -71,8 +88,9 @@ interface Geometry3DStudioProps {
 }
 
 export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImage }) => {
-  // Chọn hình khối không gian
+  // Chọn hình khối không gian & dạng đáy cho hình chóp tứ giác
   const [selectedShape, setSelectedShape] = useState<Shape3DType>('pyramid_quad');
+  const [quadBaseType, setQuadBaseType] = useState<QuadBaseType>('parallelogram');
 
   // Góc xoay và camera
   const [rotX, setRotX] = useState<number>(20);
@@ -181,20 +199,45 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   // KHỞI TẠO TỌA ĐỘ ĐỈNH CHUẨN KHI ĐỔI HÌNH
   // Xóa sạch tất cả các cài đặt sẵn của hình chóp
   // ==========================================
-  const initDefaultVertices = (shape: Shape3DType, h = heightParam, r = radiusParam) => {
+  const initDefaultVertices = (
+    shape: Shape3DType,
+    h = heightParam,
+    r = radiusParam,
+    baseType: QuadBaseType = quadBaseType
+  ) => {
     let base: Record<string, Point3D> = {};
 
     if (shape === 'pyramid_quad') {
-      // Hình chóp tứ giác S.ABCD: CHỈ CÓ ĐỈNH VÀ HÌNH CHÓP, KHÔNG CÓ TRUNG ĐIỂM, ĐƯỜNG CAO HAY THIẾT DIỆN CÀI SẴN
-      const a = 90;
-      const b = 70;
-      base = {
-        S: { name: 'S', x: 0, y: h, z: 0, label: 'S' },
-        A: { name: 'A', x: -a, y: 0, z: b, label: 'A' },
-        B: { name: 'B', x: a, y: 0, z: b, label: 'B' },
-        C: { name: 'C', x: a + 20, y: 0, z: -b, label: 'C' },
-        D: { name: 'D', x: -a + 20, y: 0, z: -b, label: 'D' },
-      };
+      if (baseType === 'trapezoid') {
+        // Hình thang ABCD: Đáy lớn AB // Đáy nhỏ CD (AD và BC cắt nhau khi kéo dài)
+        base = {
+          S: { name: 'S', x: 0, y: h, z: 0, label: 'S' },
+          A: { name: 'A', x: -105, y: 0, z: 70, label: 'A' },
+          B: { name: 'B', x: 105, y: 0, z: 70, label: 'B' },
+          C: { name: 'C', x: 50, y: 0, z: -70, label: 'C' },
+          D: { name: 'D', x: -60, y: 0, z: -70, label: 'D' },
+        };
+      } else if (baseType === 'quadrilateral') {
+        // Tứ giác lồi ABCD bất kỳ: Các cặp cạnh đối không song song
+        base = {
+          S: { name: 'S', x: 0, y: h, z: 0, label: 'S' },
+          A: { name: 'A', x: -100, y: 0, z: 70, label: 'A' },
+          B: { name: 'B', x: 85, y: 0, z: 88, label: 'B' },
+          C: { name: 'C', x: 115, y: 0, z: -52, label: 'C' },
+          D: { name: 'D', x: -52, y: 0, z: -86, label: 'D' },
+        };
+      } else {
+        // Hình bình hành ABCD chuẩn SGK
+        const a = 90;
+        const b = 70;
+        base = {
+          S: { name: 'S', x: 0, y: h, z: 0, label: 'S' },
+          A: { name: 'A', x: -a, y: 0, z: b, label: 'A' },
+          B: { name: 'B', x: a, y: 0, z: b, label: 'B' },
+          C: { name: 'C', x: a + 20, y: 0, z: -b, label: 'C' },
+          D: { name: 'D', x: -a + 20, y: 0, z: -b, label: 'D' },
+        };
+      }
     } else if (shape === 'pyramid_tri') {
       // Hình chóp tam giác S.ABC: CHỈ CÓ S, A, B, C THUẦN TÚY
       base = {
@@ -248,10 +291,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     return base;
   };
 
-  // Khởi tạo lần đầu
+  // Khởi tạo lần đầu và khi đổi hình / dạng đáy
   useEffect(() => {
-    setVertexCoords(initDefaultVertices(selectedShape));
-  }, [selectedShape]);
+    setVertexCoords(initDefaultVertices(selectedShape, heightParam, radiusParam, quadBaseType));
+  }, [selectedShape, quadBaseType]);
 
   // Cập nhật khi đổi chiều cao hoặc bán kính
   const handleHeightChange = (newH: number) => {
@@ -276,15 +319,29 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     setCustomLines([]);
     setCustomPlanes([]);
     setSelectedPointName(null);
-    setStatusMessage(`Đã chuyển sang hình: ${getShapeTitle(shape)} (Giao diện chuẩn sạch)`);
+    setStatusMessage(`Đã chuyển sang hình: ${getShapeTitle(shape, quadBaseType)} (Giao diện chuẩn sạch)`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  // Chuyển dạng đáy cho hình chóp tứ giác S.ABCD
+  const handleSelectQuadBase = (baseType: QuadBaseType) => {
+    setQuadBaseType(baseType);
+    if (selectedShape !== 'pyramid_quad') {
+      setSelectedShape('pyramid_quad');
+    }
+    setCustomPoints([]);
+    setCustomLines([]);
+    setCustomPlanes([]);
+    setSelectedPointName(null);
+    setStatusMessage(`Đã chọn Chóp Tứ Giác S.ABCD — Đáy ${QUAD_BASE_META[baseType].label}`);
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
   // Tên tiêu đề tiếng Việt của hình
-  const getShapeTitle = (shape: Shape3DType) => {
+  const getShapeTitle = (shape: Shape3DType, baseType: QuadBaseType = quadBaseType) => {
     switch (shape) {
       case 'pyramid_quad':
-        return 'Hình Chóp Tứ Giác S.ABCD';
+        return `Hình Chóp Tứ Giác S.ABCD (Đáy ${QUAD_BASE_META[baseType].label.toLowerCase()})`;
       case 'pyramid_tri':
         return 'Hình Chóp Tam Giác S.ABC (Tứ Diện)';
       case 'cone':
@@ -308,6 +365,16 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   }, [vertexCoords, customPoints]);
 
   const allPointNames = useMemo(() => Object.keys(allPointsMap), [allPointsMap]);
+
+  // Danh sách tất cả tên điểm đang dùng (cả key lẫn label hiển thị như A', O')
+  const allUsedPointTokens = useMemo(() => {
+    const tokens = new Set<string>();
+    Object.entries(allPointsMap).forEach(([k, pt]) => {
+      tokens.add(k.trim().toUpperCase());
+      if (pt?.name) tokens.add(pt.name.trim().toUpperCase());
+    });
+    return Array.from(tokens);
+  }, [allPointsMap]);
 
   // Tự động gán mặc định cho các select box khi danh sách điểm đổi
   useEffect(() => {
@@ -457,6 +524,107 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     };
   };
 
+  // Vector hướng về camera trong không gian 3D (dùng cho ẩn/hiện cạnh khuất động)
+  const viewDirWorld = useMemo(() => {
+    const radX = (rotX * Math.PI) / 180;
+    const radY = (rotY * Math.PI) / 180;
+    return {
+      x: -Math.sin(radY) * Math.cos(radX),
+      y: Math.sin(radX),
+      z: Math.cos(radY) * Math.cos(radX),
+    };
+  }, [rotX, rotY]);
+
+  // Kiểm tra danh sách mặt đa diện hướng về phía người xem hay quay ra sau
+  const computePolyhedronVisibility = (
+    verts: Record<string, { x: number; y: number; z: number }>,
+    faces: { keys: string[] }[]
+  ) => {
+    const vertList = Object.values(verts);
+    const centroid = vertList.reduce(
+      (acc, v) => ({ x: acc.x + v.x / vertList.length, y: acc.y + v.y / vertList.length, z: acc.z + v.z / vertList.length }),
+      { x: 0, y: 0, z: 0 }
+    );
+
+    return faces.map((face) => {
+      const p0 = verts[face.keys[0]];
+      const p1 = verts[face.keys[1]];
+      const p2 = verts[face.keys[2]];
+      if (!p0 || !p1 || !p2) return true;
+
+      const e1 = { x: p1.x - p0.x, y: p1.y - p0.y, z: p1.z - p0.z };
+      const e2 = { x: p2.x - p0.x, y: p2.y - p0.y, z: p2.z - p0.z };
+      let nx = e1.y * e2.z - e1.z * e2.y;
+      let ny = e1.z * e2.x - e1.x * e2.z;
+      let nz = e1.x * e2.y - e1.y * e2.x;
+      const nLen = Math.hypot(nx, ny, nz);
+      if (nLen < 1e-4) return true;
+
+      const fc = face.keys.reduce(
+        (acc, k) => {
+          const v = verts[k];
+          return { x: acc.x + v.x / face.keys.length, y: acc.y + v.y / face.keys.length, z: acc.z + v.z / face.keys.length };
+        },
+        { x: 0, y: 0, z: 0 }
+      );
+      const toFaceDot = nx * (fc.x - centroid.x) + ny * (fc.y - centroid.y) + nz * (fc.z - centroid.z);
+      if (toFaceDot < 0) {
+        nx = -nx;
+        ny = -ny;
+        nz = -nz;
+      }
+
+      return nx * viewDirWorld.x + ny * viewDirWorld.y + nz * viewDirWorld.z > 0.001;
+    });
+  };
+
+  // Tạo SVG path sạch cho cung tròn phía trước / phía sau (hỗ trợ xoay mọi góc)
+  const buildCircularArcPath = (
+    points: { x: number; y: number; isFront: boolean }[],
+    wantFront: boolean
+  ): string => {
+    const n = points.length;
+    if (n === 0) return '';
+    const matches = points.map((p) => p.isFront === wantFront);
+    if (matches.every(Boolean)) {
+      return `${points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ')} Z`;
+    }
+    if (matches.every((m) => !m)) return '';
+
+    const segments: string[] = [];
+    let startTransition = -1;
+    for (let i = 0; i < n; i++) {
+      if (matches[i] && !matches[(i - 1 + n) % n]) {
+        startTransition = i;
+        break;
+      }
+    }
+    if (startTransition === -1) return '';
+
+    let inRun = false;
+    let currentRun: string[] = [];
+    for (let offset = 0; offset <= n; offset++) {
+      const idx = (startTransition + offset) % n;
+      const prevIdx = (idx - 1 + n) % n;
+      if (matches[idx]) {
+        if (!inRun) {
+          inRun = true;
+          currentRun = [`M ${points[prevIdx].x.toFixed(2)} ${points[prevIdx].y.toFixed(2)}`];
+        }
+        currentRun.push(`L ${points[idx].x.toFixed(2)} ${points[idx].y.toFixed(2)}`);
+      } else if (inRun) {
+        currentRun.push(`L ${points[idx].x.toFixed(2)} ${points[idx].y.toFixed(2)}`);
+        segments.push(currentRun.join(' '));
+        inRun = false;
+        currentRun = [];
+      }
+    }
+    if (inRun && currentRun.length > 0) {
+      segments.push(currentRun.join(' '));
+    }
+    return segments.join(' ');
+  };
+
   // Tự động xoay 360° nếu được kích hoạt
   useEffect(() => {
     if (!isRotatingAuto) return;
@@ -465,6 +633,51 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     }, 40);
     return () => clearInterval(interval);
   }, [isRotatingAuto]);
+
+  // Sinh tên điểm tự động không trùng với các điểm đã có
+  const getNextFreePointName = (
+    existingNames: string[],
+    preferredOrder: readonly string[] = POINT_NAME_PREFERENCES.manual
+  ): string => {
+    const used = new Set(existingNames.map((n) => n.trim().toUpperCase()).filter(Boolean));
+    const fallbackPool = ['M', 'N', 'P', 'Q', 'I', 'J', 'K', 'H', 'E', 'F', 'G', 'R', 'T', 'U', 'V', 'X', 'Y', 'Z'];
+    for (const candidate of [...preferredOrder, ...fallbackPool]) {
+      if (!used.has(candidate.toUpperCase())) {
+        return candidate;
+      }
+    }
+    const basePrefix = preferredOrder[0]?.replace(/[0-9]/g, '') || 'M';
+    let idx = 1;
+    while (used.has(`${basePrefix}${idx}`.toUpperCase())) {
+      idx += 1;
+    }
+    return `${basePrefix}${idx}`;
+  };
+
+  // Tự động điền tên điểm hợp lệ (không trống, không trùng) khi đổi hình, đổi tab, hoặc thêm/xóa điểm
+  useEffect(() => {
+    const usedSet = new Set(allUsedPointTokens);
+    const shouldReplace = (val: string) => {
+      const clean = val.trim().toUpperCase();
+      return !clean || usedSet.has(clean);
+    };
+
+    if (shouldReplace(ratioPointLabel)) {
+      setRatioPointLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio));
+    }
+    if (shouldReplace(centroidLabel)) {
+      setCentroidLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid));
+    }
+    if (shouldReplace(intersectSegLabel)) {
+      setIntersectSegLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments));
+    }
+    if (shouldReplace(intersectLPLabel)) {
+      setIntersectLPLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane));
+    }
+    if (shouldReplace(manualPointName)) {
+      setManualPointName(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual));
+    }
+  }, [allUsedPointTokens, selectedShape, quadBaseType, pointCreationMode]);
 
   // ==========================================
   // 1. MỤC: TẠO ĐIỂM
@@ -485,26 +698,26 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     const newY = Math.round(p1.y + k * (p2.y - p1.y));
     const newZ = Math.round(p1.z + k * (p2.z - p1.z));
 
-    const name = ratioPointLabel.trim() || `M${customPoints.length + 1}`;
+    const name = ratioPointLabel.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio);
+    const dispA = p1.name || ratioPointA;
+    const dispB = p2.name || ratioPointB;
     const newPoint: Point3D = {
       name,
       x: newX,
       y: newY,
       z: newZ,
-      label: `${name} (k=${k} ${ratioPointA}${ratioPointB})`,
+      label: `${name} (k=${k} ${dispA}${dispB})`,
       color: '#10b981',
       isCustom: true,
     };
 
     setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
     setSelectedPointName(name);
-    setStatusMessage(`Đã tạo điểm [${name}] trên cạnh [${ratioPointA}${ratioPointB}] với tỉ lệ k=${k}!`);
+    setStatusMessage(`Đã tạo điểm [${name}] trên cạnh [${dispA}${dispB}] với tỉ lệ k=${k}!`);
     setTimeout(() => setStatusMessage(null), 3500);
 
-    // Chuẩn bị tên cho điểm tiếp theo
-    const nextCandidates = ['N', 'P', 'Q', 'I', 'J', 'K', 'H', 'E', 'F'];
-    const next = nextCandidates.find((c) => !allPointNames.includes(c) && c !== name) || `M${customPoints.length + 2}`;
-    setRatioPointLabel(next);
+    const nextName = getNextFreePointName([...allUsedPointTokens, name], POINT_NAME_PREFERENCES.ratio);
+    setRatioPointLabel(nextName);
   };
 
   // b. Tạo trọng tâm 3 điểm / tam giác
@@ -527,30 +740,27 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     const gY = Math.round((p1.y + p2.y + p3.y) / 3);
     const gZ = Math.round((p1.z + p2.z + p3.z) / 3);
 
-    const name = centroidLabel.trim() || 'G';
+    const name = centroidLabel.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid);
+    const dispA = p1.name || centroidA;
+    const dispB = p2.name || centroidB;
+    const dispC = p3.name || centroidC;
     const newPoint: Point3D = {
       name,
       x: gX,
       y: gY,
       z: gZ,
-      label: `${name} (Trọng tâm ${centroidA}${centroidB}${centroidC})`,
+      label: `${name} (Trọng tâm ${dispA}${dispB}${dispC})`,
       color: '#f59e0b',
       isCustom: true,
     };
 
     setCustomPoints((prev) => [...prev.filter((p) => p.name !== name), newPoint]);
     setSelectedPointName(name);
-    setStatusMessage(`Đã tạo thành công Trọng tâm [${name}] của tam giác [${centroidA}${centroidB}${centroidC}]!`);
+    setStatusMessage(`Đã tạo thành công Trọng tâm [${name}] của tam giác [${dispA}${dispB}${dispC}]!`);
     setTimeout(() => setStatusMessage(null), 3500);
-  };
 
-  // Sinh tên điểm tự do tiếp theo không trùng với các điểm đã có
-  const getNextFreePointName = (existingNames: string[]): string => {
-    const letters = ['M', 'N', 'P', 'Q', 'I', 'J', 'K', 'H', 'E', 'F', 'G', 'T', 'U', 'V', 'X', 'Y', 'Z'];
-    for (const l of letters) {
-      if (!existingNames.includes(l)) return l;
-    }
-    return `M${existingNames.length + 1}`;
+    const nextName = getNextFreePointName([...allUsedPointTokens, name], POINT_NAME_PREFERENCES.centroid);
+    setCentroidLabel(nextName);
   };
 
   // Làm tròn tọa độ 1 chữ số thập phân (tránh -0)
@@ -793,7 +1003,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       return;
     }
 
-    const name = intersectSegLabel.trim() || getNextFreePointName(allPointNames);
+    const name =
+      intersectSegLabel.trim() ||
+      getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments);
     const n1 = allPointsMap[seg1PointA]?.name || seg1PointA;
     const n2 = allPointsMap[seg1PointB]?.name || seg1PointB;
     const n3 = allPointsMap[seg2PointA]?.name || seg2PointA;
@@ -865,7 +1077,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     setStatusMessage(`Đã tạo giao điểm [${name}] = ${n1}${n2} ∩ ${n3}${n4} tại (${res.point.x}, ${res.point.y}, ${res.point.z})!`);
     setTimeout(() => setStatusMessage(null), 4000);
 
-    const nextName = getNextFreePointName([...allPointNames, name]);
+    const nextName = getNextFreePointName(
+      [...allUsedPointTokens, name],
+      POINT_NAME_PREFERENCES.intersect_segments
+    );
     setIntersectSegLabel(nextName);
   };
 
@@ -886,7 +1101,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       return;
     }
 
-    const name = intersectLPLabel.trim() || getNextFreePointName(allPointNames);
+    const name =
+      intersectLPLabel.trim() ||
+      getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane);
     const lA = allPointsMap[lpLinePointA]?.name || lpLinePointA;
     const lB = allPointsMap[lpLinePointB]?.name || lpLinePointB;
     const p1N = allPointsMap[lpPlanePoint1]?.name || lpPlanePoint1;
@@ -928,7 +1145,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     );
     setTimeout(() => setStatusMessage(null), 4000);
 
-    const nextName = getNextFreePointName([...allPointNames, name]);
+    const nextName = getNextFreePointName(
+      [...allUsedPointTokens, name],
+      POINT_NAME_PREFERENCES.intersect_line_plane
+    );
     setIntersectLPLabel(nextName);
   };
 
@@ -1206,7 +1426,8 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     for (const face of faces) {
       for (const tri of face.tris) {
         const hit = intersectRayTriangle(P0, d, tri[0], tri[1], tri[2]);
-        if (hit && (!bestFaceHit || hit.t < bestFaceHit.t)) {
+        // Do d = +V_camera (hướng về mắt người xem), t càng lớn nghĩa là mặt nằm ở phía trước gần camera nhất
+        if (hit && (!bestFaceHit || hit.t > bestFaceHit.t)) {
           bestFaceHit = {
             point: hit.point,
             surfaceName: face.name,
@@ -1251,7 +1472,8 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
 
   // c. Tạo điểm mới theo tọa độ tự do (hoặc dùng con trỏ ấn vào hình)
   const handleCreateManualPoint = () => {
-    const name = manualPointName.trim() || getNextFreePointName(allPointNames);
+    const name =
+      manualPointName.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual);
     const newPoint: Point3D = {
       name,
       x: manualPointX,
@@ -1267,7 +1489,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
     setStatusMessage(`Đã tạo điểm mới [${name}] tại tọa độ (${manualPointX}, ${manualPointY}, ${manualPointZ})!`);
     setTimeout(() => setStatusMessage(null), 3500);
 
-    const nextName = getNextFreePointName([...allPointNames, name]);
+    const nextName = getNextFreePointName([...allUsedPointTokens, name], POINT_NAME_PREFERENCES.manual);
     setManualPointName(nextName);
   };
 
@@ -1275,25 +1497,21 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
   // 2. MỤC: TẠO ĐƯỜNG (Đoạn thẳng, Đường thẳng, Tia, Đường vuông góc)
   // ==========================================
   const handleCreateLine = () => {
-    if (!linePointA || !linePointB || linePointA === linePointB) {
-      setStatusMessage('Vui lòng chọn 2 điểm khác nhau để tạo đường!');
-      return;
-    }
-
     if (lineCreationMode === 'perpendicular') {
-      // Dựng đường vuông góc từ A hạ xuống mặt đáy hoặc tới cạnh
       const p1 = allPointsMap[linePointA];
-      const p2 = allPointsMap[linePointB];
-      if (!p1 || !p2) return;
+      if (!p1) {
+        setStatusMessage('Vui lòng chọn điểm cần hạ đường vuông góc xuống đáy!');
+        return;
+      }
 
-      // Chân đường vuông góc trên mặt phẳng đáy y = 0
-      const footName = `H_${linePointA}`;
+      const dispA = p1.name || linePointA;
+      const footName = getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.perpendicular);
       const footPoint: Point3D = {
         name: footName,
         x: p1.x,
         y: 0,
         z: p1.z,
-        label: `${footName} (Hình chiếu)`,
+        label: `${footName} (Hình chiếu ${dispA})`,
         color: '#dc2626',
         isCustom: true,
       };
@@ -1307,15 +1525,23 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
         p2: footName,
         style: 'dashed',
         color: '#dc2626',
-        label: `${linePointA}${footName} ⊥ Đáy`,
+        label: `${dispA}${footName} ⊥ Đáy`,
         footPointName: footName,
       };
 
       setCustomLines((prev) => [...prev, newLine]);
-      setStatusMessage(`Đã hạ đường cao vuông góc ${linePointA}${footName} ⊥ đáy!`);
+      setStatusMessage(`Đã hạ đường cao vuông góc ${dispA}${footName} ⊥ đáy!`);
       setTimeout(() => setStatusMessage(null), 3500);
       return;
     }
+
+    if (!linePointA || !linePointB || linePointA === linePointB) {
+      setStatusMessage('Vui lòng chọn 2 điểm khác nhau để tạo đường!');
+      return;
+    }
+
+    const dispA = allPointsMap[linePointA]?.name || linePointA;
+    const dispB = allPointsMap[linePointB]?.name || linePointB;
 
     const newLine: Line3D = {
       id: 'line_' + Date.now(),
@@ -1324,13 +1550,13 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       p2: linePointB,
       style: lineStyle,
       color: lineColor,
-      label: `${linePointA}${linePointB}`,
+      label: `${dispA}${dispB}`,
     };
 
     setCustomLines((prev) => [...prev, newLine]);
     const typeLabel =
       lineCreationMode === 'segment' ? 'Đoạn thẳng' : lineCreationMode === 'line' ? 'Đường thẳng' : 'Tia';
-    setStatusMessage(`Đã vẽ ${typeLabel} [${linePointA} - ${linePointB}] thành công!`);
+    setStatusMessage(`Đã vẽ ${typeLabel} [${dispA} - ${dispB}] thành công!`);
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
@@ -1348,7 +1574,8 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       return;
     }
 
-    const planeName = `(${pts.join('')})`;
+    const dispPts = pts.map((k) => allPointsMap[k]?.name || k);
+    const planeName = `(${dispPts.join('')})`;
     const newPlane: Plane3D = {
       id: 'plane_' + Date.now(),
       name: planeName,
@@ -1486,10 +1713,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
 
       const img = new Image();
       img.onload = () => {
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const pngUrl = canvas.toDataURL('image/png');
         if (onExportImage) {
-          onExportImage(pngUrl, getShapeTitle(selectedShape));
+          onExportImage(pngUrl, getShapeTitle(selectedShape, quadBaseType));
         }
         setExportNotice(true);
         setTimeout(() => setExportNotice(false), 3000);
@@ -1524,7 +1751,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
               }`}
             >
               <span className="block font-extrabold text-xs">Chóp Tứ Giác</span>
-              <span className="text-[10px] text-slate-500 font-normal">S.ABCD (Đáy hình bình hành)</span>
+              <span className="text-[10px] text-slate-500 font-normal">
+                S.ABCD ({QUAD_BASE_META[quadBaseType].label})
+              </span>
             </button>
 
             <button
@@ -1595,6 +1824,33 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
               <span className="text-[10px] text-slate-500 font-normal">2 đáy elip song song</span>
             </button>
           </div>
+
+          {selectedShape === 'pyramid_quad' && (
+            <div className="pt-2 border-t border-slate-100 space-y-1.5">
+              <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-700">
+                <span>Chọn Dạng Đáy Chóp S.ABCD:</span>
+                <span className="text-[10px] font-semibold text-blue-700">
+                  {QUAD_BASE_META[quadBaseType].shortDesc}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['parallelogram', 'trapezoid', 'quadrilateral'] as const).map((bType) => (
+                  <button
+                    key={bType}
+                    type="button"
+                    onClick={() => handleSelectQuadBase(bType)}
+                    className={`py-1.5 px-2 rounded-xl border text-[10.5px] font-bold transition-all cursor-pointer ${
+                      quadBaseType === bType
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {QUAD_BASE_META[bType].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 2. THANH ĐIỀU HƯỚNG CÁC MỤC CHỨC NĂNG (TẠO ĐIỂM / TẠO ĐƯỜNG / TẠO MẶT / DI CHUYỂN) */}
@@ -1732,7 +1988,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       >
                         {allPointNames.map((n) => (
                           <option key={n} value={n}>
-                            {n}
+                            {allPointsMap[n]?.name || n}
                           </option>
                         ))}
                       </select>
@@ -1747,7 +2003,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       >
                         {allPointNames.map((n) => (
                           <option key={n} value={n}>
-                            {n}
+                            {allPointsMap[n]?.name || n}
                           </option>
                         ))}
                       </select>
@@ -1802,6 +2058,12 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={ratioPointLabel}
                       onChange={(e) => setRatioPointLabel(e.target.value.toUpperCase())}
+                      onBlur={(e) => {
+                        if (!e.target.value.trim()) {
+                          setRatioPointLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio));
+                        }
+                      }}
+                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.ratio)}
                       maxLength={4}
                       className="w-16 h-8 px-2 rounded-xl border border-emerald-300 font-bold text-center text-xs bg-white text-slate-900"
                     />
@@ -1831,7 +2093,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       {allPointNames.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {allPointsMap[n]?.name || n}
                         </option>
                       ))}
                     </select>
@@ -1843,7 +2105,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       {allPointNames.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {allPointsMap[n]?.name || n}
                         </option>
                       ))}
                     </select>
@@ -1855,7 +2117,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       {allPointNames.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {allPointsMap[n]?.name || n}
                         </option>
                       ))}
                     </select>
@@ -1867,6 +2129,12 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={centroidLabel}
                       onChange={(e) => setCentroidLabel(e.target.value.toUpperCase())}
+                      onBlur={(e) => {
+                        if (!e.target.value.trim()) {
+                          setCentroidLabel(getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid));
+                        }
+                      }}
+                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.centroid)}
                       maxLength={4}
                       className="w-16 h-8 px-2 rounded-xl border border-amber-300 font-bold text-center text-xs bg-white text-slate-900"
                     />
@@ -2031,6 +2299,14 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={intersectSegLabel}
                       onChange={(e) => setIntersectSegLabel(e.target.value.toUpperCase())}
+                      onBlur={(e) => {
+                        if (!e.target.value.trim()) {
+                          setIntersectSegLabel(
+                            getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments)
+                          );
+                        }
+                      }}
+                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments)}
                       maxLength={4}
                       className="w-14 h-8 px-2 rounded-xl border border-violet-300 font-bold text-center text-xs bg-white text-slate-900"
                     />
@@ -2215,6 +2491,14 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="text"
                       value={intersectLPLabel}
                       onChange={(e) => setIntersectLPLabel(e.target.value.toUpperCase())}
+                      onBlur={(e) => {
+                        if (!e.target.value.trim()) {
+                          setIntersectLPLabel(
+                            getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane)
+                          );
+                        }
+                      }}
+                      placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane)}
                       maxLength={4}
                       className="w-14 h-8 px-2 rounded-xl border border-rose-300 font-bold text-center text-xs bg-white text-slate-900"
                     />
@@ -2281,6 +2565,14 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                         type="text"
                         value={manualPointName}
                         onChange={(e) => setManualPointName(e.target.value.toUpperCase())}
+                        onBlur={(e) => {
+                          if (!e.target.value.trim()) {
+                            setManualPointName(
+                              getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)
+                            );
+                          }
+                        }}
+                        placeholder={getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)}
                         maxLength={4}
                         className="w-14 h-8 px-2 rounded-xl border border-emerald-300 font-bold text-center text-xs bg-white text-slate-900"
                         title="Tên điểm tiếp theo (sẽ tự động tăng M, N, P, Q... sau mỗi lần ấn)"
@@ -2301,7 +2593,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       type="button"
                       onClick={() => {
                         if (hover3DPoint) {
-                          const name = manualPointName.trim() || getNextFreePointName(allPointNames);
+                          const name =
+                            manualPointName.trim() ||
+                            getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual);
                           const newPoint: Point3D = {
                             name,
                             x: hover3DPoint.x,
@@ -2315,7 +2609,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                           setSelectedPointName(name);
                           setStatusMessage(`Đã tạo điểm tự do [${name}] trên ${hover3DPoint.surfaceName} tại (${hover3DPoint.x}, ${hover3DPoint.y}, ${hover3DPoint.z})!`);
                           setTimeout(() => setStatusMessage(null), 3500);
-                          const nextName = getNextFreePointName([...allPointNames, name]);
+                          const nextName = getNextFreePointName(
+                            [...allUsedPointTokens, name],
+                            POINT_NAME_PREFERENCES.manual
+                          );
                           setManualPointName(nextName);
                         } else {
                           handleCreateManualPoint();
@@ -2451,27 +2748,36 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       {allPointNames.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {allPointsMap[n]?.name || n}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                      {lineCreationMode === 'perpendicular' ? 'Điểm Tham Chiếu:' : 'Điểm 2:'}
-                    </label>
-                    <select
-                      value={linePointB}
-                      onChange={(e) => setLinePointB(e.target.value)}
-                      className="w-full h-8 px-2 rounded-xl border border-purple-300 font-bold text-xs bg-white text-slate-800"
-                    >
-                      {allPointNames.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
+                    {lineCreationMode === 'perpendicular' ? (
+                      <>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Chiếu Vuông Góc Xuống:</label>
+                        <div className="w-full h-8 px-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 font-bold text-[11px] flex items-center">
+                          Mặt phẳng đáy (y = 0)
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Điểm 2:</label>
+                        <select
+                          value={linePointB}
+                          onChange={(e) => setLinePointB(e.target.value)}
+                          className="w-full h-8 px-2 rounded-xl border border-purple-300 font-bold text-xs bg-white text-slate-800"
+                        >
+                          {allPointNames.map((n) => (
+                            <option key={n} value={n}>
+                              {allPointsMap[n]?.name || n}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -2547,7 +2853,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       {allPointNames.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {allPointsMap[n]?.name || n}
                         </option>
                       ))}
                     </select>
@@ -2562,7 +2868,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       {allPointNames.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {allPointsMap[n]?.name || n}
                         </option>
                       ))}
                     </select>
@@ -2577,7 +2883,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     >
                       {allPointNames.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {allPointsMap[n]?.name || n}
                         </option>
                       ))}
                     </select>
@@ -2656,7 +2962,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                   <option value="">-- Nhấp chọn 1 điểm trên hình --</option>
                   {allPointNames.map((n) => (
                     <option key={n} value={n}>
-                      Điểm {n} ({allPointsMap[n]?.x}, {allPointsMap[n]?.y}, {allPointsMap[n]?.z})
+                      Điểm {allPointsMap[n]?.name || n} ({allPointsMap[n]?.x}, {allPointsMap[n]?.y}, {allPointsMap[n]?.z})
                     </option>
                   ))}
                 </select>
@@ -2664,11 +2970,16 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                 {selectedPointName && allPointsMap[selectedPointName] && (
                   <div className="space-y-2.5 pt-2 border-t border-slate-200">
                     <div className="flex items-center justify-between text-xs font-bold text-blue-900">
-                      <span>Điểm: [{selectedPointName}]</span>
+                      <span>Điểm: [{allPointsMap[selectedPointName]?.name || selectedPointName}]</span>
                       <button
                         type="button"
                         onClick={() => {
-                          const def = initDefaultVertices(selectedShape)[selectedPointName];
+                          const def = initDefaultVertices(
+                            selectedShape,
+                            heightParam,
+                            radiusParam,
+                            quadBaseType
+                          )[selectedPointName];
                           if (def) {
                             setVertexCoords((prev) => ({ ...prev, [selectedPointName]: def }));
                           }
@@ -2850,7 +3161,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
           {/* Chiều cao h */}
           <div>
             <div className="flex justify-between text-[10px] font-bold text-slate-600 mb-0.5">
-              <span>Chiều cao hình $h$:</span>
+              <span>Chiều cao hình h:</span>
               <strong>{heightParam}</strong>
             </div>
             <input
@@ -2938,7 +3249,7 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
       {/* ========================================================= */}
       <div className="lg:col-span-8 bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col items-center justify-center relative min-h-[580px]">
         {/* Floating Controls */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-100/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-200 z-20 text-xs shadow-xs">
+        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-100/95 p-1.5 rounded-2xl border border-slate-200 z-20 text-xs shadow-xs">
           <button
             onClick={() => setZoomLevel((prev) => Math.min(prev + 0.15, 2.2))}
             title="Phóng to"
@@ -2978,12 +3289,15 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
           <div className="w-full max-w-[500px] mb-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] font-bold flex items-center justify-between shadow-2xs animate-in fade-in">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-              <span>Chế độ tạo điểm: Nhấp vào hình để đặt [{manualPointName}]</span>
+              <span>
+                Chế độ tạo điểm: Nhấp vào hình để đặt [
+                {manualPointName.trim() || getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)}]
+              </span>
             </span>
           </div>
         ) : selectedPointName ? (
           <div className="w-full max-w-[500px] mb-2 px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold flex items-center justify-end">
-            <span>Đang chọn điểm [{selectedPointName}]</span>
+            <span>Đang chọn điểm [{allPointsMap[selectedPointName]?.name || selectedPointName}]</span>
           </div>
         ) : null}
 
@@ -3027,7 +3341,9 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     const svgY = ((upEvent.clientY - rect.top) / rect.height) * 400;
                     if (svgX >= 0 && svgX <= 500 && svgY >= 0 && svgY <= 400) {
                       const calculated = calculate3DPointFromScreen(svgX, svgY);
-                      const name = manualPointName.trim() || getNextFreePointName(allPointNames);
+                      const name =
+                        manualPointName.trim() ||
+                        getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual);
                       const newPoint: Point3D = {
                         name,
                         x: calculated.x,
@@ -3042,7 +3358,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                       setStatusMessage(`Đã tạo điểm tự do [${name}] trực tiếp trên ${calculated.surfaceName} tại tọa độ (${calculated.x}, ${calculated.y}, ${calculated.z})!`);
                       setTimeout(() => setStatusMessage(null), 3500);
 
-                      const nextName = getNextFreePointName([...allPointNames, name]);
+                      const nextName = getNextFreePointName(
+                        [...allUsedPointTokens, name],
+                        POINT_NAME_PREFERENCES.manual
+                      );
                       setManualPointName(nextName);
                     }
                   }
@@ -3102,83 +3421,141 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
             })()}
 
             {/* ========================================================= */}
-            {/* 1. HÌNH CHÓP TỨ GIÁC S.ABCD (SẠCH, CHỈ CÓ HÌNH + ĐỈNH)    */}
+            {/* 1. HÌNH CHÓP TỨ GIÁC S.ABCD (ĐÁY HBH / HÌNH THANG / TỨ GIÁC) */}
             {/* ========================================================= */}
             {selectedShape === 'pyramid_quad' && (() => {
-              const S_pt = vertexCoords.S || { x: 0, y: 140, z: 0 };
+              const S_pt = vertexCoords.S || { x: 0, y: heightParam, z: 0 };
               const A_pt = vertexCoords.A || { x: -90, y: 0, z: 70 };
               const B_pt = vertexCoords.B || { x: 90, y: 0, z: 70 };
               const C_pt = vertexCoords.C || { x: 110, y: 0, z: -70 };
               const D_pt = vertexCoords.D || { x: -70, y: 0, z: -70 };
 
-              const S = project3D(S_pt.x, S_pt.y, S_pt.z);
-              const A = project3D(A_pt.x, A_pt.y, A_pt.z);
-              const B = project3D(B_pt.x, B_pt.y, B_pt.z);
-              const C = project3D(C_pt.x, C_pt.y, C_pt.z);
-              const D = project3D(D_pt.x, D_pt.y, D_pt.z);
+              const verts3D = { S: S_pt, A: A_pt, B: B_pt, C: C_pt, D: D_pt };
+              const faces = [
+                { keys: ['S', 'A', 'B'] },
+                { keys: ['S', 'B', 'C'] },
+                { keys: ['S', 'C', 'D'] },
+                { keys: ['S', 'D', 'A'] },
+                { keys: ['A', 'B', 'C', 'D'] },
+              ];
+              const faceFront = computePolyhedronVisibility(verts3D, faces);
+              const edges: { a: keyof typeof verts3D; b: keyof typeof verts3D; f1: number; f2: number }[] = [
+                { a: 'A', b: 'B', f1: 0, f2: 4 },
+                { a: 'B', b: 'C', f1: 1, f2: 4 },
+                { a: 'C', b: 'D', f1: 2, f2: 4 },
+                { a: 'D', b: 'A', f1: 3, f2: 4 },
+                { a: 'S', b: 'A', f1: 0, f2: 3 },
+                { a: 'S', b: 'B', f1: 0, f2: 1 },
+                { a: 'S', b: 'C', f1: 1, f2: 2 },
+                { a: 'S', b: 'D', f1: 2, f2: 3 },
+              ];
+
+              const proj = {
+                S: project3D(S_pt.x, S_pt.y, S_pt.z),
+                A: project3D(A_pt.x, A_pt.y, A_pt.z),
+                B: project3D(B_pt.x, B_pt.y, B_pt.z),
+                C: project3D(C_pt.x, C_pt.y, C_pt.z),
+                D: project3D(D_pt.x, D_pt.y, D_pt.z),
+              };
+              const center2D = {
+                x: (proj.S.x + proj.A.x + proj.B.x + proj.C.x + proj.D.x) / 5,
+                y: (proj.S.y + proj.A.y + proj.B.y + proj.C.y + proj.D.y) / 5,
+              };
+
+              const hiddenEdges = edges.filter((e) => !(faceFront[e.f1] || faceFront[e.f2]));
+              const visibleEdges = edges.filter((e) => faceFront[e.f1] || faceFront[e.f2]);
 
               return (
                 <g className="font-bold text-xs select-none">
                   {/* Mặt đáy tô bóng nhẹ */}
                   {showShading && (
                     <polygon
-                      points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y} ${D.x},${D.y}`}
+                      points={`${proj.A.x},${proj.A.y} ${proj.B.x},${proj.B.y} ${proj.C.x},${proj.C.y} ${proj.D.x},${proj.D.y}`}
                       fill="url(#pyramidFaceGradient)"
                     />
                   )}
 
-                  {/* Mặt bên SAB tô bóng */}
-                  {showShading && (
-                    <polygon
-                      points={`${S.x},${S.y} ${A.x},${A.y} ${B.x},${B.y}`}
-                      fill="rgba(59, 130, 246, 0.06)"
-                    />
-                  )}
+                  {/* Các mặt bên nhìn thấy tô bóng nhẹ */}
+                  {showShading &&
+                    [0, 1, 2, 3].map((fIdx) =>
+                      faceFront[fIdx] ? (
+                        <polygon
+                          key={fIdx}
+                          points={faces[fIdx].keys
+                            .map((k) => {
+                              const p = proj[k as keyof typeof proj];
+                              return `${p.x},${p.y}`;
+                            })
+                            .join(' ')}
+                          fill="rgba(59, 130, 246, 0.05)"
+                        />
+                      ) : null
+                    )}
 
-                  {/* Cạnh đáy thấy được */}
-                  <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B.x} y1={B.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
+                  {/* Cạnh khuất nét đứt động theo góc xoay */}
+                  {showHiddenLines &&
+                    hiddenEdges.map((e) => {
+                      const p1 = proj[e.a];
+                      const p2 = proj[e.b];
+                      return (
+                        <line
+                          key={`${e.a}-${e.b}`}
+                          x1={p1.x}
+                          y1={p1.y}
+                          x2={p2.x}
+                          y2={p2.y}
+                          stroke="#64748b"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 3"
+                        />
+                      );
+                    })}
 
-                  {/* Cạnh đáy khuất nét đứt */}
-                  {showHiddenLines && (
-                    <>
-                      <line x1={A.x} y1={A.y} x2={D.x} y2={D.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
-                      <line x1={D.x} y1={D.y} x2={C.x} y2={C.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
-                      <line x1={S.x} y1={S.y} x2={D.x} y2={D.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
-                    </>
-                  )}
-
-                  {/* Cạnh bên thấy được */}
-                  <line x1={S.x} y1={S.y} x2={A.x} y2={A.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={S.x} y1={S.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={S.x} y1={S.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
-
-                  {/* Nhãn và đỉnh gốc: DUY NHẤT S, A, B, C, D */}
-                  {[
-                    { pt: S, name: 'S', dx: 0, dy: -8 },
-                    { pt: A, name: 'A', dx: -12, dy: 14 },
-                    { pt: B, name: 'B', dx: 10, dy: 14 },
-                    { pt: C, name: 'C', dx: 12, dy: -2 },
-                    { pt: D, name: 'D', dx: -14, dy: -4 },
-                  ].map((item) => (
-                    <g
-                      key={item.name}
-                      onMouseDown={(e) => handlePointMouseDown(item.name, e)}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={item.pt.x}
-                        cy={item.pt.y}
-                        r={selectedPointName === item.name ? 5 : 3.5}
-                        fill={selectedPointName === item.name ? '#f59e0b' : '#2563eb'}
-                        stroke="#ffffff"
-                        strokeWidth="1.5"
+                  {/* Cạnh thấy được nét liền */}
+                  {visibleEdges.map((e) => {
+                    const p1 = proj[e.a];
+                    const p2 = proj[e.b];
+                    return (
+                      <line
+                        key={`${e.a}-${e.b}`}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke="#1e293b"
+                        strokeWidth="1.8"
                       />
-                      <text x={item.pt.x + item.dx} y={item.pt.y + item.dy} fill="#0f172a" fontSize="11">
-                        {item.name}
-                      </text>
-                    </g>
-                  ))}
+                    );
+                  })}
+
+                  {/* Nhãn và đỉnh gốc: S, A, B, C, D */}
+                  {(['S', 'A', 'B', 'C', 'D'] as const).map((keyName) => {
+                    const pt = proj[keyName];
+                    const vx = pt.x - center2D.x;
+                    const vy = pt.y - center2D.y;
+                    const len = Math.hypot(vx, vy) || 1;
+                    const dx = (vx / len) * 14;
+                    const dy = (vy / len) * 14 + 3;
+                    return (
+                      <g
+                        key={keyName}
+                        onMouseDown={(e) => handlePointMouseDown(keyName, e)}
+                        className="cursor-pointer"
+                      >
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={selectedPointName === keyName ? 5 : 3.5}
+                          fill={selectedPointName === keyName ? '#f59e0b' : '#2563eb'}
+                          stroke="#ffffff"
+                          strokeWidth="1.5"
+                        />
+                        <text x={pt.x + dx} y={pt.y + dy} textAnchor="middle" fill="#0f172a" fontSize="11">
+                          {keyName}
+                        </text>
+                      </g>
+                    );
+                  })}
                 </g>
               );
             })()}
@@ -3187,60 +3564,112 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
             {/* 2. HÌNH CHÓP TAM GIÁC S.ABC (SẠCH, CHỈ CÓ S, A, B, C)     */}
             {/* ========================================================= */}
             {selectedShape === 'pyramid_tri' && (() => {
-              const S_pt = vertexCoords.S || { x: 0, y: 140, z: 0 };
+              const S_pt = vertexCoords.S || { x: 0, y: heightParam, z: 0 };
               const A_pt = vertexCoords.A || { x: -90, y: 0, z: 70 };
               const B_pt = vertexCoords.B || { x: 90, y: 0, z: 70 };
               const C_pt = vertexCoords.C || { x: 20, y: 0, z: -80 };
 
-              const S = project3D(S_pt.x, S_pt.y, S_pt.z);
-              const A = project3D(A_pt.x, A_pt.y, A_pt.z);
-              const B = project3D(B_pt.x, B_pt.y, B_pt.z);
-              const C = project3D(C_pt.x, C_pt.y, C_pt.z);
+              const verts3D = { S: S_pt, A: A_pt, B: B_pt, C: C_pt };
+              const faces = [
+                { keys: ['S', 'A', 'B'] },
+                { keys: ['S', 'B', 'C'] },
+                { keys: ['S', 'C', 'A'] },
+                { keys: ['A', 'B', 'C'] },
+              ];
+              const faceFront = computePolyhedronVisibility(verts3D, faces);
+              const edges: { a: keyof typeof verts3D; b: keyof typeof verts3D; f1: number; f2: number }[] = [
+                { a: 'A', b: 'B', f1: 0, f2: 3 },
+                { a: 'B', b: 'C', f1: 1, f2: 3 },
+                { a: 'C', b: 'A', f1: 2, f2: 3 },
+                { a: 'S', b: 'A', f1: 0, f2: 2 },
+                { a: 'S', b: 'B', f1: 0, f2: 1 },
+                { a: 'S', b: 'C', f1: 1, f2: 2 },
+              ];
+
+              const proj = {
+                S: project3D(S_pt.x, S_pt.y, S_pt.z),
+                A: project3D(A_pt.x, A_pt.y, A_pt.z),
+                B: project3D(B_pt.x, B_pt.y, B_pt.z),
+                C: project3D(C_pt.x, C_pt.y, C_pt.z),
+              };
+              const center2D = {
+                x: (proj.S.x + proj.A.x + proj.B.x + proj.C.x) / 4,
+                y: (proj.S.y + proj.A.y + proj.B.y + proj.C.y) / 4,
+              };
+
+              const hiddenEdges = edges.filter((e) => !(faceFront[e.f1] || faceFront[e.f2]));
+              const visibleEdges = edges.filter((e) => faceFront[e.f1] || faceFront[e.f2]);
 
               return (
                 <g className="font-bold text-xs select-none">
                   {showShading && (
                     <polygon
-                      points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y}`}
+                      points={`${proj.A.x},${proj.A.y} ${proj.B.x},${proj.B.y} ${proj.C.x},${proj.C.y}`}
                       fill="url(#pyramidFaceGradient)"
                     />
                   )}
 
-                  <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B.x} y1={B.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
+                  {showHiddenLines &&
+                    hiddenEdges.map((e) => {
+                      const p1 = proj[e.a];
+                      const p2 = proj[e.b];
+                      return (
+                        <line
+                          key={`${e.a}-${e.b}`}
+                          x1={p1.x}
+                          y1={p1.y}
+                          x2={p2.x}
+                          y2={p2.y}
+                          stroke="#64748b"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 3"
+                        />
+                      );
+                    })}
 
-                  {showHiddenLines && (
-                    <line x1={A.x} y1={A.y} x2={C.x} y2={C.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
-                  )}
-
-                  <line x1={S.x} y1={S.y} x2={A.x} y2={A.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={S.x} y1={S.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={S.x} y1={S.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
-
-                  {[
-                    { pt: S, name: 'S', dx: 0, dy: -8 },
-                    { pt: A, name: 'A', dx: -12, dy: 14 },
-                    { pt: B, name: 'B', dx: 10, dy: 14 },
-                    { pt: C, name: 'C', dx: 10, dy: -4 },
-                  ].map((item) => (
-                    <g
-                      key={item.name}
-                      onMouseDown={(e) => handlePointMouseDown(item.name, e)}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={item.pt.x}
-                        cy={item.pt.y}
-                        r={selectedPointName === item.name ? 5 : 3.5}
-                        fill={selectedPointName === item.name ? '#f59e0b' : '#6366f1'}
-                        stroke="#ffffff"
-                        strokeWidth="1.5"
+                  {visibleEdges.map((e) => {
+                    const p1 = proj[e.a];
+                    const p2 = proj[e.b];
+                    return (
+                      <line
+                        key={`${e.a}-${e.b}`}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke="#1e293b"
+                        strokeWidth="1.8"
                       />
-                      <text x={item.pt.x + item.dx} y={item.pt.y + item.dy} fill="#0f172a" fontSize="11">
-                        {item.name}
-                      </text>
-                    </g>
-                  ))}
+                    );
+                  })}
+
+                  {(['S', 'A', 'B', 'C'] as const).map((keyName) => {
+                    const pt = proj[keyName];
+                    const vx = pt.x - center2D.x;
+                    const vy = pt.y - center2D.y;
+                    const len = Math.hypot(vx, vy) || 1;
+                    const dx = (vx / len) * 14;
+                    const dy = (vy / len) * 14 + 3;
+                    return (
+                      <g
+                        key={keyName}
+                        onMouseDown={(e) => handlePointMouseDown(keyName, e)}
+                        className="cursor-pointer"
+                      >
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={selectedPointName === keyName ? 5 : 3.5}
+                          fill={selectedPointName === keyName ? '#f59e0b' : '#6366f1'}
+                          stroke="#ffffff"
+                          strokeWidth="1.5"
+                        />
+                        <text x={pt.x + dx} y={pt.y + dy} textAnchor="middle" fill="#0f172a" fontSize="11">
+                          {keyName}
+                        </text>
+                      </g>
+                    );
+                  })}
                 </g>
               );
             })()}
@@ -3253,29 +3682,28 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
               const r = radiusParam;
               const S_pt = vertexCoords.S || { x: 0, y: h, z: 0 };
               const O_pt = vertexCoords.O || { x: 0, y: 0, z: 0 };
+              const A_pt = vertexCoords.A || { x: -r, y: 0, z: 0 };
+              const B_pt = vertexCoords.B || { x: r, y: 0, z: 0 };
 
               const S = project3D(S_pt.x, S_pt.y, S_pt.z);
               const O = project3D(O_pt.x, O_pt.y, O_pt.z);
+              const A_end = project3D(A_pt.x, A_pt.y, A_pt.z);
+              const B_end = project3D(B_pt.x, B_pt.y, B_pt.z);
 
-              // Lấy 64 điểm trên đường tròn đáy trong không gian 3D
               const numSamples = 64;
-              const circlePoints3D: { x: number; y: number; z: number }[] = [];
-              for (let i = 0; i < numSamples; i++) {
+              const radY = (rotY * Math.PI) / 180;
+              const projectedCircle = Array.from({ length: numSamples }, (_, i) => {
                 const angle = (2 * Math.PI * i) / numSamples;
-                circlePoints3D.push({
+                const orig = {
                   x: O_pt.x + r * Math.cos(angle),
                   y: O_pt.y,
                   z: O_pt.z + r * Math.sin(angle),
-                });
-              }
+                };
+                const p2d = project3D(orig.x, orig.y, orig.z);
+                const z1 = -(orig.x - O_pt.x) * Math.sin(radY) + (orig.z - O_pt.z) * Math.cos(radY);
+                return { ...p2d, orig, isFront: z1 >= 0 };
+              });
 
-              // Chiếu 3D sang 2D
-              const projectedCircle = circlePoints3D.map((p) => ({
-                ...project3D(p.x, p.y, p.z),
-                orig: p,
-              }));
-
-              // Tìm 2 điểm tiếp tuyến biên (silhouette generator lines)
               let minAngle = Infinity;
               let maxAngle = -Infinity;
               let leftPoint = projectedCircle[0];
@@ -3293,41 +3721,22 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                 }
               });
 
-              // Phân chia cung nhìn thấy (trước) và cung khuất (sau)
-              // Điểm có z1 < 0 sau khi xoay theo trục camera là cung sau
-              const radY = (rotY * Math.PI) / 180;
-              const isFrontPoint = (p: { orig: { x: number; z: number } }) => {
-                const z1 = -p.orig.x * Math.sin(radY) + p.orig.z * Math.cos(radY);
-                return z1 >= 0;
-              };
-
-              // Tạo path cho đáy hình nón
-              const frontPoints = projectedCircle.filter(isFrontPoint);
-              const backPoints = projectedCircle.filter((p) => !isFrontPoint(p));
-
-              // Điểm A bán kính đáy
-              const A_proj = project3D(O_pt.x + r, O_pt.y, O_pt.z);
+              const frontPath = buildCircularArcPath(projectedCircle, true);
+              const backPath = buildCircularArcPath(projectedCircle, false);
+              const frontPoints = projectedCircle.filter((p) => p.isFront);
 
               return (
                 <g className="font-bold text-xs select-none">
-                  {/* Tô bóng bề mặt nón bằng gradient */}
-                  {showShading && (
+                  {showShading && frontPoints.length > 0 && (
                     <polygon
                       points={`${S.x},${S.y} ${leftPoint.x},${leftPoint.y} ${frontPoints.map((p) => `${p.x},${p.y}`).join(' ')} ${rightPoint.x},${rightPoint.y}`}
                       fill="url(#coneLateralGradient)"
                     />
                   )}
 
-                  {/* Cung đáy phía sau (khuất): Nét đứt chuẩn SGK */}
-                  {showHiddenLines && (
+                  {showHiddenLines && backPath && (
                     <path
-                      d={projectedCircle
-                        .map((p, idx) => {
-                          const isBack = !isFrontPoint(p);
-                          return isBack ? `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}` : '';
-                        })
-                        .filter(Boolean)
-                        .join(' ')}
+                      d={backPath}
                       fill="none"
                       stroke="#64748b"
                       strokeWidth="1.5"
@@ -3335,32 +3744,22 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     />
                   )}
 
-                  {/* Cung đáy phía trước (thấy được): Nét liền đậm sắc nét */}
-                  <path
-                    d={projectedCircle
-                      .map((p, idx) => {
-                        const isFront = isFrontPoint(p);
-                        return isFront ? `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}` : '';
-                      })
-                      .filter(Boolean)
-                      .join(' ')}
-                    fill="none"
-                    stroke="#1e293b"
-                    strokeWidth="2"
-                  />
+                  {frontPath && (
+                    <path
+                      d={frontPath}
+                      fill="none"
+                      stroke="#1e293b"
+                      strokeWidth="2"
+                    />
+                  )}
 
-                  {/* Hai đường sinh ngoài biên (Generators) */}
                   <line x1={S.x} y1={S.y} x2={leftPoint.x} y2={leftPoint.y} stroke="#1e293b" strokeWidth="2" />
                   <line x1={S.x} y1={S.y} x2={rightPoint.x} y2={rightPoint.y} stroke="#1e293b" strokeWidth="2" />
 
-                  {/* Đường cao trục SO (Nét đứt màu đỏ chuẩn) */}
                   {showHiddenLines && (
                     <>
                       <line x1={S.x} y1={S.y} x2={O.x} y2={O.y} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="3 3" />
-                      {/* Bán kính đáy OA */}
-                      <line x1={O.x} y1={O.y} x2={A_proj.x} y2={A_proj.y} stroke="#2563eb" strokeWidth="1.4" strokeDasharray="3 3" />
-
-                      {/* Ký hiệu góc vuông tại chân O */}
+                      <line x1={O.x} y1={O.y} x2={B_end.x} y2={B_end.y} stroke="#2563eb" strokeWidth="1.4" strokeDasharray="3 3" />
                       <rect
                         x={O.x}
                         y={O.y - 10}
@@ -3373,26 +3772,38 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     </>
                   )}
 
-                  {/* Ký hiệu độ dài h và r */}
                   <text x={S.x + 8} y={(S.y + O.y) / 2} fill="#ef4444" fontSize="11" fontStyle="italic">
                     h
                   </text>
-                  <text x={(O.x + A_proj.x) / 2} y={O.y - 6} fill="#2563eb" fontSize="11" fontStyle="italic">
+                  <text x={(O.x + B_end.x) / 2} y={O.y - 6} fill="#2563eb" fontSize="11" fontStyle="italic">
                     r
                   </text>
 
-                  {/* Điểm đỉnh S và tâm đáy O */}
                   <g onMouseDown={(e) => handlePointMouseDown('S', e)} className="cursor-pointer">
                     <circle cx={S.x} cy={S.y} r={selectedPointName === 'S' ? 5 : 3.5} fill="#2563eb" stroke="#ffffff" strokeWidth="1.5" />
-                    <text x={S.x} y={S.y - 9} fill="#0f172a" fontSize="11">
+                    <text x={S.x} y={S.y - 9} textAnchor="middle" fill="#0f172a" fontSize="11">
                       S
                     </text>
                   </g>
 
                   <g onMouseDown={(e) => handlePointMouseDown('O', e)} className="cursor-pointer">
                     <circle cx={O.x} cy={O.y} r={selectedPointName === 'O' ? 4.5 : 3} fill="#ef4444" stroke="#ffffff" strokeWidth="1.5" />
-                    <text x={O.x - 14} y={O.y + 4} fill="#ef4444" fontSize="11">
+                    <text x={O.x - 12} y={O.y + 4} fill="#ef4444" fontSize="11">
                       O
+                    </text>
+                  </g>
+
+                  <g onMouseDown={(e) => handlePointMouseDown('A', e)} className="cursor-pointer">
+                    <circle cx={A_end.x} cy={A_end.y} r={selectedPointName === 'A' ? 4.5 : 3} fill="#2563eb" stroke="#ffffff" strokeWidth="1.5" />
+                    <text x={A_end.x - 10} y={A_end.y + 12} fill="#0f172a" fontSize="10.5">
+                      A
+                    </text>
+                  </g>
+
+                  <g onMouseDown={(e) => handlePointMouseDown('B', e)} className="cursor-pointer">
+                    <circle cx={B_end.x} cy={B_end.y} r={selectedPointName === 'B' ? 4.5 : 3} fill="#2563eb" stroke="#ffffff" strokeWidth="1.5" />
+                    <text x={B_end.x + 8} y={B_end.y + 12} fill="#0f172a" fontSize="10.5">
+                      B
                     </text>
                   </g>
                 </g>
@@ -3403,78 +3814,141 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
             {/* 4. KHỐI LẬP PHƯƠNG                                        */}
             {/* ========================================================= */}
             {selectedShape === 'cube' && (() => {
-              const A = project3D(vertexCoords.A?.x || -65, vertexCoords.A?.y || 0, vertexCoords.A?.z || 65);
-              const B = project3D(vertexCoords.B?.x || 65, vertexCoords.B?.y || 0, vertexCoords.B?.z || 65);
-              const C = project3D(vertexCoords.C?.x || 65, vertexCoords.C?.y || 0, vertexCoords.C?.z || -65);
-              const D = project3D(vertexCoords.D?.x || -65, vertexCoords.D?.y || 0, vertexCoords.D?.z || -65);
+              const s = 65;
+              const hc = heightParam * 0.75;
+              const verts3D = {
+                A: vertexCoords.A || { x: -s, y: 0, z: s },
+                B: vertexCoords.B || { x: s, y: 0, z: s },
+                C: vertexCoords.C || { x: s, y: 0, z: -s },
+                D: vertexCoords.D || { x: -s, y: 0, z: -s },
+                A1: vertexCoords.A1 || { x: -s, y: hc, z: s },
+                B1: vertexCoords.B1 || { x: s, y: hc, z: s },
+                C1: vertexCoords.C1 || { x: s, y: hc, z: -s },
+                D1: vertexCoords.D1 || { x: -s, y: hc, z: -s },
+              };
+              const faces = [
+                { keys: ['A', 'B', 'C', 'D'] },       // 0: bottom
+                { keys: ['A1', 'B1', 'C1', 'D1'] },   // 1: top
+                { keys: ['A', 'B', 'B1', 'A1'] },     // 2: front
+                { keys: ['B', 'C', 'C1', 'B1'] },     // 3: right
+                { keys: ['C', 'D', 'D1', 'C1'] },     // 4: back
+                { keys: ['D', 'A', 'A1', 'D1'] },     // 5: left
+              ];
+              const faceFront = computePolyhedronVisibility(verts3D, faces);
+              const edges: { a: keyof typeof verts3D; b: keyof typeof verts3D; f1: number; f2: number }[] = [
+                { a: 'A', b: 'B', f1: 0, f2: 2 },
+                { a: 'B', b: 'C', f1: 0, f2: 3 },
+                { a: 'C', b: 'D', f1: 0, f2: 4 },
+                { a: 'D', b: 'A', f1: 0, f2: 5 },
+                { a: 'A1', b: 'B1', f1: 1, f2: 2 },
+                { a: 'B1', b: 'C1', f1: 1, f2: 3 },
+                { a: 'C1', b: 'D1', f1: 1, f2: 4 },
+                { a: 'D1', b: 'A1', f1: 1, f2: 5 },
+                { a: 'A', b: 'A1', f1: 2, f2: 5 },
+                { a: 'B', b: 'B1', f1: 2, f2: 3 },
+                { a: 'C', b: 'C1', f1: 3, f2: 4 },
+                { a: 'D', b: 'D1', f1: 4, f2: 5 },
+              ];
 
-              const A1 = project3D(vertexCoords.A1?.x || -65, vertexCoords.A1?.y || 100, vertexCoords.A1?.z || 65);
-              const B1 = project3D(vertexCoords.B1?.x || 65, vertexCoords.B1?.y || 100, vertexCoords.B1?.z || 65);
-              const C1 = project3D(vertexCoords.C1?.x || 65, vertexCoords.C1?.y || 100, vertexCoords.C1?.z || -65);
-              const D1 = project3D(vertexCoords.D1?.x || -65, vertexCoords.D1?.y || 100, vertexCoords.D1?.z || -65);
+              const proj = {
+                A: project3D(verts3D.A.x, verts3D.A.y, verts3D.A.z),
+                B: project3D(verts3D.B.x, verts3D.B.y, verts3D.B.z),
+                C: project3D(verts3D.C.x, verts3D.C.y, verts3D.C.z),
+                D: project3D(verts3D.D.x, verts3D.D.y, verts3D.D.z),
+                A1: project3D(verts3D.A1.x, verts3D.A1.y, verts3D.A1.z),
+                B1: project3D(verts3D.B1.x, verts3D.B1.y, verts3D.B1.z),
+                C1: project3D(verts3D.C1.x, verts3D.C1.y, verts3D.C1.z),
+                D1: project3D(verts3D.D1.x, verts3D.D1.y, verts3D.D1.z),
+              };
+              const center2D = {
+                x: Object.values(proj).reduce((sum, p) => sum + p.x, 0) / 8,
+                y: Object.values(proj).reduce((sum, p) => sum + p.y, 0) / 8,
+              };
+
+              const hiddenEdges = edges.filter((e) => !(faceFront[e.f1] || faceFront[e.f2]));
+              const visibleEdges = edges.filter((e) => faceFront[e.f1] || faceFront[e.f2]);
+
+              const cubeVertices: { keyName: keyof typeof proj; display: string }[] = [
+                { keyName: 'A', display: 'A' },
+                { keyName: 'B', display: 'B' },
+                { keyName: 'C', display: 'C' },
+                { keyName: 'D', display: 'D' },
+                { keyName: 'A1', display: "A'" },
+                { keyName: 'B1', display: "B'" },
+                { keyName: 'C1', display: "C'" },
+                { keyName: 'D1', display: "D'" },
+              ];
 
               return (
                 <g className="font-bold text-xs select-none">
                   {showShading && (
                     <polygon
-                      points={`${A1.x},${A1.y} ${B1.x},${B1.y} ${C1.x},${C1.y} ${D1.x},${D1.y}`}
+                      points={`${proj.A1.x},${proj.A1.y} ${proj.B1.x},${proj.B1.y} ${proj.C1.x},${proj.C1.y} ${proj.D1.x},${proj.D1.y}`}
                       fill="rgba(59, 130, 246, 0.12)"
                     />
                   )}
 
-                  {/* Đáy trên */}
-                  <line x1={A1.x} y1={A1.y} x2={B1.x} y2={B1.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B1.x} y1={B1.y} x2={C1.x} y2={C1.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={C1.x} y1={C1.y} x2={D1.x} y2={D1.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={D1.x} y1={D1.y} x2={A1.x} y2={A1.y} stroke="#1e293b" strokeWidth="1.8" />
+                  {showHiddenLines &&
+                    hiddenEdges.map((e) => {
+                      const p1 = proj[e.a];
+                      const p2 = proj[e.b];
+                      return (
+                        <line
+                          key={`${e.a}-${e.b}`}
+                          x1={p1.x}
+                          y1={p1.y}
+                          x2={p2.x}
+                          y2={p2.y}
+                          stroke="#64748b"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 3"
+                        />
+                      );
+                    })}
 
-                  {/* Cột đứng thấy được */}
-                  <line x1={A1.x} y1={A1.y} x2={A.x} y2={A.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B1.x} y1={B1.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={C1.x} y1={C1.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
-
-                  {/* Đáy dưới thấy được */}
-                  <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B.x} y1={B.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
-
-                  {/* Cạnh khuất */}
-                  {showHiddenLines && (
-                    <>
-                      <line x1={D1.x} y1={D1.y} x2={D.x} y2={D.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
-                      <line x1={A.x} y1={A.y} x2={D.x} y2={D.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
-                      <line x1={D.x} y1={D.y} x2={C.x} y2={C.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
-                    </>
-                  )}
-
-                  {/* Đỉnh */}
-                  {[
-                    { pt: A, name: 'A', dx: -12, dy: 12 },
-                    { pt: B, name: 'B', dx: 8, dy: 12 },
-                    { pt: C, name: 'C', dx: 10, dy: 0 },
-                    { pt: D, name: 'D', dx: -14, dy: -4 },
-                    { pt: A1, name: "A'", dx: -14, dy: -6 },
-                    { pt: B1, name: "B'", dx: 6, dy: -6 },
-                    { pt: C1, name: "C'", dx: 8, dy: -8 },
-                    { pt: D1, name: "D'", dx: -14, dy: -8 },
-                  ].map((item) => (
-                    <g
-                      key={item.name}
-                      onMouseDown={(e) => handlePointMouseDown(item.name, e)}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={item.pt.x}
-                        cy={item.pt.y}
-                        r={selectedPointName === item.name ? 5 : 3}
-                        fill={selectedPointName === item.name ? '#f59e0b' : '#2563eb'}
-                        stroke="#ffffff"
-                        strokeWidth="1.5"
+                  {visibleEdges.map((e) => {
+                    const p1 = proj[e.a];
+                    const p2 = proj[e.b];
+                    return (
+                      <line
+                        key={`${e.a}-${e.b}`}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke="#1e293b"
+                        strokeWidth="1.8"
                       />
-                      <text x={item.pt.x + item.dx} y={item.pt.y + item.dy} fill="#0f172a" fontSize="10">
-                        {item.name}
-                      </text>
-                    </g>
-                  ))}
+                    );
+                  })}
+
+                  {cubeVertices.map((item) => {
+                    const pt = proj[item.keyName];
+                    const vx = pt.x - center2D.x;
+                    const vy = pt.y - center2D.y;
+                    const len = Math.hypot(vx, vy) || 1;
+                    const dx = (vx / len) * 13;
+                    const dy = (vy / len) * 13 + 3;
+                    return (
+                      <g
+                        key={item.keyName}
+                        onMouseDown={(e) => handlePointMouseDown(item.keyName, e)}
+                        className="cursor-pointer"
+                      >
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={selectedPointName === item.keyName ? 5 : 3}
+                          fill={selectedPointName === item.keyName ? '#f59e0b' : '#2563eb'}
+                          stroke="#ffffff"
+                          strokeWidth="1.5"
+                        />
+                        <text x={pt.x + dx} y={pt.y + dy} textAnchor="middle" fill="#0f172a" fontSize="10">
+                          {item.display}
+                        </text>
+                      </g>
+                    );
+                  })}
                 </g>
               );
             })()}
@@ -3483,60 +3957,130 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
             {/* 5. LĂNG TRỤ TAM GIÁC                                       */}
             {/* ========================================================= */}
             {selectedShape === 'prism' && (() => {
-              const A = project3D(vertexCoords.A?.x || -80, vertexCoords.A?.y || 0, vertexCoords.A?.z || 50);
-              const B = project3D(vertexCoords.B?.x || 80, vertexCoords.B?.y || 0, vertexCoords.B?.z || 50);
-              const C = project3D(vertexCoords.C?.x || 10, vertexCoords.C?.y || 0, vertexCoords.C?.z || -60);
+              const hp = heightParam * 0.8;
+              const verts3D = {
+                A: vertexCoords.A || { x: -80, y: 0, z: 50 },
+                B: vertexCoords.B || { x: 80, y: 0, z: 50 },
+                C: vertexCoords.C || { x: 10, y: 0, z: -60 },
+                A1: vertexCoords.A1 || { x: -80, y: hp, z: 50 },
+                B1: vertexCoords.B1 || { x: 80, y: hp, z: 50 },
+                C1: vertexCoords.C1 || { x: 10, y: hp, z: -60 },
+              };
+              const faces = [
+                { keys: ['A', 'B', 'C'] },
+                { keys: ['A1', 'B1', 'C1'] },
+                { keys: ['A', 'B', 'B1', 'A1'] },
+                { keys: ['B', 'C', 'C1', 'B1'] },
+                { keys: ['C', 'A', 'A1', 'C1'] },
+              ];
+              const faceFront = computePolyhedronVisibility(verts3D, faces);
+              const edges: { a: keyof typeof verts3D; b: keyof typeof verts3D; f1: number; f2: number }[] = [
+                { a: 'A', b: 'B', f1: 0, f2: 2 },
+                { a: 'B', b: 'C', f1: 0, f2: 3 },
+                { a: 'C', b: 'A', f1: 0, f2: 4 },
+                { a: 'A1', b: 'B1', f1: 1, f2: 2 },
+                { a: 'B1', b: 'C1', f1: 1, f2: 3 },
+                { a: 'C1', b: 'A1', f1: 1, f2: 4 },
+                { a: 'A', b: 'A1', f1: 2, f2: 4 },
+                { a: 'B', b: 'B1', f1: 2, f2: 3 },
+                { a: 'C', b: 'C1', f1: 3, f2: 4 },
+              ];
 
-              const A1 = project3D(vertexCoords.A1?.x || -80, vertexCoords.A1?.y || 110, vertexCoords.A1?.z || 50);
-              const B1 = project3D(vertexCoords.B1?.x || 80, vertexCoords.B1?.y || 110, vertexCoords.B1?.z || 50);
-              const C1 = project3D(vertexCoords.C1?.x || 10, vertexCoords.C1?.y || 110, vertexCoords.C1?.z || -60);
+              const proj = {
+                A: project3D(verts3D.A.x, verts3D.A.y, verts3D.A.z),
+                B: project3D(verts3D.B.x, verts3D.B.y, verts3D.B.z),
+                C: project3D(verts3D.C.x, verts3D.C.y, verts3D.C.z),
+                A1: project3D(verts3D.A1.x, verts3D.A1.y, verts3D.A1.z),
+                B1: project3D(verts3D.B1.x, verts3D.B1.y, verts3D.B1.z),
+                C1: project3D(verts3D.C1.x, verts3D.C1.y, verts3D.C1.z),
+              };
+              const center2D = {
+                x: Object.values(proj).reduce((sum, p) => sum + p.x, 0) / 6,
+                y: Object.values(proj).reduce((sum, p) => sum + p.y, 0) / 6,
+              };
+
+              const hiddenEdges = edges.filter((e) => !(faceFront[e.f1] || faceFront[e.f2]));
+              const visibleEdges = edges.filter((e) => faceFront[e.f1] || faceFront[e.f2]);
+
+              const prismVertices: { keyName: keyof typeof proj; display: string }[] = [
+                { keyName: 'A', display: 'A' },
+                { keyName: 'B', display: 'B' },
+                { keyName: 'C', display: 'C' },
+                { keyName: 'A1', display: "A'" },
+                { keyName: 'B1', display: "B'" },
+                { keyName: 'C1', display: "C'" },
+              ];
 
               return (
                 <g className="font-bold text-xs select-none">
-                  <polygon
-                    points={`${A1.x},${A1.y} ${B1.x},${B1.y} ${C1.x},${C1.y}`}
-                    fill="rgba(59, 130, 246, 0.12)"
-                    stroke="#1e293b"
-                    strokeWidth="1.8"
-                  />
-
-                  <line x1={A1.x} y1={A1.y} x2={A.x} y2={A.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B1.x} y1={B1.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={C1.x} y1={C1.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
-
-                  <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B.x} y1={B.y} x2={C.x} y2={C.y} stroke="#1e293b" strokeWidth="1.8" />
-
-                  {showHiddenLines && (
-                    <line x1={A.x} y1={A.y} x2={C.x} y2={C.y} stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
+                  {showShading && (
+                    <polygon
+                      points={`${proj.A1.x},${proj.A1.y} ${proj.B1.x},${proj.B1.y} ${proj.C1.x},${proj.C1.y}`}
+                      fill="rgba(59, 130, 246, 0.12)"
+                    />
                   )}
 
-                  {[
-                    { pt: A, name: 'A', dx: -12, dy: 12 },
-                    { pt: B, name: 'B', dx: 8, dy: 12 },
-                    { pt: C, name: 'C', dx: 10, dy: -4 },
-                    { pt: A1, name: "A'", dx: -14, dy: -6 },
-                    { pt: B1, name: "B'", dx: 6, dy: -6 },
-                    { pt: C1, name: "C'", dx: 8, dy: -8 },
-                  ].map((item) => (
-                    <g
-                      key={item.name}
-                      onMouseDown={(e) => handlePointMouseDown(item.name, e)}
-                      className="cursor-pointer"
-                    >
-                      <circle
-                        cx={item.pt.x}
-                        cy={item.pt.y}
-                        r={selectedPointName === item.name ? 5 : 3}
-                        fill={selectedPointName === item.name ? '#f59e0b' : '#2563eb'}
-                        stroke="#ffffff"
-                        strokeWidth="1.5"
+                  {showHiddenLines &&
+                    hiddenEdges.map((e) => {
+                      const p1 = proj[e.a];
+                      const p2 = proj[e.b];
+                      return (
+                        <line
+                          key={`${e.a}-${e.b}`}
+                          x1={p1.x}
+                          y1={p1.y}
+                          x2={p2.x}
+                          y2={p2.y}
+                          stroke="#64748b"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 3"
+                        />
+                      );
+                    })}
+
+                  {visibleEdges.map((e) => {
+                    const p1 = proj[e.a];
+                    const p2 = proj[e.b];
+                    return (
+                      <line
+                        key={`${e.a}-${e.b}`}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke="#1e293b"
+                        strokeWidth="1.8"
                       />
-                      <text x={item.pt.x + item.dx} y={item.pt.y + item.dy} fill="#0f172a" fontSize="10">
-                        {item.name}
-                      </text>
-                    </g>
-                  ))}
+                    );
+                  })}
+
+                  {prismVertices.map((item) => {
+                    const pt = proj[item.keyName];
+                    const vx = pt.x - center2D.x;
+                    const vy = pt.y - center2D.y;
+                    const len = Math.hypot(vx, vy) || 1;
+                    const dx = (vx / len) * 13;
+                    const dy = (vy / len) * 13 + 3;
+                    return (
+                      <g
+                        key={item.keyName}
+                        onMouseDown={(e) => handlePointMouseDown(item.keyName, e)}
+                        className="cursor-pointer"
+                      >
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={selectedPointName === item.keyName ? 5 : 3}
+                          fill={selectedPointName === item.keyName ? '#f59e0b' : '#2563eb'}
+                          stroke="#ffffff"
+                          strokeWidth="1.5"
+                        />
+                        <text x={pt.x + dx} y={pt.y + dy} textAnchor="middle" fill="#0f172a" fontSize="10">
+                          {item.display}
+                        </text>
+                      </g>
+                    );
+                  })}
                 </g>
               );
             })()}
@@ -3547,46 +4091,113 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
             {selectedShape === 'cylinder' && (() => {
               const h = heightParam * 0.8;
               const r = radiusParam;
-              const O1 = project3D(0, h, 0);
-              const O2 = project3D(0, 0, 0);
-              const A1 = project3D(-r, h, 0);
-              const B1 = project3D(r, h, 0);
-              const A2 = project3D(-r, 0, 0);
-              const B2 = project3D(r, 0, 0);
+              const O2_pt = vertexCoords.O || { x: 0, y: 0, z: 0 };
+              const O1_pt = vertexCoords.O1 || { x: 0, y: h, z: 0 };
+              const A2_pt = vertexCoords.A || { x: -r, y: 0, z: 0 };
+              const B2_pt = vertexCoords.B || { x: r, y: 0, z: 0 };
+              const A1_pt = vertexCoords.A1 || { x: -r, y: h, z: 0 };
+              const B1_pt = vertexCoords.B1 || { x: r, y: h, z: 0 };
+
+              const O1 = project3D(O1_pt.x, O1_pt.y, O1_pt.z);
+              const O2 = project3D(O2_pt.x, O2_pt.y, O2_pt.z);
+              const A1 = project3D(A1_pt.x, A1_pt.y, A1_pt.z);
+              const B1 = project3D(B1_pt.x, B1_pt.y, B1_pt.z);
+              const A2 = project3D(A2_pt.x, A2_pt.y, A2_pt.z);
+              const B2 = project3D(B2_pt.x, B2_pt.y, B2_pt.z);
+
+              const numSamples = 64;
+              const radY = (rotY * Math.PI) / 180;
+              const topSamples = Array.from({ length: numSamples }, (_, i) => {
+                const ang = (2 * Math.PI * i) / numSamples;
+                const ox = O1_pt.x + r * Math.cos(ang);
+                const oz = O1_pt.z + r * Math.sin(ang);
+                const p = project3D(ox, O1_pt.y, oz);
+                const z1 = -(ox - O1_pt.x) * Math.sin(radY) + (oz - O1_pt.z) * Math.cos(radY);
+                return { ...p, isFront: z1 >= 0 };
+              });
+              const botSamples = Array.from({ length: numSamples }, (_, i) => {
+                const ang = (2 * Math.PI * i) / numSamples;
+                const ox = O2_pt.x + r * Math.cos(ang);
+                const oz = O2_pt.z + r * Math.sin(ang);
+                const p = project3D(ox, O2_pt.y, oz);
+                const z1 = -(ox - O2_pt.x) * Math.sin(radY) + (oz - O2_pt.z) * Math.cos(radY);
+                return { ...p, isFront: z1 >= 0 };
+              });
+
+              // Hai đường sinh biên theo góc nhìn hiện tại
+              let minIdx = 0;
+              let maxIdx = 0;
+              botSamples.forEach((p, idx) => {
+                if (p.x < botSamples[minIdx].x) minIdx = idx;
+                if (p.x > botSamples[maxIdx].x) maxIdx = idx;
+              });
+              const leftTop = topSamples[minIdx];
+              const leftBot = botSamples[minIdx];
+              const rightTop = topSamples[maxIdx];
+              const rightBot = botSamples[maxIdx];
+
+              const botFrontPath = buildCircularArcPath(botSamples, true);
+              const botBackPath = buildCircularArcPath(botSamples, false);
 
               return (
                 <g className="font-bold text-xs select-none">
-                  <ellipse
-                    cx={O1.x}
-                    cy={O1.y}
-                    rx={r * zoomLevel}
-                    ry={r * 0.35 * zoomLevel}
-                    fill="rgba(59, 130, 246, 0.12)"
-                    stroke="#1e293b"
-                    strokeWidth="1.8"
-                  />
+                  {showShading && (
+                    <polygon
+                      points={topSamples.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}
+                      fill="rgba(59, 130, 246, 0.14)"
+                    />
+                  )}
 
-                  <ellipse
-                    cx={O2.x}
-                    cy={O2.y}
-                    rx={r * zoomLevel}
-                    ry={r * 0.35 * zoomLevel}
+                  {/* Đáy trên luôn nhìn thấy từ trên xuống (hoặc vẽ viền kín) */}
+                  <polygon
+                    points={topSamples.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}
                     fill="none"
                     stroke="#1e293b"
                     strokeWidth="1.8"
                   />
 
-                  <line x1={A1.x} y1={A1.y} x2={A2.x} y2={A2.y} stroke="#1e293b" strokeWidth="1.8" />
-                  <line x1={B1.x} y1={B1.y} x2={B2.x} y2={B2.y} stroke="#1e293b" strokeWidth="1.8" />
+                  {/* Đáy dưới: nửa sau nét đứt, nửa trước nét liền */}
+                  {showHiddenLines && botBackPath && (
+                    <path d={botBackPath} fill="none" stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
+                  )}
+                  {botFrontPath && (
+                    <path d={botFrontPath} fill="none" stroke="#1e293b" strokeWidth="1.8" />
+                  )}
+
+                  {/* Hai đường sinh ngoài biên */}
+                  <line x1={leftTop.x} y1={leftTop.y} x2={leftBot.x} y2={leftBot.y} stroke="#1e293b" strokeWidth="1.8" />
+                  <line x1={rightTop.x} y1={rightTop.y} x2={rightBot.x} y2={rightBot.y} stroke="#1e293b" strokeWidth="1.8" />
 
                   {showHiddenLines && (
                     <line x1={O1.x} y1={O1.y} x2={O2.x} y2={O2.y} stroke="#ef4444" strokeWidth="1.4" strokeDasharray="4 3" />
                   )}
 
-                  <circle cx={O1.x} cy={O1.y} r="2.5" fill="#ef4444" />
-                  <text x={O1.x + 5} y={O1.y - 4} fill="#ef4444">O'</text>
-                  <circle cx={O2.x} cy={O2.y} r="2.5" fill="#ef4444" />
-                  <text x={O2.x + 5} y={O2.y + 12} fill="#ef4444">O</text>
+                  {[
+                    { keyName: 'O1', pt: O1, display: "O'", color: '#ef4444', dx: 8, dy: -4 },
+                    { keyName: 'O', pt: O2, display: 'O', color: '#ef4444', dx: 8, dy: 12 },
+                    { keyName: 'A1', pt: A1, display: "A'", color: '#2563eb', dx: -11, dy: -4 },
+                    { keyName: 'B1', pt: B1, display: "B'", color: '#2563eb', dx: 10, dy: -4 },
+                    { keyName: 'A', pt: A2, display: 'A', color: '#2563eb', dx: -11, dy: 10 },
+                    { keyName: 'B', pt: B2, display: 'B', color: '#2563eb', dx: 10, dy: 10 },
+                  ].map((item) => (
+                    <g
+                      key={item.keyName}
+                      onMouseDown={(e) => handlePointMouseDown(item.keyName, e)}
+                      className="cursor-pointer"
+                    >
+                      <circle
+                        cx={item.pt.x}
+                        cy={item.pt.y}
+                        r={selectedPointName === item.keyName ? 4.5 : 2.8}
+                        fill={selectedPointName === item.keyName ? '#f59e0b' : item.color}
+                        stroke="#ffffff"
+                        strokeWidth="1.2"
+                      />
+                      <text x={item.pt.x + item.dx} y={item.pt.y + item.dy} fill={item.color} fontSize="10.5">
+                        {item.display}
+                      </text>
+                    </g>
+                  ))}
                 </g>
               );
             })()}
@@ -3767,8 +4378,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                 pointCreationMode === 'intersect_segments' ? intersectSegColor : intersectLPColor;
               const previewLabel =
                 pointCreationMode === 'intersect_segments'
-                  ? intersectSegLabel.trim() || 'I'
-                  : intersectLPLabel.trim() || 'K';
+                  ? intersectSegLabel.trim() ||
+                    getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_segments)
+                  : intersectLPLabel.trim() ||
+                    getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.intersect_line_plane);
               if (!previewPt) return null;
               const p = project3D(previewPt.x, previewPt.y, previewPt.z);
               return (
@@ -3859,7 +4472,10 @@ export const Geometry3DStudio: React.FC<Geometry3DStudioProps> = ({ onExportImag
                     strokeWidth="1.2"
                   />
                   <text x="8" y="13" fill="#34d399" fontSize="9.5" fontWeight="bold">
-                    🎯 Điểm [{manualPointName}]: ({hover3DPoint.x}, {hover3DPoint.y}, {hover3DPoint.z})
+                    Điểm [
+                    {manualPointName.trim() ||
+                      getNextFreePointName(allUsedPointTokens, POINT_NAME_PREFERENCES.manual)}
+                    ]: ({hover3DPoint.x}, {hover3DPoint.y}, {hover3DPoint.z})
                   </text>
                   <text x="8" y="25" fill="#e2e8f0" fontSize="8.5">
                     {hover3DPoint.surfaceName} · Nhấp để tạo

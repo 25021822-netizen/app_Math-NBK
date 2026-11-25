@@ -1057,7 +1057,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
                 />
 
                 <div className="flex items-center justify-between font-bold text-slate-700">
-                  <span>Chiều cao $h$ ({heightParam}):</span>
+                  <span>Chiều cao h ({heightParam}):</span>
                 </div>
                 <input
                   type="range"
