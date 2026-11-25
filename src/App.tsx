@@ -16,6 +16,9 @@ import {
   AutoApprovalSettings,
   ScoreVisibilityMode,
   AdminBroadcastMessage,
+  BroadcastTargetAudience,
+  isBroadcastVisibleToRole,
+  getBroadcastAudienceLabel,
   canStudentViewExamScore,
   canAccessSubjectTab,
   getTeacherSubjectTab,
@@ -378,7 +381,7 @@ export default function App() {
     };
   }, [isAuthenticated, sessionLoginAt]);
 
-  // Danh sách thông báo Admin hiển thị ở Nhóm Lớp (lọc bỏ những thông báo tài khoản này đã xóa hẳn)
+  // Danh sách thông báo Admin hiển thị ở Nhóm Lớp (lọc theo đối tượng nhận và loại bỏ thông báo tài khoản này đã xóa hẳn)
   const visibleBroadcastsForUser = useMemo(() => {
     const normId = (userProfile.id || '').trim().toLowerCase();
     const normEmail = (userProfile.email || '').trim().toLowerCase();
@@ -387,6 +390,7 @@ export default function App() {
     );
     return (adminBroadcasts || []).filter((b) => {
       if (!b || !b.id) return false;
+      if (!isBroadcastVisibleToRole(b, userProfile.role)) return false;
       if (localDismissedSet.has(b.id)) return false;
       const deletedIds = Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [];
       const isDeletedByMe = deletedIds.some((uid) => {
@@ -395,7 +399,7 @@ export default function App() {
       });
       return !isDeletedByMe;
     });
-  }, [adminBroadcasts, userProfile.id, userProfile.email, broadcastDismissTick]);
+  }, [adminBroadcasts, userProfile.id, userProfile.email, userProfile.role, broadcastDismissTick]);
 
   // Kiểm tra quyền nhìn thấy / là thành viên hợp lệ của nhóm lớp
   // - Giáo viên: CHỈ được nhìn thấy và vào các lớp do chính mình tạo (kể cả lớp công khai của giáo viên khác)
@@ -1104,6 +1108,7 @@ export default function App() {
             const nowMs = Date.now();
             remoteData.adminBroadcasts.forEach((b) => {
               knownBroadcastIds.add(b.id);
+              if (!isBroadcastVisibleToRole(b, curUser.role)) return;
               if (isDismissedForCurrentUser(b) || seen.broadcasts.has(b.id)) return;
               markPostSeen(curUser.id, 'broadcasts', b.id);
               const createdMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -1126,6 +1131,7 @@ export default function App() {
             const seen = readSeenPosts(curUser.id);
             freshBroadcasts.forEach((b) => {
               knownBroadcastIds.add(b.id);
+              if (!isBroadcastVisibleToRole(b, curUser.role)) return;
               if (isDismissedForCurrentUser(b) || seen.broadcasts.has(b.id)) return;
               markPostSeen(curUser.id, 'broadcasts', b.id);
               triggerPushNotification(`Thông báo từ Admin: ${b.title}`, {
@@ -1226,17 +1232,19 @@ export default function App() {
     clearStoredAuthSession();
   };
 
-  // Admin gửi thông báo tin nhắn đến tất cả tài khoản (hiển thị trong Nhóm Lớp)
+  // Admin gửi thông báo tin nhắn đến tất cả mọi người, chỉ giáo viên hoặc chỉ học sinh (hiển thị trong Nhóm Lớp)
   const handleSendAdminBroadcast = async (payload: {
     title: string;
     content: string;
     priority: 'normal' | 'important';
+    targetAudience: BroadcastTargetAudience;
   }) => {
     const newBroadcast: AdminBroadcastMessage = {
       id: `bc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       title: payload.title,
       content: payload.content,
       priority: payload.priority,
+      targetAudience: payload.targetAudience || 'all',
       senderId: userProfile.id,
       senderName: userProfile.name || 'Ban Quản Trị Hệ Thống',
       createdAt: new Date().toISOString(),
@@ -1244,8 +1252,8 @@ export default function App() {
     };
     setAdminBroadcasts((prev) => [newBroadcast, ...prev]);
     await dbSendAdminBroadcast(newBroadcast);
-    triggerPushNotification('Đã phát thông báo toàn hệ thống', {
-      message: `"${newBroadcast.title}" đã được gửi tới tất cả tài khoản và hiển thị tại Nhóm Lớp.`,
+    triggerPushNotification('Đã phát thông báo hệ thống', {
+      message: `"${newBroadcast.title}" đã được gửi tới nhóm ${getBroadcastAudienceLabel(newBroadcast.targetAudience)} và hiển thị tại Nhóm Lớp.`,
       type: 'system',
       targetTab: 'admin_broadcasts',
     });
@@ -1937,10 +1945,15 @@ export default function App() {
     // 3. Quản trị viên (Super Admin)
     if (userRole === 'admin') {
       if (currentTab === 'admin_broadcasts') {
+        const activeNonAdminUsers = allUsers.filter((u) => u.role !== 'admin' && u.status === 'active');
+        const teacherCount = activeNonAdminUsers.filter((u) => u.role === 'teacher').length;
+        const studentCount = activeNonAdminUsers.filter((u) => u.role === 'student').length;
         return (
           <AdminBroadcastView
             adminBroadcasts={adminBroadcasts}
-            totalRecipientsCount={allUsers.filter((u) => u.role !== 'admin' && u.status === 'active').length}
+            totalRecipientsCount={activeNonAdminUsers.length}
+            teacherRecipientsCount={teacherCount}
+            studentRecipientsCount={studentCount}
             onSendBroadcast={handleSendAdminBroadcast}
             onDeleteBroadcastGlobally={handleDeleteAdminBroadcastGlobally}
           />

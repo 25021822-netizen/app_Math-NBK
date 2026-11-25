@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { copyTextSafe } from '../../utils/clipboard';
-import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention, AdminBroadcastMessage } from '../../types/math';
+import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention, AdminBroadcastMessage, getBroadcastAudienceLabel } from '../../types/math';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
@@ -2143,7 +2143,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   Thông Báo Từ Ban Quản Trị ({adminBroadcasts.length})
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Tin nhắn thông báo chung dành cho toàn bộ tài khoản
+                  Tin nhắn thông báo từ Ban Quản Trị dành cho bạn
                 </p>
               </div>
             </div>
@@ -2152,6 +2152,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           <div className="space-y-2.5">
             {adminBroadcasts.map((msg) => {
               const isImportant = msg.priority === 'important';
+              const audienceLabel = getBroadcastAudienceLabel(msg.targetAudience);
               return (
                 <div
                   key={msg.id}
@@ -2171,6 +2172,9 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                         {isImportant ? 'Quan trọng' : 'Admin'}
                       </span>
                       <span className="font-extrabold text-sm text-slate-900">{msg.title}</span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        · {audienceLabel}
+                      </span>
                       <span className="text-[11px] text-slate-500 font-mono">
                         {new Date(msg.createdAt).toLocaleString('vi-VN')}
                       </span>

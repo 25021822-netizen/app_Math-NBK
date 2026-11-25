@@ -1,5 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { AdminBroadcastMessage } from '../../types/math';
+import {
+  AdminBroadcastMessage,
+  BroadcastTargetAudience,
+  getBroadcastAudienceLabel,
+} from '../../types/math';
 import {
   Megaphone,
   Send,
@@ -11,15 +15,20 @@ import {
   Users,
   ShieldCheck,
   Clock,
+  GraduationCap,
+  BookOpen,
 } from 'lucide-react';
 
 interface AdminBroadcastViewProps {
   adminBroadcasts: AdminBroadcastMessage[];
   totalRecipientsCount?: number;
+  teacherRecipientsCount?: number;
+  studentRecipientsCount?: number;
   onSendBroadcast: (payload: {
     title: string;
     content: string;
     priority: 'normal' | 'important';
+    targetAudience: BroadcastTargetAudience;
   }) => void | Promise<void>;
   onDeleteBroadcastGlobally: (broadcastId: string) => void | Promise<void>;
 }
@@ -40,20 +49,38 @@ function formatDateTimeSafe(iso: string): string {
 export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
   adminBroadcasts,
   totalRecipientsCount = 0,
+  teacherRecipientsCount = 0,
+  studentRecipientsCount = 0,
   onSendBroadcast,
   onDeleteBroadcastGlobally,
 }) => {
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastContent, setBroadcastContent] = useState('');
   const [broadcastPriority, setBroadcastPriority] = useState<'normal' | 'important'>('normal');
+  const [targetAudience, setTargetAudience] = useState<BroadcastTargetAudience>('all');
   const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
   const [broadcastFeedback, setBroadcastFeedback] = useState<string | null>(null);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'normal' | 'important'>('all');
+  const [audienceFilter, setAudienceFilter] = useState<'all_filter' | BroadcastTargetAudience>('all_filter');
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const selectedRecipientCount =
+    targetAudience === 'teacher'
+      ? teacherRecipientsCount
+      : targetAudience === 'student'
+      ? studentRecipientsCount
+      : totalRecipientsCount;
+
+  const submitButtonLabel =
+    targetAudience === 'teacher'
+      ? 'Gửi Thông Báo Tới Giáo Viên'
+      : targetAudience === 'student'
+      ? 'Gửi Thông Báo Tới Học Sinh'
+      : 'Gửi Thông Báo Tới Tất Cả Mọi Người';
 
   const handleSendBroadcastSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,18 +92,21 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
       return;
     }
 
+    const sentTarget = targetAudience;
     setIsSendingBroadcast(true);
     try {
       await onSendBroadcast({
         title: cleanTitle,
         content: cleanContent,
         priority: broadcastPriority,
+        targetAudience: sentTarget,
       });
       setBroadcastTitle('');
       setBroadcastContent('');
       setBroadcastPriority('normal');
+      setTargetAudience('all');
       setBroadcastFeedback(
-        'Đã gửi thông báo thành công đến tất cả tài khoản và hiển thị trực tiếp trong mục Nhóm Lớp!'
+        `Đã gửi thông báo thành công tới nhóm "${getBroadcastAudienceLabel(sentTarget)}" và hiển thị trực tiếp trong mục Nhóm Lớp!`
       );
       setTimeout(() => setBroadcastFeedback(null), 4500);
     } catch (err: any) {
@@ -100,14 +130,17 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
     const q = searchTerm.trim().toLowerCase();
     return (adminBroadcasts || []).filter((item) => {
       if (!item || !item.id) return false;
+      const itemAudience: BroadcastTargetAudience =
+        item.targetAudience === 'teacher' || item.targetAudience === 'student' ? item.targetAudience : 'all';
       const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
+      const matchesAudience = audienceFilter === 'all_filter' || itemAudience === audienceFilter;
       const matchesQuery =
         !q ||
         (item.title || '').toLowerCase().includes(q) ||
         (item.content || '').toLowerCase().includes(q);
-      return matchesPriority && matchesQuery;
+      return matchesPriority && matchesAudience && matchesQuery;
     });
-  }, [adminBroadcasts, searchTerm, priorityFilter]);
+  }, [adminBroadcasts, searchTerm, priorityFilter, audienceFilter]);
 
   const importantCount = useMemo(
     () => (adminBroadcasts || []).filter((b) => b.priority === 'important').length,
@@ -123,9 +156,9 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
             <ShieldCheck size={16} />
             <span>Chức Năng Riêng Của Quản Trị Viên</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Thông Báo Chung Toàn Hệ Thống</h1>
+          <h1 className="text-2xl font-extrabold text-slate-900">Thông Báo Chung Hệ Thống</h1>
           <p className="text-xs sm:text-sm text-slate-500 max-w-2xl">
-            Gửi tin nhắn thông báo đồng loạt tới tất cả tài khoản Giáo viên và Học sinh. Nội dung sẽ hiển thị tại mục Nhóm Lớp và mỗi tài khoản có thể tự xóa hẳn khỏi hộp thư cá nhân.
+            Gửi tin nhắn thông báo đến tất cả mọi người, chỉ Giáo viên hoặc chỉ Học sinh. Nội dung sẽ hiển thị tại mục Nhóm Lớp của đúng đối tượng nhận.
           </p>
         </div>
 
@@ -150,7 +183,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
                 <span className="text-slate-400 font-semibold block">Tài khoản nhận</span>
                 <span className="text-xl font-black text-blue-600 font-mono tabular-nums flex items-center gap-1">
                   <Users size={15} />
-                  <span>{totalRecipientsCount}</span>
+                  <span>{selectedRecipientCount}</span>
                 </span>
               </div>
             </>
@@ -167,7 +200,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
           <div>
             <h2 className="font-extrabold text-base text-slate-900">Soạn Thông Báo Mới</h2>
             <p className="text-xs text-slate-500">
-              Thông báo sau khi gửi sẽ đồng bộ tức thời đến toàn bộ tài khoản đang hoạt động.
+              Chọn nhóm người nhận phù hợp; thông báo sau khi gửi sẽ đồng bộ tức thời đến đúng đối tượng.
             </p>
           </div>
         </div>
@@ -187,6 +220,84 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
         )}
 
         <form onSubmit={handleSendBroadcastSubmit} className="space-y-4 text-xs">
+          {/* Đối tượng nhận thông báo */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-700 block">Đối tượng nhận thông báo *</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setTargetAudience('all')}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
+                  targetAudience === 'all'
+                    ? 'bg-blue-50 border-blue-500 text-blue-900 ring-2 ring-blue-100'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    targetAudience === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border border-slate-200'
+                  }`}
+                >
+                  <Users size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-extrabold text-xs">Tất cả mọi người</div>
+                  <div className="text-[11px] text-slate-500 tabular-nums">
+                    Giáo viên & Học sinh ({totalRecipientsCount})
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTargetAudience('teacher')}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
+                  targetAudience === 'teacher'
+                    ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-100'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    targetAudience === 'teacher' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border border-slate-200'
+                  }`}
+                >
+                  <BookOpen size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-extrabold text-xs">Chỉ Giáo viên</div>
+                  <div className="text-[11px] text-slate-500 tabular-nums">
+                    Tài khoản giáo viên ({teacherRecipientsCount})
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTargetAudience('student')}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
+                  targetAudience === 'student'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-100'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    targetAudience === 'student' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500 border border-slate-200'
+                  }`}
+                >
+                  <GraduationCap size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-extrabold text-xs">Chỉ Học sinh</div>
+                  <div className="text-[11px] text-slate-500 tabular-nums">
+                    Tài khoản học sinh ({studentRecipientsCount})
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2 space-y-1.5">
               <div className="flex items-center justify-between">
@@ -199,7 +310,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
                 type="text"
                 value={broadcastTitle}
                 onChange={(e) => setBroadcastTitle(e.target.value)}
-                placeholder="VD: Thông báo lịch thi thử THPT / Lịch bảo trì nâng cấp hệ thống..."
+                placeholder="VD: Thông báo lịch thi thử THPT / Lịch họp chuyên môn giáo viên..."
                 required
                 maxLength={140}
                 className="w-full h-11 px-3.5 rounded-2xl border border-slate-300 text-xs font-semibold text-slate-900 focus:border-blue-600 focus:outline-none"
@@ -245,7 +356,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
             <textarea
               value={broadcastContent}
               onChange={(e) => setBroadcastContent(e.target.value)}
-              placeholder="Nhập nội dung chi tiết cần gửi đến toàn bộ Giáo viên và Học sinh..."
+              placeholder={`Nhập nội dung chi tiết cần gửi tới ${getBroadcastAudienceLabel(targetAudience).toLowerCase()}...`}
               rows={4}
               required
               className="w-full p-3.5 rounded-2xl border border-slate-300 text-xs text-slate-900 focus:border-blue-600 focus:outline-none resize-y leading-relaxed"
@@ -259,7 +370,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
               className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-colors cursor-pointer whitespace-nowrap"
             >
               <Send size={15} />
-              <span>{isSendingBroadcast ? 'Đang gửi thông báo...' : 'Gửi Thông Báo Đến Tất Cả Tài Khoản'}</span>
+              <span>{isSendingBroadcast ? 'Đang gửi thông báo...' : submitButtonLabel}</span>
             </button>
           </div>
         </form>
@@ -267,7 +378,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
 
       {/* Broadcast History */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <BellRing size={18} className="text-blue-600" />
             <h2 className="font-extrabold text-sm text-slate-900">
@@ -276,6 +387,45 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setAudienceFilter('all_filter')}
+                className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                  audienceFilter === 'all_filter' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600'
+                }`}
+              >
+                Mọi nhóm
+              </button>
+              <button
+                type="button"
+                onClick={() => setAudienceFilter('all')}
+                className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                  audienceFilter === 'all' ? 'bg-white text-blue-700 shadow-2xs font-bold' : 'text-slate-600'
+                }`}
+              >
+                Tất cả mọi người
+              </button>
+              <button
+                type="button"
+                onClick={() => setAudienceFilter('teacher')}
+                className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                  audienceFilter === 'teacher' ? 'bg-white text-indigo-700 shadow-2xs font-bold' : 'text-slate-600'
+                }`}
+              >
+                Giáo viên
+              </button>
+              <button
+                type="button"
+                onClick={() => setAudienceFilter('student')}
+                className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                  audienceFilter === 'student' ? 'bg-white text-emerald-700 shadow-2xs font-bold' : 'text-slate-600'
+                }`}
+              >
+                Học sinh
+              </button>
+            </div>
+
             <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
               <button
                 type="button"
@@ -313,7 +463,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Tìm tiêu đề, nội dung..."
-                className="h-9 pl-8 pr-3 rounded-xl border border-slate-300 text-xs focus:border-blue-600 focus:outline-none w-full sm:w-52"
+                className="h-9 pl-8 pr-3 rounded-xl border border-slate-300 text-xs focus:border-blue-600 focus:outline-none w-full sm:w-48"
               />
             </div>
           </div>
@@ -322,7 +472,7 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
         {filteredBroadcasts.length === 0 ? (
           <div className="p-8 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500">
             {adminBroadcasts.length === 0
-              ? 'Chưa có thông báo toàn hệ thống nào được gửi. Hãy soạn thông báo ở khung phía trên.'
+              ? 'Chưa có thông báo hệ thống nào được gửi. Hãy soạn thông báo ở khung phía trên.'
               : 'Không tìm thấy thông báo nào phù hợp với bộ lọc hiện tại.'}
           </div>
         ) : (
@@ -330,6 +480,14 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
             {filteredBroadcasts.map((item) => {
               const deletedCount = Array.isArray(item.deletedByUserIds) ? item.deletedByUserIds.length : 0;
               const isImportant = item.priority === 'important';
+              const audience: BroadcastTargetAudience =
+                item.targetAudience === 'teacher' || item.targetAudience === 'student' ? item.targetAudience : 'all';
+              const audienceColor =
+                audience === 'teacher'
+                  ? 'text-indigo-700'
+                  : audience === 'student'
+                  ? 'text-emerald-700'
+                  : 'text-slate-600';
               const isConfirming = confirmRevokeId === item.id;
               const isRevoking = revokingId === item.id;
 
@@ -342,10 +500,12 @@ export const AdminBroadcastView: React.FC<AdminBroadcastViewProps> = ({
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span
-                        className={`font-bold ${isImportant ? 'text-rose-700' : 'text-blue-700'}`}
-                      >
+                      <span className={`font-bold ${isImportant ? 'text-rose-700' : 'text-blue-700'}`}>
                         {isImportant ? 'Quan trọng' : 'Thông báo chung'}
+                      </span>
+                      <span aria-hidden="true" className="text-slate-300">·</span>
+                      <span className={`font-bold ${audienceColor}`}>
+                        Gửi tới: {getBroadcastAudienceLabel(audience)}
                       </span>
                       <span aria-hidden="true" className="text-slate-300">·</span>
                       <span className="text-slate-500 font-mono tabular-nums inline-flex items-center gap-1">

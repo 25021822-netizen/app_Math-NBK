@@ -1845,6 +1845,8 @@ function mergeAdminBroadcastLists(
     if (b && b.id && !deletedBroadcastIdsSet.has(b.id)) {
       map.set(b.id, {
         ...b,
+        targetAudience:
+          b.targetAudience === 'teacher' || b.targetAudience === 'student' ? b.targetAudience : 'all',
         deletedByUserIds: Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [],
       });
     }
@@ -1856,9 +1858,16 @@ function mergeAdminBroadcastLists(
       ...(prev?.deletedByUserIds || []).map((id) => String(id).trim().toLowerCase()).filter(Boolean),
       ...(Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : []).map((id) => String(id).trim().toLowerCase()).filter(Boolean),
     ]);
+    const resolvedTarget =
+      b.targetAudience === 'teacher' || b.targetAudience === 'student'
+        ? b.targetAudience
+        : prev?.targetAudience === 'teacher' || prev?.targetAudience === 'student'
+        ? prev.targetAudience
+        : 'all';
     map.set(b.id, {
       ...prev,
       ...b,
+      targetAudience: resolvedTarget,
       deletedByUserIds: Array.from(mergedDeletedSet),
     });
   });
@@ -1868,11 +1877,15 @@ function mergeAdminBroadcastLists(
 }
 
 /**
- * Admin gửi thông báo tin nhắn đến toàn bộ tài khoản trên hệ thống
+ * Admin gửi thông báo tin nhắn đến các tài khoản trên hệ thống
  */
 export async function dbSendAdminBroadcast(broadcast: AdminBroadcastMessage): Promise<boolean> {
   const payload = cleanForFirestore({
     ...broadcast,
+    targetAudience:
+      broadcast.targetAudience === 'teacher' || broadcast.targetAudience === 'student'
+        ? broadcast.targetAudience
+        : 'all',
     deletedByUserIds: Array.isArray(broadcast.deletedByUserIds) ? broadcast.deletedByUserIds : [],
     createdAt: broadcast.createdAt || new Date().toISOString(),
   });

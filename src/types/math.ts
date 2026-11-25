@@ -366,6 +366,8 @@ export interface FriendRelation {
   friendedAt: string;
 }
 
+export type BroadcastTargetAudience = 'all' | 'teacher' | 'student';
+
 export interface AdminBroadcastMessage {
   id: string;
   title: string;
@@ -373,6 +375,25 @@ export interface AdminBroadcastMessage {
   senderId: string;
   senderName: string;
   priority?: 'normal' | 'important';
+  targetAudience?: BroadcastTargetAudience;
   createdAt: string;
   deletedByUserIds: string[];
 }
+
+export function isBroadcastVisibleToRole(
+  broadcast: Pick<AdminBroadcastMessage, 'targetAudience'> | null | undefined,
+  role: UserRole
+): boolean {
+  if (!broadcast) return false;
+  if (role === 'admin') return true;
+  const target = broadcast.targetAudience || 'all';
+  if (target === 'all') return true;
+  return target === role;
+}
+
+export function getBroadcastAudienceLabel(target?: BroadcastTargetAudience): string {
+  if (target === 'teacher') return 'Chỉ Giáo viên';
+  if (target === 'student') return 'Chỉ Học sinh';
+  return 'Tất cả mọi người';
+}
+

@@ -1638,8 +1638,13 @@ app.post('/api/db/broadcasts/send', (req, res) => {
   }
   const list = Array.isArray(serverDb.adminBroadcasts) ? serverDb.adminBroadcasts : [];
   const existingIdx = list.findIndex((b: any) => b.id === broadcast.id);
+  const targetAudience =
+    broadcast.targetAudience === 'teacher' || broadcast.targetAudience === 'student'
+      ? broadcast.targetAudience
+      : 'all';
   const sanitized = {
     ...broadcast,
+    targetAudience,
     deletedByUserIds: Array.isArray(broadcast.deletedByUserIds) ? broadcast.deletedByUserIds : [],
     createdAt: broadcast.createdAt || new Date().toISOString(),
   };
