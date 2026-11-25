@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Exam, Question, ExamPartType, Classroom, ScoreVisibilityMode, getExamScoreVisibilityLabel } from '../../types/math';
-import { SAMPLE_CLASSROOMS } from '../../data/mockData';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
 import { ParsedExamSchema } from '../../lib/pdfParserSchema';
@@ -71,7 +70,7 @@ interface TeacherPortalViewProps {
 export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   onPublishExam,
   onPreviewExam,
-  classrooms = SAMPLE_CLASSROOMS,
+  classrooms = [],
   currentUserName = '',
   currentUserId,
   currentUserEmail,

@@ -25,14 +25,6 @@ import {
   formatPointsNumber,
   getExamScaleInfo,
 } from './lib/scoringEngine';
-import {
-  INITIAL_USER_PROFILE,
-  SAMPLE_CHEAT_LOGS,
-  SAMPLE_CLASSROOMS,
-  SAMPLE_SUBMISSIONS,
-  SAMPLE_CLASSROOM_LESSONS,
-  ALL_INITIAL_USERS,
-} from './data/mockData';
 import { pickPreferredImageUrl } from './services/examImageService';
 import {
   fetchDbState,
@@ -135,6 +127,21 @@ import {
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION_LOGIN_AT_KEY = 'math_nbk_session_login_at';
 
+const INITIAL_USER_PROFILE: UserProfile = {
+  id: '',
+  name: '',
+  email: '',
+  role: 'student',
+  tier: 'free',
+  xp: 0,
+  streakDays: 0,
+  lastActiveDate: '',
+  dailyScanCount: 0,
+  maxDailyScans: 5,
+  grade: 12,
+  status: 'active',
+};
+
 function clearStoredAuthSession() {
   try {
     localStorage.removeItem('math_nbk_auth_user');
@@ -211,9 +218,9 @@ export default function App() {
   );
   const [userProfile, setUserProfile] = useState<UserProfile>(initialSession.user);
   const rememberSessionRef = useRef<boolean>(initialSession.remembered);
-  const [allUsers, setAllUsers] = useState<UserProfile[]>(ALL_INITIAL_USERS);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [cheatLogs, setCheatLogs] = useState<CheatLog[]>(SAMPLE_CHEAT_LOGS);
+  const [cheatLogs, setCheatLogs] = useState<CheatLog[]>([]);
   const [examsList, setExamsList] = useState<Exam[]>(() => {
     try {
       const s = localStorage.getItem('math_liki_exams');
@@ -231,19 +238,19 @@ export default function App() {
   const [classrooms, setClassrooms] = useState<Classroom[]>(() => {
     try {
       const s = localStorage.getItem('math_liki_classrooms');
-      const parsed: Classroom[] = s ? JSON.parse(s) : SAMPLE_CLASSROOMS;
+      const parsed: Classroom[] = s ? JSON.parse(s) : [];
       return Array.isArray(parsed)
         ? parsed.map((c) => ({
             ...c,
             assignedExamIds: (c.assignedExamIds || []).filter((eid) => !isExamDeletedLocally(eid)),
           }))
-        : SAMPLE_CLASSROOMS;
+        : [];
     } catch {
-      return SAMPLE_CLASSROOMS;
+      return [];
     }
   });
-  const [submissions, setSubmissions] = useState<StudentExamSubmission[]>(SAMPLE_SUBMISSIONS);
-  const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>(SAMPLE_CLASSROOM_LESSONS);
+  const [submissions, setSubmissions] = useState<StudentExamSubmission[]>([]);
+  const [classroomLessons, setClassroomLessons] = useState<ClassroomLesson[]>([]);
   const [classroomMessages, setClassroomMessages] = useState<Record<string, ClassroomChatMessage[]>>({});
   const [adminBroadcasts, setAdminBroadcasts] = useState<AdminBroadcastMessage[]>(() => {
     try {
@@ -612,7 +619,6 @@ export default function App() {
 
   // Tự động đồng bộ Real-Time cơ sở dữ liệu trên máy chủ (Sync đa thiết bị / khác máy)
   useEffect(() => {
-    const sampleLessonIdSet = new Set(SAMPLE_CLASSROOM_LESSONS.map((l) => l.id));
     const RECENT_WINDOW_MS = 3 * 60 * 1000;
 
     let knownPendingIds = new Set<string>();
@@ -827,12 +833,11 @@ export default function App() {
       // Đồng bộ Bài học chuyên đề tức thời giữa các máy (Giáo viên đăng bài -> Học sinh nhận thông báo nổi)
       if (remoteData.classroomLessons && Array.isArray(remoteData.classroomLessons)) {
         const lessonMap = new Map<string, ClassroomLesson>();
-        SAMPLE_CLASSROOM_LESSONS.forEach((l) => lessonMap.set(l.id, l));
         remoteData.classroomLessons.forEach((l) => lessonMap.set(l.id, l));
         const mergedLessons = Array.from(lessonMap.values());
 
         const remoteNonSampleLessons = remoteData.classroomLessons.filter(
-          (l) => l && l.id && !sampleLessonIdSet.has(l.id)
+          (l) => Boolean(l && l.id)
         );
         const curUser = userProfileRef.current;
         const isLoggedInStudent = Boolean(isAuthenticatedRef.current && curUser?.id && curUser.role === 'student');

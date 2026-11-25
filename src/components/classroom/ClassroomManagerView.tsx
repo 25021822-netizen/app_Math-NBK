@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { copyTextSafe } from '../../utils/clipboard';
 import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention, AdminBroadcastMessage } from '../../types/math';
-import { SAMPLE_STUDENTS, SAMPLE_CLASSROOM_LESSONS } from '../../data/mockData';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
@@ -127,13 +126,13 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   onSaveExam,
   onSelectExamToTake,
   onViewClassGradebook,
-  allUsers = SAMPLE_STUDENTS,
+  allUsers = [],
   classroomMessages = {},
   onSendChatMessage,
   onToggleReaction,
   onQuickAddFriend,
   friendIds = [],
-  classroomLessons = SAMPLE_CLASSROOM_LESSONS,
+  classroomLessons = [],
   onUpdateLessons,
   onSaveLesson,
   onDeleteLesson,
@@ -214,7 +213,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
   });
   const [activeRightTab, setActiveRightTab] = useState<'curriculum' | 'chat' | 'students' | 'approvals'>('curriculum');
   const [approvalActionSuccess, setApprovalActionSuccess] = useState<string | null>(null);
-  const [localLessons, setLocalLessons] = useState<ClassroomLesson[]>(classroomLessons || SAMPLE_CLASSROOM_LESSONS);
+  const [localLessons, setLocalLessons] = useState<ClassroomLesson[]>(classroomLessons || []);
   const [showAddLessonModal, setShowAddLessonModal] = useState<boolean>(false);
   const [selectedLessonDetail, setSelectedLessonDetail] = useState<ClassroomLesson | null>(null);
   const [lessonActionSuccess, setLessonActionSuccess] = useState<string | null>(null);
