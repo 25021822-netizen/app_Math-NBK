@@ -1,8 +1,8 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { PDFParse } from 'pdf-parse';
@@ -1027,7 +1027,10 @@ const DEFAULT_ADMIN_USER = {
   status: 'active',
 };
 
-const DB_DIR = path.resolve(process.cwd(), 'data');
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const DB_DIR = IS_VERCEL
+  ? path.join(os.tmpdir(), 'mathnbk-data')
+  : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DB_DIR, 'database.json');
 const UPLOADS_DIR = path.join(DB_DIR, 'uploads');
 
@@ -1788,18 +1791,28 @@ app.get('/api/firebase-secret-status', (_req, res) => {
   res.json({ configured: Boolean(runtimeKey) });
 });
 
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    runtime: IS_VERCEL ? 'vercel' : 'node',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Khởi chạy Vite Server Middleware
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !IS_VERCEL) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    const distDir = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distDir));
     app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(distDir, 'index.html'));
     });
   }
 
@@ -1808,4 +1821,9 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!IS_VERCEL) {
+  startServer();
+}
+
+export { app };
+export default app;
