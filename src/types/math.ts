@@ -368,6 +368,8 @@ export interface FriendRelation {
 
 export type BroadcastTargetAudience = 'all' | 'teacher' | 'student';
 
+export type BroadcastCategory = 'general' | 'exam' | 'urgent' | 'maintenance' | 'event';
+
 export interface AdminBroadcastMessage {
   id: string;
   title: string;
@@ -375,9 +377,109 @@ export interface AdminBroadcastMessage {
   senderId: string;
   senderName: string;
   priority?: 'normal' | 'important';
+  category?: BroadcastCategory;
   targetAudience?: BroadcastTargetAudience;
+  isPinned?: boolean;
+  pinnedAt?: string;
   createdAt: string;
   deletedByUserIds: string[];
+}
+
+export function resolveBroadcastCategory(
+  broadcast?: Pick<AdminBroadcastMessage, 'category' | 'priority'> | null
+): BroadcastCategory {
+  if (
+    broadcast?.category === 'general' ||
+    broadcast?.category === 'exam' ||
+    broadcast?.category === 'urgent' ||
+    broadcast?.category === 'maintenance' ||
+    broadcast?.category === 'event'
+  ) {
+    return broadcast.category;
+  }
+  if (broadcast?.priority === 'important') {
+    return 'urgent';
+  }
+  return 'general';
+}
+
+export const BROADCAST_CATEGORY_META: Record<
+  BroadcastCategory,
+  {
+    label: string;
+    shortLabel: string;
+    cardBg: string;
+    cardBorder: string;
+    badgeClass: string;
+    textClass: string;
+    selectActiveClass: string;
+    iconBgActiveClass: string;
+  }
+> = {
+  general: {
+    label: 'Thông báo chung',
+    shortLabel: 'Chung',
+    cardBg: 'bg-blue-50/70',
+    cardBorder: 'border-blue-200',
+    badgeClass: 'bg-blue-600 text-white',
+    textClass: 'text-blue-700',
+    selectActiveClass: 'bg-blue-50 border-blue-500 text-blue-900 ring-2 ring-blue-100',
+    iconBgActiveClass: 'bg-blue-600 text-white',
+  },
+  exam: {
+    label: 'Lịch thi & Kiểm tra',
+    shortLabel: 'Lịch thi',
+    cardBg: 'bg-violet-50/70',
+    cardBorder: 'border-violet-200',
+    badgeClass: 'bg-violet-600 text-white',
+    textClass: 'text-violet-700',
+    selectActiveClass: 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-100',
+    iconBgActiveClass: 'bg-violet-600 text-white',
+  },
+  urgent: {
+    label: 'Khẩn cấp / Quan trọng',
+    shortLabel: 'Khẩn cấp',
+    cardBg: 'bg-rose-50/80',
+    cardBorder: 'border-rose-200',
+    badgeClass: 'bg-rose-600 text-white',
+    textClass: 'text-rose-700',
+    selectActiveClass: 'bg-rose-50 border-rose-500 text-rose-900 ring-2 ring-rose-100',
+    iconBgActiveClass: 'bg-rose-600 text-white',
+  },
+  maintenance: {
+    label: 'Bảo trì & Hệ thống',
+    shortLabel: 'Hệ thống',
+    cardBg: 'bg-amber-50/80',
+    cardBorder: 'border-amber-200',
+    badgeClass: 'bg-amber-600 text-white',
+    textClass: 'text-amber-800',
+    selectActiveClass: 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-100',
+    iconBgActiveClass: 'bg-amber-600 text-white',
+  },
+  event: {
+    label: 'Sự kiện & Hoạt động',
+    shortLabel: 'Sự kiện',
+    cardBg: 'bg-emerald-50/70',
+    cardBorder: 'border-emerald-200',
+    badgeClass: 'bg-emerald-600 text-white',
+    textClass: 'text-emerald-700',
+    selectActiveClass: 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-100',
+    iconBgActiveClass: 'bg-emerald-600 text-white',
+  },
+};
+
+export function sortAdminBroadcasts(list: AdminBroadcastMessage[]): AdminBroadcastMessage[] {
+  return [...list].sort((a, b) => {
+    const pinA = a.isPinned ? 1 : 0;
+    const pinB = b.isPinned ? 1 : 0;
+    if (pinA !== pinB) return pinB - pinA;
+    if (pinA === 1) {
+      const pTimeA = new Date(a.pinnedAt || a.createdAt || 0).getTime();
+      const pTimeB = new Date(b.pinnedAt || b.createdAt || 0).getTime();
+      if (pTimeA !== pTimeB) return pTimeB - pTimeA;
+    }
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  });
 }
 
 export function isBroadcastVisibleToRole(
@@ -396,4 +498,5 @@ export function getBroadcastAudienceLabel(target?: BroadcastTargetAudience): str
   if (target === 'student') return 'Chỉ Học sinh';
   return 'Tất cả mọi người';
 }
+
 

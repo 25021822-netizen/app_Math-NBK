@@ -24,6 +24,8 @@ import {
   Exam,
   AutoApprovalSettings,
   AdminBroadcastMessage,
+  resolveBroadcastCategory,
+  sortAdminBroadcasts,
 } from '../types/math';
 import {
   persistExamImagesEverywhere,
@@ -1956,10 +1958,15 @@ function mergeAdminBroadcastLists(
   const map = new Map<string, AdminBroadcastMessage>();
   existingList.forEach((b) => {
     if (b && b.id && !deletedBroadcastIdsSet.has(b.id)) {
+      const category = resolveBroadcastCategory(b);
       map.set(b.id, {
         ...b,
+        category,
+        priority: category === 'urgent' || b.priority === 'important' ? 'important' : 'normal',
         targetAudience:
           b.targetAudience === 'teacher' || b.targetAudience === 'student' ? b.targetAudience : 'all',
+        isPinned: Boolean(b.isPinned),
+        pinnedAt: b.isPinned ? b.pinnedAt || b.createdAt : undefined,
         deletedByUserIds: Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [],
       });
     }
@@ -1977,30 +1984,42 @@ function mergeAdminBroadcastLists(
         : prev?.targetAudience === 'teacher' || prev?.targetAudience === 'student'
         ? prev.targetAudience
         : 'all';
+    const resolvedCategory = resolveBroadcastCategory(b.category ? b : prev || b);
+    const resolvedPinned = typeof b.isPinned === 'boolean' ? b.isPinned : Boolean(prev?.isPinned);
+    const resolvedPinnedAt = resolvedPinned ? b.pinnedAt || prev?.pinnedAt || b.createdAt : undefined;
     map.set(b.id, {
       ...prev,
       ...b,
+      category: resolvedCategory,
+      priority: resolvedCategory === 'urgent' || b.priority === 'important' ? 'important' : 'normal',
       targetAudience: resolvedTarget,
+      isPinned: resolvedPinned,
+      pinnedAt: resolvedPinnedAt,
       deletedByUserIds: Array.from(mergedDeletedSet),
     });
   });
-  return Array.from(map.values()).sort(
-    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-  );
+  return sortAdminBroadcasts(Array.from(map.values()));
 }
 
 /**
  * Admin gửi thông báo tin nhắn đến các tài khoản trên hệ thống
  */
 export async function dbSendAdminBroadcast(broadcast: AdminBroadcastMessage): Promise<boolean> {
+  const category = resolveBroadcastCategory(broadcast);
+  const isPinned = Boolean(broadcast.isPinned);
+  const createdAt = broadcast.createdAt || new Date().toISOString();
   const payload = cleanForFirestore({
     ...broadcast,
+    category,
+    priority: category === 'urgent' || broadcast.priority === 'important' ? 'important' : 'normal',
     targetAudience:
       broadcast.targetAudience === 'teacher' || broadcast.targetAudience === 'student'
         ? broadcast.targetAudience
         : 'all',
+    isPinned,
+    pinnedAt: isPinned ? broadcast.pinnedAt || createdAt : undefined,
     deletedByUserIds: Array.isArray(broadcast.deletedByUserIds) ? broadcast.deletedByUserIds : [],
-    createdAt: broadcast.createdAt || new Date().toISOString(),
+    createdAt,
   });
 
   if (deletedBroadcastIdsSet.delete(broadcast.id)) {
@@ -2041,11 +2060,71 @@ export async function dbSendAdminBroadcast(broadcast: AdminBroadcastMessage): Pr
 }
 
 /**
- * Người dùng xóa vĩnh viễn thông báo khỏi tài khoản của riêng mình (không ảnh hưởng tài khoản khác)
+ * Admin ghim / bỏ ghim thông báo chung (Tin ghim luôn lên đầu và người dùng không thể tự xóa)
+ */
+export async function dbTogglePinAdminBroadcast(broadcastId: string, isPinned: boolean): Promise<boolean> {
+  if (!broadcastId) return false;
+  const pinnedAt = isPinned ? new Date().toISOString() : '';
+
+  if (activeAccumulatorRef && Array.isArray(activeAccumulatorRef.adminBroadcasts)) {
+    const updated = activeAccumulatorRef.adminBroadcasts.map((b) =>
+      b.id === broadcastId
+        ? {
+            ...b,
+            isPinned,
+            pinnedAt: isPinned ? pinnedAt : undefined,
+          }
+        : b
+    );
+    activeAccumulatorRef.adminBroadcasts = sortAdminBroadcasts(updated);
+    try {
+      localStorage.setItem(ADMIN_BROADCASTS_CACHE_KEY, JSON.stringify(activeAccumulatorRef.adminBroadcasts));
+    } catch {}
+    activeDispatchRef?.();
+  }
+
+  const firestorePromise = (async () => {
+    const ref = doc(db, 'admin_broadcasts', broadcastId);
+    const patch = { isPinned, pinnedAt };
+    try {
+      await updateDoc(ref, patch);
+    } catch {
+      try {
+        await setDoc(ref, patch, { merge: true });
+      } catch (innerErr) {
+        try {
+          handleFirestoreError(innerErr, OperationType.UPDATE, `admin_broadcasts/${broadcastId}`);
+        } catch (wrapped) {
+          console.warn('Lỗi dbTogglePinAdminBroadcast Firestore:', wrapped);
+        }
+      }
+    }
+  })();
+
+  const serverPromise = fetch('/api/db/broadcasts/pin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ broadcastId, isPinned }),
+  }).catch((err) => {
+    console.warn('Lỗi dbTogglePinAdminBroadcast Server API:', err);
+    return null;
+  });
+
+  await Promise.allSettled([firestorePromise, serverPromise]);
+  return true;
+}
+
+/**
+ * Người dùng xóa vĩnh viễn thông báo khỏi tài khoản của riêng mình (không áp dụng cho tin đã ghim)
  */
 export async function dbDismissBroadcastForUser(broadcastId: string, userId: string): Promise<boolean> {
   const normUserId = (userId || '').trim().toLowerCase();
   if (!broadcastId || !normUserId) return false;
+
+  const currentTarget = activeAccumulatorRef?.adminBroadcasts?.find((b) => b.id === broadcastId);
+  if (currentTarget?.isPinned) {
+    return false;
+  }
 
   markBroadcastDismissedLocally(normUserId, broadcastId);
 

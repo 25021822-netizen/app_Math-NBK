@@ -1677,6 +1677,21 @@ app.get('/api/db/broadcasts', (_req, res) => {
   res.json({ success: true, data: serverDb.adminBroadcasts || [] });
 });
 
+const VALID_BROADCAST_CATEGORIES = new Set(['general', 'exam', 'urgent', 'maintenance', 'event']);
+
+const sortServerBroadcasts = (arr: any[]) =>
+  arr.sort((a: any, b: any) => {
+    const pinA = a?.isPinned ? 1 : 0;
+    const pinB = b?.isPinned ? 1 : 0;
+    if (pinA !== pinB) return pinB - pinA;
+    if (pinA === 1) {
+      const pTimeA = new Date(a?.pinnedAt || a?.createdAt || 0).getTime();
+      const pTimeB = new Date(b?.pinnedAt || b?.createdAt || 0).getTime();
+      if (pTimeA !== pTimeB) return pTimeB - pTimeA;
+    }
+    return new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
+  });
+
 app.post('/api/db/broadcasts/send', (req, res) => {
   const { broadcast } = req.body;
   if (!broadcast || !broadcast.id || !broadcast.title || !broadcast.content) {
@@ -1688,23 +1703,62 @@ app.post('/api/db/broadcasts/send', (req, res) => {
     broadcast.targetAudience === 'teacher' || broadcast.targetAudience === 'student'
       ? broadcast.targetAudience
       : 'all';
+  const category = VALID_BROADCAST_CATEGORIES.has(broadcast.category)
+    ? broadcast.category
+    : broadcast.priority === 'important'
+    ? 'urgent'
+    : 'general';
+  const isPinned = Boolean(broadcast.isPinned);
+  const createdAt = broadcast.createdAt || new Date().toISOString();
   const sanitized = {
     ...broadcast,
     targetAudience,
+    category,
+    priority: category === 'urgent' || broadcast.priority === 'important' ? 'important' : 'normal',
+    isPinned,
+    pinnedAt: isPinned ? broadcast.pinnedAt || createdAt : undefined,
     deletedByUserIds: Array.isArray(broadcast.deletedByUserIds) ? broadcast.deletedByUserIds : [],
-    createdAt: broadcast.createdAt || new Date().toISOString(),
+    createdAt,
   };
   if (existingIdx >= 0) {
     list[existingIdx] = { ...list[existingIdx], ...sanitized };
   } else {
     list.unshift(sanitized);
   }
-  list.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  sortServerBroadcasts(list);
   serverDb.adminBroadcasts = list;
   serverDb.deletedBroadcastIds = (serverDb.deletedBroadcastIds || []).filter((id) => id !== broadcast.id);
   serverDb.version = (serverDb.version || 1) + 1;
   saveDatabase(serverDb);
   res.json({ success: true, data: sanitized, version: serverDb.version });
+});
+
+app.post('/api/db/broadcasts/pin', (req, res) => {
+  const { broadcastId, isPinned } = req.body;
+  if (!broadcastId || typeof isPinned !== 'boolean') {
+    return res.status(400).json({ success: false, error: 'Thiếu broadcastId hoặc trạng thái ghim!' });
+  }
+  const list = Array.isArray(serverDb.adminBroadcasts) ? serverDb.adminBroadcasts : [];
+  let updatedItem: any = null;
+  const nextList = list.map((b: any) => {
+    if (b && b.id === broadcastId) {
+      updatedItem = {
+        ...b,
+        isPinned,
+        pinnedAt: isPinned ? new Date().toISOString() : undefined,
+      };
+      return updatedItem;
+    }
+    return b;
+  });
+  if (!updatedItem) {
+    return res.status(404).json({ success: false, error: 'Không tìm thấy thông báo!' });
+  }
+  sortServerBroadcasts(nextList);
+  serverDb.adminBroadcasts = nextList;
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
+  res.json({ success: true, data: updatedItem, version: serverDb.version });
 });
 
 app.post('/api/db/broadcasts/dismiss', (req, res) => {
@@ -1714,6 +1768,10 @@ app.post('/api/db/broadcasts/dismiss', (req, res) => {
     return res.status(400).json({ success: false, error: 'Thiếu broadcastId hoặc userId!' });
   }
   const list = Array.isArray(serverDb.adminBroadcasts) ? serverDb.adminBroadcasts : [];
+  const targetBroadcast = list.find((b: any) => b && b.id === broadcastId);
+  if (targetBroadcast?.isPinned) {
+    return res.status(403).json({ success: false, error: 'Thông báo đang được ghim, người dùng không thể tự xóa!' });
+  }
   let updatedItem: any = null;
   serverDb.adminBroadcasts = list.map((b: any) => {
     if (b && b.id === broadcastId) {

@@ -17,6 +17,8 @@ import {
   ScoreVisibilityMode,
   AdminBroadcastMessage,
   BroadcastTargetAudience,
+  BroadcastCategory,
+  sortAdminBroadcasts,
   isBroadcastVisibleToRole,
   getBroadcastAudienceLabel,
   canStudentViewExamScore,
@@ -57,6 +59,7 @@ import {
   dbToggleMessageReaction,
   dbDisbandClassroom,
   dbSendAdminBroadcast,
+  dbTogglePinAdminBroadcast,
   dbDismissBroadcastForUser,
   dbDeleteAdminBroadcastGlobally,
   getLocallyDismissedBroadcastIds,
@@ -381,16 +384,17 @@ export default function App() {
     };
   }, [isAuthenticated, sessionLoginAt]);
 
-  // Danh sách thông báo Admin hiển thị ở Nhóm Lớp (lọc theo đối tượng nhận và loại bỏ thông báo tài khoản này đã xóa hẳn)
+  // Danh sách thông báo Admin hiển thị ở Nhóm Lớp (tin ghim luôn ở trên cùng và không bị xóa bởi người dùng)
   const visibleBroadcastsForUser = useMemo(() => {
     const normId = (userProfile.id || '').trim().toLowerCase();
     const normEmail = (userProfile.email || '').trim().toLowerCase();
     const localDismissedSet = new Set(
       getLocallyDismissedBroadcastIds(userProfile.id).map((id) => id.trim())
     );
-    return (adminBroadcasts || []).filter((b) => {
+    const filtered = (adminBroadcasts || []).filter((b) => {
       if (!b || !b.id) return false;
       if (!isBroadcastVisibleToRole(b, userProfile.role)) return false;
+      if (b.isPinned) return true;
       if (localDismissedSet.has(b.id)) return false;
       const deletedIds = Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [];
       const isDeletedByMe = deletedIds.some((uid) => {
@@ -399,6 +403,7 @@ export default function App() {
       });
       return !isDeletedByMe;
     });
+    return sortAdminBroadcasts(filtered);
   }, [adminBroadcasts, userProfile.id, userProfile.email, userProfile.role, broadcastDismissTick]);
 
   // Kiểm tra quyền nhìn thấy / là thành viên hợp lệ của nhóm lớp
@@ -1094,6 +1099,7 @@ export default function App() {
         const localDismissed = curUser?.id ? new Set(getLocallyDismissedBroadcastIds(curUser.id)) : new Set<string>();
 
         const isDismissedForCurrentUser = (b: AdminBroadcastMessage) => {
+          if (b.isPinned) return false;
           if (localDismissed.has(b.id)) return true;
           const delArr = Array.isArray(b.deletedByUserIds) ? b.deletedByUserIds : [];
           return delArr.some((uid) => {
@@ -1237,20 +1243,26 @@ export default function App() {
     title: string;
     content: string;
     priority: 'normal' | 'important';
+    category: BroadcastCategory;
     targetAudience: BroadcastTargetAudience;
+    isPinned: boolean;
   }) => {
+    const nowIso = new Date().toISOString();
     const newBroadcast: AdminBroadcastMessage = {
       id: `bc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       title: payload.title,
       content: payload.content,
-      priority: payload.priority,
+      priority: payload.category === 'urgent' || payload.priority === 'important' ? 'important' : 'normal',
+      category: payload.category || 'general',
       targetAudience: payload.targetAudience || 'all',
+      isPinned: Boolean(payload.isPinned),
+      pinnedAt: payload.isPinned ? nowIso : undefined,
       senderId: userProfile.id,
       senderName: userProfile.name || 'Ban Quản Trị Hệ Thống',
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
       deletedByUserIds: [],
     };
-    setAdminBroadcasts((prev) => [newBroadcast, ...prev]);
+    setAdminBroadcasts((prev) => sortAdminBroadcasts([newBroadcast, ...prev]));
     await dbSendAdminBroadcast(newBroadcast);
     triggerPushNotification('Đã phát thông báo hệ thống', {
       message: `"${newBroadcast.title}" đã được gửi tới nhóm ${getBroadcastAudienceLabel(newBroadcast.targetAudience)} và hiển thị tại Nhóm Lớp.`,
@@ -1259,10 +1271,24 @@ export default function App() {
     });
   };
 
-  // Người dùng tự xóa hẳn thông báo khỏi tài khoản của riêng mình
+  // Admin ghim hoặc bỏ ghim thông báo chung
+  const handleTogglePinBroadcast = async (broadcastId: string, isPinned: boolean) => {
+    if (!broadcastId) return;
+    const pinnedAt = isPinned ? new Date().toISOString() : undefined;
+    setAdminBroadcasts((prev) =>
+      sortAdminBroadcasts(
+        prev.map((b) => (b.id === broadcastId ? { ...b, isPinned, pinnedAt } : b))
+      )
+    );
+    await dbTogglePinAdminBroadcast(broadcastId, isPinned);
+  };
+
+  // Người dùng tự xóa hẳn thông báo khỏi tài khoản của riêng mình (bị chặn nếu tin nhắn đang được ghim)
   const handleDismissBroadcastForUser = async (broadcastId: string) => {
     const normId = (userProfile.id || '').trim().toLowerCase();
     if (!broadcastId || !normId) return;
+    const target = adminBroadcasts.find((b) => b.id === broadcastId);
+    if (target?.isPinned) return;
     markBroadcastDismissedLocally(normId, broadcastId);
     setBroadcastDismissTick((t) => t + 1);
     setAdminBroadcasts((prev) =>
@@ -1967,6 +1993,7 @@ export default function App() {
             teacherRecipientsCount={teacherCount}
             studentRecipientsCount={studentCount}
             onSendBroadcast={handleSendAdminBroadcast}
+            onTogglePinBroadcast={handleTogglePinBroadcast}
             onDeleteBroadcastGlobally={handleDeleteAdminBroadcastGlobally}
           />
         );

@@ -1,6 +1,19 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { copyTextSafe } from '../../utils/clipboard';
-import { Classroom, ClassroomLesson, UserProfile, UserRole, Exam, ClassroomChatMessage, ChatMention, AdminBroadcastMessage, getBroadcastAudienceLabel } from '../../types/math';
+import {
+  Classroom,
+  ClassroomLesson,
+  UserProfile,
+  UserRole,
+  Exam,
+  ClassroomChatMessage,
+  ChatMention,
+  AdminBroadcastMessage,
+  BROADCAST_CATEGORY_META,
+  resolveBroadcastCategory,
+  sortAdminBroadcasts,
+  getBroadcastAudienceLabel,
+} from '../../types/math';
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
@@ -77,6 +90,7 @@ import {
   Globe,
   EyeOff,
   Megaphone,
+  Pin,
 } from 'lucide-react';
 
 interface ClassroomManagerViewProps {
@@ -2130,9 +2144,9 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
         </div>
       )}
 
-      {/* Thông báo tin nhắn chung từ Admin (Hiển thị trực tiếp ở Nhóm Lớp & xóa hẳn theo từng tài khoản) */}
+      {/* Thông báo tin nhắn chung từ Admin (Hiển thị trực tiếp ở Nhóm Lớp, chia màu theo loại, ghim không thể tự xóa) */}
       {adminBroadcasts.length > 0 && (
-        <div className="bg-white rounded-3xl border border-blue-200 shadow-xs p-5 space-y-3">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 space-y-3">
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
@@ -2143,39 +2157,43 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                   Thông Báo Từ Ban Quản Trị ({adminBroadcasts.length})
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Tin nhắn thông báo từ Ban Quản Trị dành cho bạn
+                  Tin nhắn thông báo từ Ban Quản Trị · Các tin được ghim cố định không thể tự xóa
                 </p>
               </div>
             </div>
           </div>
 
           <div className="space-y-2.5">
-            {adminBroadcasts.map((msg) => {
-              const isImportant = msg.priority === 'important';
+            {sortAdminBroadcasts(adminBroadcasts).map((msg) => {
+              const category = resolveBroadcastCategory(msg);
+              const catMeta = BROADCAST_CATEGORY_META[category];
+              const isPinned = Boolean(msg.isPinned);
               const audienceLabel = getBroadcastAudienceLabel(msg.targetAudience);
               return (
                 <div
                   key={msg.id}
                   className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-start justify-between gap-3 transition-all ${
-                    isImportant
-                      ? 'bg-rose-50/70 border-rose-200'
-                      : 'bg-blue-50/50 border-blue-100'
-                  }`}
+                    catMeta.cardBg
+                  } ${catMeta.cardBorder} ${isPinned ? 'ring-1 ring-amber-400/70' : ''}`}
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
-                          isImportant ? 'bg-rose-600 text-white' : 'bg-blue-600 text-white'
-                        }`}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${catMeta.badgeClass}`}
                       >
-                        {isImportant ? 'Quan trọng' : 'Admin'}
+                        {catMeta.label}
                       </span>
+                      {isPinned && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black inline-flex items-center gap-1">
+                          <Pin size={10} />
+                          <span>Đã ghim</span>
+                        </span>
+                      )}
                       <span className="font-extrabold text-sm text-slate-900">{msg.title}</span>
-                      <span className="text-[11px] font-semibold text-slate-500">
+                      <span className="text-[11px] font-semibold text-slate-600">
                         · {audienceLabel}
                       </span>
-                      <span className="text-[11px] text-slate-500 font-mono">
+                      <span className="text-[11px] text-slate-500 font-mono tabular-nums">
                         {new Date(msg.createdAt).toLocaleString('vi-VN')}
                       </span>
                     </div>
@@ -2184,16 +2202,26 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     </p>
                   </div>
 
-                  {onDismissBroadcast && (
-                    <button
-                      type="button"
-                      onClick={() => onDismissBroadcast(msg.id)}
-                      title="Xóa vĩnh viễn thông báo này khỏi tài khoản của bạn"
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-200 font-bold text-[11px] flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer self-end sm:self-start"
+                  {isPinned ? (
+                    <span
+                      title="Thông báo đã được Admin ghim cố định, người dùng không thể tự xóa"
+                      className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[11px] inline-flex items-center gap-1.5 shrink-0 self-end sm:self-start whitespace-nowrap"
                     >
-                      <Trash2 size={13} />
-                      <span>Xóa thông báo</span>
-                    </button>
+                      <Lock size={12} />
+                      <span>Tin ghim cố định</span>
+                    </span>
+                  ) : (
+                    onDismissBroadcast && (
+                      <button
+                        type="button"
+                        onClick={() => onDismissBroadcast(msg.id)}
+                        title="Xóa vĩnh viễn thông báo này khỏi tài khoản của bạn"
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-200 font-bold text-[11px] flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer self-end sm:self-start whitespace-nowrap"
+                      >
+                        <Trash2 size={13} />
+                        <span>Xóa thông báo</span>
+                      </button>
+                    )
                   )}
                 </div>
               );

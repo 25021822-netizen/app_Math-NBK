@@ -162,7 +162,7 @@
     },
     "AdminBroadcast": {
       "title": "AdminBroadcast",
-      "description": "System-wide announcement message sent by Admin to all accounts with per-user permanent deletion tracking",
+      "description": "System-wide announcement message sent by Admin with category colors, pinning support, and per-user permanent deletion tracking",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -171,6 +171,10 @@
         "senderId": { "type": "string" },
         "senderName": { "type": "string" },
         "priority": { "type": "string", "enum": ["normal", "important"] },
+        "category": { "type": "string", "enum": ["general", "exam", "urgent", "maintenance", "event"] },
+        "targetAudience": { "type": "string", "enum": ["all", "teacher", "student"] },
+        "isPinned": { "type": "boolean" },
+        "pinnedAt": { "type": "string" },
         "createdAt": { "type": "string" },
         "deletedByUserIds": {
           "type": "array",
