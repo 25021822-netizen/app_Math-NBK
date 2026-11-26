@@ -202,7 +202,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                 >
                   <Atom size={14} className="text-sky-600" />
-                  <span>Mô Phỏng (Vật Lý)</span>
+                  <span>Vật Lý</span>
                 </button>
                 <button
                   onClick={() => onSelectTab('chemistry_lab')}
@@ -213,7 +213,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                 >
                   <FlaskConical size={14} className="text-emerald-600" />
-                  <span>Thí Nghiệm (Hóa Học)</span>
+                  <span>Hóa Học</span>
                 </button>
                 <button
                   onClick={() => onSelectTab('profile')}
@@ -302,7 +302,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}
                   >
                     <Atom size={14} className="text-sky-600" />
-                    <span>Mô Phỏng (Vật Lý)</span>
+                    <span>Vật Lý</span>
                   </button>
                 )}
                 {canAccessSubjectTab('chemistry_lab', userRole, userSubject) && (
@@ -315,7 +315,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}
                   >
                     <FlaskConical size={14} className="text-emerald-600" />
-                    <span>Thí Nghiệm (Hóa Học)</span>
+                    <span>Hóa Học</span>
                   </button>
                 )}
                 <button
@@ -803,7 +803,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           <Atom size={18} />
                         </div>
                         <div>
-                          <div className="text-xs font-extrabold">Mô Phỏng (Vật Lý)</div>
+                          <div className="text-xs font-extrabold">Vật Lý</div>
                           <div className={`text-[10px] ${currentTab === 'physics_sim' ? 'text-sky-100' : 'text-slate-400'}`}>
                             Dao động, ném xiên, giao thoa sóng &amp; mạch điện RLC
                           </div>
@@ -827,7 +827,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           <FlaskConical size={18} />
                         </div>
                         <div>
-                          <div className="text-xs font-extrabold">Thí Nghiệm (Hóa Học)</div>
+                          <div className="text-xs font-extrabold">Hóa Học</div>
                           <div className={`text-[10px] ${currentTab === 'chemistry_lab' ? 'text-emerald-100' : 'text-slate-400'}`}>
                             Chuẩn độ pH, kim loại + acid, kết tủa &amp; cân bằng hóa học
                           </div>
@@ -980,7 +980,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <Atom size={18} />
                           </div>
                           <div>
-                            <div className="text-xs font-extrabold">Mô Phỏng (Vật Lý)</div>
+                            <div className="text-xs font-extrabold">Vật Lý</div>
                             <div className="text-[10px] text-slate-400">Dao động, ném xiên, giao thoa &amp; mạch RLC</div>
                           </div>
                         </div>
@@ -1002,7 +1002,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <FlaskConical size={18} />
                           </div>
                           <div>
-                            <div className="text-xs font-extrabold">Thí Nghiệm (Hóa Học)</div>
+                            <div className="text-xs font-extrabold">Hóa Học</div>
                             <div className="text-[10px] text-slate-400">Chuẩn độ pH, kim loại + acid, kết tủa &amp; cân bằng</div>
                           </div>
                         </div>

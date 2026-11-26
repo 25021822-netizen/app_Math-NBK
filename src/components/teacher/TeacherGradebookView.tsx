@@ -10,19 +10,18 @@ import {
   formatPointsNumber,
   getExamScaleInfo,
   getSubmissionScalePoints,
+  isAnswerEquivalent,
+  type ScoreRankKey,
 } from '../../lib/scoringEngine';
 import {
   Award,
   Users,
   Search,
   BarChart3,
-  TrendingUp,
   Download,
   Eye,
   CheckCircle2,
   AlertTriangle,
-  GraduationCap,
-  Calendar,
   Clock,
   ShieldAlert,
   ArrowUpDown,
@@ -30,7 +29,13 @@ import {
   FileText,
   Trash2,
   ClipboardList,
+  RotateCcw,
+  Calendar,
+  ExternalLink,
+  XCircle,
+  MinusCircle,
 } from 'lucide-react';
+
 const GradebookPdfReportModal = lazy(() =>
   import('./GradebookPdfReportModal').then((m) => ({ default: m.GradebookPdfReportModal }))
 );
@@ -63,7 +68,7 @@ const formatSubmissionDateTime = (iso: string) => {
     month: '2-digit',
     year: 'numeric',
   });
-  return { time, date, full: `${time} - ${date}` };
+  return { time, date, full: `${time} · ${date}` };
 };
 
 const formatDurationSpent = (seconds: number) => {
@@ -72,7 +77,37 @@ const formatDurationSpent = (seconds: number) => {
   const secs = safeSec % 60;
   if (mins === 0) return `${secs} giây`;
   if (secs === 0) return `${mins} phút`;
-  return `${mins} phút ${secs} giây`;
+  return `${mins}p ${secs}s`;
+};
+
+const RANK_STYLE_MAP: Record<
+  ScoreRankKey,
+  { shortLabel: string; textClass: string; barClass: string; dotBgClass: string }
+> = {
+  excellent: {
+    shortLabel: 'Giỏi',
+    textClass: 'text-emerald-700',
+    barClass: 'bg-emerald-500',
+    dotBgClass: 'bg-emerald-600',
+  },
+  good: {
+    shortLabel: 'Khá',
+    textClass: 'text-blue-700',
+    barClass: 'bg-blue-500',
+    dotBgClass: 'bg-blue-600',
+  },
+  average: {
+    shortLabel: 'TB',
+    textClass: 'text-amber-700',
+    barClass: 'bg-amber-500',
+    dotBgClass: 'bg-amber-600',
+  },
+  below: {
+    shortLabel: 'Yếu',
+    textClass: 'text-rose-700',
+    barClass: 'bg-rose-500',
+    dotBgClass: 'bg-rose-600',
+  },
 };
 
 export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
@@ -80,28 +115,30 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
   submissions,
   examsList,
   userRole = 'teacher',
+  onPreviewExam,
   onDeleteSubmission,
   onDeleteMultipleSubmissions,
 }) => {
-  // Bộ lọc
+  // Bộ lọc & Điều hướng tab
   const [selectedClassId, setSelectedClassId] = useState<string>('all');
   const [selectedExamId, setSelectedExamId] = useState<string>('all');
   const [searchStudentTerm, setSearchStudentTerm] = useState<string>('');
   const [sortField, setSortField] = useState<'score' | 'time' | 'date'>('score');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
-  const [scoreRangeFilter, setScoreRangeFilter] = useState<'all' | 'excellent' | 'good' | 'average' | 'below'>('all');
+  const [scoreRangeFilter, setScoreRangeFilter] = useState<'all' | ScoreRankKey>('all');
+  const [activeSection, setActiveSection] = useState<'table' | 'distribution' | 'questions'>('table');
 
   // Modal xem chi tiết bài làm của 1 học sinh
   const [viewingSubmission, setViewingSubmission] = useState<StudentExamSubmission | null>(null);
 
-  // Thông báo xuất file
+  // Thông báo trạng thái xuất file / xóa
   const [exportNotice, setExportNotice] = useState<string | null>(null);
 
-  // Modal xuất báo cáo PDF (Cả lớp hoặc từng học sinh)
+  // Modal xuất báo cáo PDF / Excel / Word
   const [showPdfExportModal, setShowPdfExportModal] = useState<boolean>(false);
   const [pdfPreselectedStudent, setPdfPreselectedStudent] = useState<StudentExamSubmission | null>(null);
 
-  // Quyền xóa bài nộp của học sinh (Giáo viên / Quản trị viên)
+  // Quyền xóa bài nộp của học sinh
   const canDeleteSubmissions = (userRole === 'teacher' || userRole === 'admin') && Boolean(onDeleteSubmission);
   const [submissionToDelete, setSubmissionToDelete] = useState<StudentExamSubmission | null>(null);
   const [selectedSubIds, setSelectedSubIds] = useState<Set<string>>(() => new Set());
@@ -113,26 +150,34 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
     'all' | 'part_1_mcq' | 'part_2_true_false' | 'part_3_short_answer' | 'has_wrong'
   >('all');
 
-  // Lọc danh sách bài nộp theo bộ lọc
+  const hasActiveFilters =
+    selectedClassId !== 'all' ||
+    selectedExamId !== 'all' ||
+    scoreRangeFilter !== 'all' ||
+    searchStudentTerm.trim().length > 0;
+
+  const handleResetFilters = () => {
+    setSelectedClassId('all');
+    setSelectedExamId('all');
+    setScoreRangeFilter('all');
+    setSearchStudentTerm('');
+  };
+
+  // Lọc và sắp xếp danh sách bài nộp
   const filteredSubmissions = useMemo(() => {
     return submissions
       .filter((sub) => {
-        // Lọc theo lớp
         if (selectedClassId !== 'all' && sub.classId !== selectedClassId) {
           return false;
         }
-        // Lọc theo đề thi
         if (selectedExamId !== 'all' && sub.examId !== selectedExamId) {
           return false;
         }
-        // Lọc theo khoảng điểm dựa trên thang điểm thực tế của đề thi
         if (scoreRangeFilter !== 'all') {
           const subScale = getSubmissionScalePoints(sub, examsList);
           const rankKey = classifyScoreByScale(sub.score, subScale).key;
           if (rankKey !== scoreRangeFilter) return false;
         }
-
-        // Lọc theo từ khóa tìm kiếm học sinh
         if (searchStudentTerm.trim()) {
           const query = searchStudentTerm.toLowerCase();
           return (
@@ -151,31 +196,105 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
             return sortOrder === 'desc' ? ratioB - ratioA : ratioA - ratioB;
           }
           return sortOrder === 'desc' ? b.score - a.score : a.score - b.score;
-        } else if (sortField === 'time') {
+        }
+        if (sortField === 'time') {
           return sortOrder === 'desc'
             ? b.timeSpentSeconds - a.timeSpentSeconds
             : a.timeSpentSeconds - b.timeSpentSeconds;
-        } else {
-          return sortOrder === 'desc'
-            ? new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-            : new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
         }
+        return sortOrder === 'desc'
+          ? new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+          : new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
       });
   }, [submissions, examsList, selectedClassId, selectedExamId, scoreRangeFilter, searchStudentTerm, sortField, sortOrder]);
 
-  // Thống kê phân tích theo thang điểm thực tế của đề thi
+  // Thống kê tổng quan
   const analytics = useMemo(
     () => computeGradebookAnalytics(filteredSubmissions, examsList, selectedExamId),
     [filteredSubmissions, examsList, selectedExamId]
   );
 
-  // Thống kê đáp án đưa ra, số bạn làm đúng / làm sai của từng câu
+  // Thống kê câu hỏi
   const questionStatGroups = useMemo(
     () => computeExamQuestionStats(filteredSubmissions, examsList),
     [filteredSubmissions, examsList]
   );
 
-  // Tìm thông tin đề thi của bài nộp đang xem
+  const totalQuestionStatCount = useMemo(
+    () => questionStatGroups.reduce((sum, g) => sum + g.questions.length, 0),
+    [questionStatGroups]
+  );
+
+  // Phân tích hiệu suất theo 3 phần thi (Phần I, II, III)
+  const partPerformance = useMemo(() => {
+    if (filteredSubmissions.length === 0) {
+      return { part1Avg: 0, part1Max: 0, part1Pct: 0, part2Avg: 0, part2Max: 0, part2Pct: 0, part3Avg: 0, part3Max: 0, part3Pct: 0 };
+    }
+    let p1Earned = 0;
+    let p1MaxSum = 0;
+    let p2Earned = 0;
+    let p2MaxSum = 0;
+    let p3Earned = 0;
+    let p3MaxSum = 0;
+
+    filteredSubmissions.forEach((sub) => {
+      const ex = examsList.find((e) => e.id === sub.examId) || null;
+      const scale = getExamScaleInfo(ex, sub.score);
+      p1Earned += sub.partScores.part1 || 0;
+      p1MaxSum += scale.part1Max;
+      p2Earned += sub.partScores.part2 || 0;
+      p2MaxSum += scale.part2Max;
+      p3Earned += sub.partScores.part3 || 0;
+      p3MaxSum += scale.part3Max;
+    });
+
+    const n = filteredSubmissions.length;
+    const part1Avg = p1Earned / n;
+    const part1Max = p1MaxSum / n;
+    const part2Avg = p2Earned / n;
+    const part2Max = p2MaxSum / n;
+    const part3Avg = p3Earned / n;
+    const part3Max = p3MaxSum / n;
+
+    return {
+      part1Avg,
+      part1Max,
+      part1Pct: part1Max > 0 ? Math.min(100, (part1Avg / part1Max) * 100) : 0,
+      part2Avg,
+      part2Max,
+      part2Pct: part2Max > 0 ? Math.min(100, (part2Avg / part2Max) * 100) : 0,
+      part3Avg,
+      part3Max,
+      part3Pct: part3Max > 0 ? Math.min(100, (part3Avg / part3Max) * 100) : 0,
+    };
+  }, [filteredSubmissions, examsList]);
+
+  // Học sinh nổi bật & Học sinh cần lưu ý
+  const spotlightStudents = useMemo(() => {
+    const byRatioDesc = [...filteredSubmissions].sort((a, b) => {
+      const rA = a.score / (getSubmissionScalePoints(a, examsList) || 10);
+      const rB = b.score / (getSubmissionScalePoints(b, examsList) || 10);
+      return rB - rA;
+    });
+    const topPerformers = byRatioDesc.slice(0, 3);
+    const attentionNeeded = filteredSubmissions
+      .filter((s) => {
+        const scale = getSubmissionScalePoints(s, examsList);
+        const rank = classifyScoreByScale(s.score, scale).key;
+        return s.isDisqualified || s.infractionCount > 0 || rank === 'below';
+      })
+      .sort((a, b) => {
+        const flagA = a.isDisqualified ? 2 : a.infractionCount > 0 ? 1 : 0;
+        const flagB = b.isDisqualified ? 2 : b.infractionCount > 0 ? 1 : 0;
+        if (flagA !== flagB) return flagB - flagA;
+        return a.score - b.score;
+      })
+      .slice(0, 4);
+
+    return { topPerformers, attentionNeeded };
+  }, [filteredSubmissions, examsList]);
+
+  // Thông tin đề thi đang xem chi tiết
   const currentViewingExam = useMemo(() => {
     if (!viewingSubmission) return null;
     return examsList.find((e) => e.id === viewingSubmission.examId) || null;
@@ -186,7 +305,14 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
     return getExamScaleInfo(currentViewingExam, viewingSubmission.score);
   }, [viewingSubmission, currentViewingExam]);
 
-  // Xuất bảng điểm CSV (In-browser download)
+  // Context text cho tiêu đề
+  const selectedClassName =
+    selectedClassId === 'all'
+      ? `Tất cả lớp (${classrooms.length})`
+      : classrooms.find((c) => c.id === selectedClassId)?.name || 'Lớp đã chọn';
+  const selectedExamObj = selectedExamId === 'all' ? null : examsList.find((e) => e.id === selectedExamId) || null;
+
+  // Xuất CSV
   const handleExportCSV = () => {
     const headers =
       'Hạng,Họ và tên,Email,Lớp,Đề thi,Điểm tổng,Thang điểm đề,Tỷ lệ (%),Phần 1,Phần 2,Phần 3,Thời gian làm bài,Thời gian nộp bài,Vi phạm\n';
@@ -211,11 +337,11 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    setExportNotice('Đã xuất file bảng điểm CSV thành công!');
+    setExportNotice('Đã xuất file bảng điểm CSV thành công.');
     setTimeout(() => setExportNotice(null), 4000);
   };
 
-  // Xử lý chọn / bỏ chọn bài nộp để xóa hàng loạt
+  // Multi-select xóa bài nộp
   const selectedVisibleIds = useMemo(() => {
     return filteredSubmissions.filter((s) => selectedSubIds.has(s.id)).map((s) => s.id);
   }, [filteredSubmissions, selectedSubIds]);
@@ -291,957 +417,1172 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
     }
   };
 
+  const toggleSort = (field: 'score' | 'time' | 'date') => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
+
+  const excellentRate =
+    analytics.total > 0 ? Math.round((analytics.excellentCount / analytics.total) * 100) : 0;
+
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 py-8 space-y-8 animate-in fade-in duration-200">
-      {/* Top Banner */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div className="w-full max-w-6xl mx-auto px-4 py-6 sm:py-8 space-y-5 animate-in fade-in duration-200">
+      {/* 1. HEADER & EXPORT ACTIONS */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block">
-            Cổng Tổng Hợp Điểm Giáo Viên
+          <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 block">
+            Tổng Hợp Điểm Thi
           </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
-            Bảng Điểm & Thống Kê Năng Lực Học Sinh
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-0.5 tracking-tight">
+            Bảng Điểm &amp; Phân Tích Kết Quả
           </h1>
+          <p className="text-xs text-slate-500 font-medium mt-1">
+            {selectedClassName} · {selectedExamObj ? selectedExamObj.title : 'Tất cả đề thi'} ·{' '}
+            <span className="font-mono font-semibold text-slate-700 tabular-nums">
+              {filteredSubmissions.length} bài nộp
+            </span>
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
+            type="button"
             onClick={() => {
               setPdfPreselectedStudent(null);
               setShowPdfExportModal(true);
             }}
             disabled={filteredSubmissions.length === 0}
-            className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold text-xs shadow-md flex items-center gap-2 transition-all shrink-0"
+            className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 text-white font-bold text-xs flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <FileText size={16} />
+            <FileText size={15} />
             <span>Xuất Báo Cáo (PDF / Excel / Word)</span>
           </button>
 
           <button
+            type="button"
             onClick={handleExportCSV}
             disabled={filteredSubmissions.length === 0}
-            className="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs shadow-xs flex items-center gap-2 transition-all shrink-0"
+            className="h-10 px-4 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-45 text-slate-800 font-bold text-xs flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <Download size={16} />
+            <Download size={15} />
             <span>Xuất CSV</span>
           </button>
         </div>
       </div>
 
-      {/* Export notification */}
+      {/* Notice banner */}
       {exportNotice && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-          <CheckCircle2 size={16} />
-          <span>{exportNotice}</span>
+        <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={15} className="shrink-0" />
+            <span>{exportNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportNotice(null)}
+            className="p-1 rounded-lg hover:bg-emerald-100 text-emerald-700 cursor-pointer"
+            aria-label="Đóng thông báo"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 
-      {/* KPI Cards: Phân tích & Thống kê điểm số */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Sĩ số nộp bài */}
-        <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-semibold">Bài Đã Nộp</span>
-            <Users size={18} className="text-blue-600" />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono">
-            {analytics.total}
-          </div>
-          <span className="text-[11px] text-slate-500 font-medium mt-1 block">
-            trên tổng số học sinh
-          </span>
+      {/* 2. FILTER & SEARCH BAR (NGAY DƯỚI TIÊU ĐỀ ĐỂ QUAN SÁT TỨC THÌ KHI ĐỔI LỚP / ĐỀ) */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 flex flex-wrap items-end gap-3">
+        <div className="space-y-1 min-w-[165px] flex-1 sm:flex-initial">
+          <label className="text-[11px] font-semibold text-slate-500 block">Nhóm lớp</label>
+          <select
+            value={selectedClassId}
+            onChange={(e) => setSelectedClassId(e.target.value)}
+            className="w-full h-9 px-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-blue-600"
+          >
+            <option value="all">Tất cả lớp ({classrooms.length})</option>
+            {classrooms.map((cls) => (
+              <option key={cls.id} value={cls.id}>
+                {cls.name} (#{cls.code})
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Điểm trung bình */}
-        <div className="p-5 rounded-3xl bg-blue-50/70 border border-blue-200 shadow-xs">
-          <div className="flex items-center justify-between text-blue-600 mb-1">
-            <span className="text-xs font-bold">Điểm Trung Bình</span>
-            <TrendingUp size={18} />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-blue-900 font-mono">
-            {analytics.isUniformScale ? (
-              <>
-                {analytics.average.toFixed(2)}
-                <span className="text-sm font-bold text-blue-600">/{formatPointsNumber(analytics.scalePoints)}</span>
-              </>
-            ) : (
-              `${analytics.averagePercent.toFixed(1)}%`
-            )}
-          </div>
-          <span className="text-[11px] text-blue-700 font-semibold mt-1 block">
-            {analytics.isUniformScale
-              ? `Thang điểm ${formatPointsNumber(analytics.scalePoints)} (${analytics.averagePercent.toFixed(1)}%)`
-              : `Quy đổi ${analytics.average.toFixed(2)}/10 · Nhiều thang (${analytics.distinctScales
-                  .map((s) => `${formatPointsNumber(s)}đ`)
-                  .join(', ')})`}
-          </span>
-        </div>
-
-        {/* Điểm cao nhất / Thấp nhất */}
-        <div className="p-5 rounded-3xl bg-emerald-50/70 border border-emerald-200 shadow-xs">
-          <div className="flex items-center justify-between text-emerald-600 mb-1">
-            <span className="text-xs font-bold">Điểm Cao Nhất</span>
-            <Award size={18} />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-emerald-900 font-mono">
-            {analytics.max.toFixed(2)}
-            <span className="text-sm font-bold text-emerald-700">
-              /{formatPointsNumber(analytics.maxSubmissionScale)}
-            </span>
-          </div>
-          <span className="text-[11px] text-emerald-700 font-semibold mt-1 block">
-            Thấp nhất: {analytics.min.toFixed(2)}/{formatPointsNumber(analytics.minSubmissionScale)}đ
-            {!analytics.isUniformScale ? ` (${analytics.minPercent.toFixed(1)}%)` : ''}
-          </span>
-        </div>
-
-        {/* Tỉ lệ Giỏi (>= 80% thang đề) */}
-        <div className="p-5 rounded-3xl bg-purple-50/70 border border-purple-200 shadow-xs">
-          <div className="flex items-center justify-between text-purple-600 mb-1">
-            <span className="text-xs font-bold">
-              Tỉ Lệ Giỏi (
-              {analytics.isUniformScale
-                ? `≥ ${formatPointsNumber(analytics.thresholds.excellentMin)}đ`
-                : '≥ 80%'}
-              )
-            </span>
-            <GraduationCap size={18} />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-purple-900 font-mono">
-            {analytics.total > 0 ? Math.round((analytics.excellentCount / analytics.total) * 100) : 0}%
-          </div>
-          <span className="text-[11px] text-purple-700 font-semibold mt-1 block">
-            {analytics.excellentCount} học sinh đạt giỏi
-          </span>
-        </div>
-
-        {/* Vi phạm Anti-cheat */}
-        <div className="p-5 rounded-3xl bg-rose-50/70 border border-rose-200 shadow-xs col-span-2 lg:col-span-1">
-          <div className="flex items-center justify-between text-rose-600 mb-1">
-            <span className="text-xs font-bold">Cảnh Báo Gian Lận</span>
-            <ShieldAlert size={18} />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-rose-900 font-mono">
-            {analytics.cheatingCount}
-          </div>
-          <span className="text-[11px] text-rose-700 font-semibold mt-1 block">
-            {analytics.cheatingCount > 0 ? 'Có học sinh vi phạm tab' : 'Kỳ thi diễn ra an toàn'}
-          </span>
-        </div>
-      </div>
-
-      {/* Phổ điểm trực quan (Score distribution bars) */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-            <BarChart3 size={18} className="text-blue-600" />
-            <span>Phân Bố Phổ Điểm Lớp Học</span>
-          </h3>
-          <span className="text-xs text-slate-500 font-medium">
-            Thống kê trên {analytics.total} bài nộp ·{' '}
-            {analytics.isUniformScale
-              ? `Thang điểm ${formatPointsNumber(analytics.scalePoints)}`
-              : `Xếp loại theo % thang điểm từng đề`}
-          </span>
-        </div>
-
-        <div className="space-y-3 text-xs">
-          {/* Giỏi */}
-          <div>
-            <div className="flex justify-between font-bold text-slate-700 mb-1">
-              <span className="flex items-center gap-1.5 text-emerald-700">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span>
-                  {analytics.isUniformScale
-                    ? `Giỏi (${formatPointsNumber(analytics.thresholds.excellentMin)} - ${formatPointsNumber(
-                        analytics.scalePoints
-                      )} điểm · ≥ 80%)`
-                    : 'Giỏi (≥ 80% thang điểm đề)'}
-                </span>
-              </span>
-              <span>
-                {analytics.excellentCount} HS (
-                {analytics.total > 0 ? Math.round((analytics.excellentCount / analytics.total) * 100) : 0}%)
-              </span>
-            </div>
-            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${analytics.total > 0 ? (analytics.excellentCount / analytics.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Khá */}
-          <div>
-            <div className="flex justify-between font-bold text-slate-700 mb-1">
-              <span className="flex items-center gap-1.5 text-blue-700">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                <span>
-                  {analytics.isUniformScale
-                    ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - dưới ${formatPointsNumber(
-                        analytics.thresholds.excellentMin
-                      )} điểm · 65% - 79.9%)`
-                    : 'Khá (65% - 79.9% thang điểm đề)'}
-                </span>
-              </span>
-              <span>
-                {analytics.goodCount} HS (
-                {analytics.total > 0 ? Math.round((analytics.goodCount / analytics.total) * 100) : 0}%)
-              </span>
-            </div>
-            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                style={{ width: `${analytics.total > 0 ? (analytics.goodCount / analytics.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Trung bình */}
-          <div>
-            <div className="flex justify-between font-bold text-slate-700 mb-1">
-              <span className="flex items-center gap-1.5 text-amber-700">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span>
-                  {analytics.isUniformScale
-                    ? `Trung bình (${formatPointsNumber(analytics.thresholds.averageMin)} - dưới ${formatPointsNumber(
-                        analytics.thresholds.goodMin
-                      )} điểm · 50% - 64.9%)`
-                    : 'Trung bình (50% - 64.9% thang điểm đề)'}
-                </span>
-              </span>
-              <span>
-                {analytics.averageCount} HS (
-                {analytics.total > 0 ? Math.round((analytics.averageCount / analytics.total) * 100) : 0}%)
-              </span>
-            </div>
-            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                style={{ width: `${analytics.total > 0 ? (analytics.averageCount / analytics.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Dưới trung bình */}
-          <div>
-            <div className="flex justify-between font-bold text-slate-700 mb-1">
-              <span className="flex items-center gap-1.5 text-rose-700">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                <span>
-                  {analytics.isUniformScale
-                    ? `Dưới trung bình (< ${formatPointsNumber(analytics.thresholds.averageMin)} điểm · < 50%)`
-                    : 'Dưới trung bình (< 50% thang điểm đề)'}
-                </span>
-              </span>
-              <span>
-                {analytics.belowCount} HS (
-                {analytics.total > 0 ? Math.round((analytics.belowCount / analytics.total) * 100) : 0}%)
-              </span>
-            </div>
-            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-rose-500 rounded-full transition-all duration-500"
-                style={{ width: `${analytics.total > 0 ? (analytics.belowCount / analytics.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Thống kê đáp án đưa ra của từng câu: Số bạn làm đúng / làm sai */}
-      {questionStatGroups.length > 0 && (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                <ClipboardList size={18} className="text-indigo-600" />
-                <span>Thống Kê Đáp Án Từng Câu (Số Bạn Làm Đúng / Làm Sai)</span>
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Phân tích số học sinh trả lời đúng, trả lời sai, bỏ trống và phân bố các đáp án thí sinh đã chọn theo từng câu.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-              {(
-                [
-                  { id: 'all', label: 'Tất cả câu' },
-                  { id: 'part_1_mcq', label: 'Phần I (MCQ)' },
-                  { id: 'part_2_true_false', label: 'Phần II (Đ/S)' },
-                  { id: 'part_3_short_answer', label: 'Phần III (Ngắn)' },
-                  { id: 'has_wrong', label: 'Có HS làm sai' },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setQuestionStatsFilter(tab.id)}
-                  className={`px-2.5 py-1.5 rounded-xl border transition-colors cursor-pointer ${
-                    questionStatsFilter === tab.id
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            {questionStatGroups.map((group) => {
-              const visibleQuestions = group.questions.filter((q) => {
-                if (questionStatsFilter === 'all') return true;
-                if (questionStatsFilter === 'has_wrong') return q.wrongCount > 0 || q.partialCount > 0;
-                return q.part === questionStatsFilter;
-              });
-
-              const sortedByWrong = group.hasExamDefinition
-                ? [...group.questions].sort((a, b) => b.wrongCount + b.unansweredCount - (a.wrongCount + a.unansweredCount))
-                : [];
-              const hardestQuestion = sortedByWrong[0];
-              const easiestQuestion = group.hasExamDefinition
-                ? [...group.questions].sort((a, b) => b.correctRate - a.correctRate)[0]
-                : undefined;
-
-              return (
-                <div key={group.examId} className="rounded-2xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-extrabold text-slate-900">{group.examTitle}</span>
-                      <span className="px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 font-mono font-bold text-[11px]">
-                        Thang {formatPointsNumber(group.totalPoints)} điểm
-                      </span>
-                      <span className="text-slate-500 font-semibold">
-                        · {group.submissionCount} bài nộp · {group.questions.length} câu
-                      </span>
-                    </div>
-
-                    {group.hasExamDefinition && hardestQuestion && easiestQuestion && (
-                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
-                          Đúng nhiều nhất: Câu {easiestQuestion.questionNumber} ({easiestQuestion.correctCount}/
-                          {easiestQuestion.totalSubmissions} HS)
-                        </span>
-                        {hardestQuestion.wrongCount + hardestQuestion.unansweredCount > 0 && (
-                          <span className="px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-semibold">
-                            Sai/Chưa đúng nhiều: Câu {hardestQuestion.questionNumber} (
-                            {hardestQuestion.wrongCount + hardestQuestion.unansweredCount} HS)
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {visibleQuestions.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-slate-400">
-                      Không có câu hỏi nào thuộc bộ lọc hiện tại.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-600 font-bold text-[11px]">
-                            <th className="py-2.5 px-3 w-20 text-center">Câu</th>
-                            <th className="py-2.5 px-3 w-24 text-center">Phần</th>
-                            <th className="py-2.5 px-3 w-36">Đáp Án Đúng</th>
-                            <th className="py-2.5 px-3 min-w-[240px]">Thống Kê Đáp Án Thí Sinh Đưa Ra</th>
-                            <th className="py-2.5 px-3 w-24 text-center text-emerald-700">Làm Đúng</th>
-                            <th className="py-2.5 px-3 w-24 text-center text-rose-700">Làm Sai</th>
-                            <th className="py-2.5 px-3 w-20 text-center text-slate-500">Bỏ Trống</th>
-                            <th className="py-2.5 px-3 w-32 text-center">Tỷ Lệ Đúng</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {visibleQuestions.map((qStat) => {
-                            const correctPct =
-                              qStat.totalSubmissions > 0 ? (qStat.correctCount / qStat.totalSubmissions) * 100 : 0;
-                            const partialPct =
-                              qStat.totalSubmissions > 0 ? (qStat.partialCount / qStat.totalSubmissions) * 100 : 0;
-                            const wrongPct =
-                              qStat.totalSubmissions > 0 ? (qStat.wrongCount / qStat.totalSubmissions) * 100 : 0;
-
-                            return (
-                              <tr key={qStat.questionId} className="hover:bg-slate-50/70 align-top">
-                                <td className="py-2.5 px-3 text-center">
-                                  <span className="font-black font-mono text-slate-900 block">
-                                    Câu {qStat.questionNumber}
-                                  </span>
-                                  {qStat.points > 0 && (
-                                    <span className="text-[10px] text-slate-400 font-mono">
-                                      ({formatPointsNumber(qStat.points)}đ)
-                                    </span>
-                                  )}
-                                </td>
-
-                                <td className="py-2.5 px-3 text-center">
-                                  <span
-                                    className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                      qStat.part === 'part_1_mcq'
-                                        ? 'bg-blue-50 text-blue-700'
-                                        : qStat.part === 'part_2_true_false'
-                                        ? 'bg-purple-50 text-purple-700'
-                                        : qStat.part === 'part_3_short_answer'
-                                        ? 'bg-amber-50 text-amber-700'
-                                        : 'bg-slate-100 text-slate-600'
-                                    }`}
-                                  >
-                                    {qStat.partLabel}
-                                  </span>
-                                </td>
-
-                                <td className="py-2.5 px-3 font-mono font-bold text-emerald-700 text-[11px]">
-                                  {qStat.correctAnswerDisplay}
-                                </td>
-
-                                <td className="py-2.5 px-3">
-                                  {qStat.part === 'part_2_true_false' && qStat.tfSubItems ? (
-                                    <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
-                                      {qStat.tfSubItems.map((subIt) => (
-                                        <div
-                                          key={subIt.subKey}
-                                          className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-1"
-                                        >
-                                          <span className="font-bold text-slate-700">
-                                            Ý {subIt.subKey} ({subIt.expected}):
-                                          </span>
-                                          <span>
-                                            <strong className="text-emerald-700">✓{subIt.correctCount}</strong>{' '}
-                                            <span className="text-slate-300">|</span>{' '}
-                                            <strong className="text-rose-600">✗{subIt.wrongCount}</strong>
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
-                                      {qStat.optionStats.map((opt) => (
-                                        <span
-                                          key={opt.key}
-                                          className={`px-2 py-0.5 rounded-lg border font-bold ${
-                                            opt.key === '__blank__'
-                                              ? 'bg-slate-100 border-slate-200 text-slate-500'
-                                              : opt.isCorrect
-                                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                                              : opt.count > 0
-                                              ? 'bg-rose-50/70 border-rose-200 text-rose-800'
-                                              : 'bg-slate-50 border-slate-200 text-slate-400'
-                                          }`}
-                                        >
-                                          {opt.label}: {opt.count} HS ({opt.percent}%)
-                                          {opt.isCorrect ? ' ✓' : ''}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </td>
-
-                                <td className="py-2.5 px-3 text-center">
-                                  <span className="inline-block px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-black font-mono">
-                                    {qStat.correctCount}
-                                  </span>
-                                  {qStat.partialCount > 0 && (
-                                    <span className="block text-[10px] text-amber-700 font-semibold mt-0.5">
-                                      +1 phần: {qStat.partialCount}
-                                    </span>
-                                  )}
-                                </td>
-
-                                <td className="py-2.5 px-3 text-center">
-                                  <span
-                                    className={`inline-block px-2.5 py-0.5 rounded-lg font-black font-mono ${
-                                      qStat.wrongCount > 0
-                                        ? 'bg-rose-100 text-rose-800'
-                                        : 'bg-slate-100 text-slate-400'
-                                    }`}
-                                  >
-                                    {qStat.wrongCount}
-                                  </span>
-                                </td>
-
-                                <td className="py-2.5 px-3 text-center font-mono text-slate-500">
-                                  {qStat.unansweredCount}
-                                </td>
-
-                                <td className="py-2.5 px-3">
-                                  <div className="space-y-1">
-                                    <div className="flex items-center justify-between font-mono text-[10px] font-bold">
-                                      <span className="text-emerald-700">{qStat.correctRate}%</span>
-                                      <span className="text-slate-400">
-                                        {qStat.correctCount}/{qStat.totalSubmissions}
-                                      </span>
-                                    </div>
-                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                                      <div
-                                        className="h-full bg-emerald-500"
-                                        style={{ width: `${correctPct}%` }}
-                                        title={`Đúng: ${qStat.correctCount}`}
-                                      />
-                                      {partialPct > 0 && (
-                                        <div
-                                          className="h-full bg-amber-400"
-                                          style={{ width: `${partialPct}%` }}
-                                          title={`Đúng 1 phần: ${qStat.partialCount}`}
-                                        />
-                                      )}
-                                      {wrongPct > 0 && (
-                                        <div
-                                          className="h-full bg-rose-500"
-                                          style={{ width: `${wrongPct}%` }}
-                                          title={`Sai: ${qStat.wrongCount}`}
-                                        />
-                                      )}
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
-          {/* Lọc theo lớp */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-slate-500 block">Nhóm Lớp:</label>
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="h-10 px-3 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-blue-600"
-            >
-              <option value="all">Tất cả các lớp ({classrooms.length})</option>
-              {classrooms.map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  {cls.name} (#{cls.code})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Lọc theo đề thi */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-slate-500 block">Đề Thi:</label>
+        <div className="space-y-1 min-w-[200px] flex-1 sm:flex-initial">
+          <label className="text-[11px] font-semibold text-slate-500 block">Đề thi</label>
+          <div className="flex items-center gap-1.5">
             <select
               value={selectedExamId}
               onChange={(e) => setSelectedExamId(e.target.value)}
-              className="h-10 px-3 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-blue-600 max-w-[220px] truncate"
+              className="w-full h-9 px-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-blue-600 max-w-[240px]"
             >
-              <option value="all">Tất cả đề thi</option>
+              <option value="all">Tất cả đề thi ({examsList.length})</option>
               {examsList.map((ex) => (
                 <option key={ex.id} value={ex.id}>
                   {ex.title} ({formatPointsNumber(getExamScaleInfo(ex).totalPoints)}đ)
                 </option>
               ))}
             </select>
-          </div>
-
-          {/* Lọc theo xếp loại điểm */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-slate-500 block">Xếp Loại:</label>
-            <select
-              value={scoreRangeFilter}
-              onChange={(e) => setScoreRangeFilter(e.target.value as any)}
-              className="h-10 px-3 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-blue-600"
-            >
-              <option value="all">Tất cả mức điểm</option>
-              <option value="excellent">
-                {analytics.isUniformScale
-                  ? `Giỏi (≥ ${formatPointsNumber(analytics.thresholds.excellentMin)}đ · ≥80%)`
-                  : 'Giỏi (≥ 80% thang đề)'}
-              </option>
-              <option value="good">
-                {analytics.isUniformScale
-                  ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - <${formatPointsNumber(
-                      analytics.thresholds.excellentMin
-                    )}đ)`
-                  : 'Khá (65% - 79.9%)'}
-              </option>
-              <option value="average">
-                {analytics.isUniformScale
-                  ? `Trung bình (${formatPointsNumber(analytics.thresholds.averageMin)} - <${formatPointsNumber(
-                      analytics.thresholds.goodMin
-                    )}đ)`
-                  : 'Trung bình (50% - 64.9%)'}
-              </option>
-              <option value="below">
-                {analytics.isUniformScale
-                  ? `Dưới trung bình (< ${formatPointsNumber(analytics.thresholds.averageMin)}đ)`
-                  : 'Dưới trung bình (< 50%)'}
-              </option>
-            </select>
+            {selectedExamId !== 'all' && onPreviewExam && (
+              <button
+                type="button"
+                onClick={() => onPreviewExam(selectedExamId)}
+                title="Xem nội dung đề thi đang lọc"
+                className="h-9 px-2.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <ExternalLink size={13} />
+                <span>Xem đề</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Ô tìm kiếm học sinh */}
-        <div className="relative w-full sm:w-64">
-          <Search size={15} className="absolute left-3 top-3 text-slate-400" />
-          <input
-            type="text"
-            value={searchStudentTerm}
-            onChange={(e) => setSearchStudentTerm(e.target.value)}
-            placeholder="Tìm tên, email học sinh..."
-            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:border-blue-600"
-          />
+        <div className="space-y-1 min-w-[165px] flex-1 sm:flex-initial">
+          <label className="text-[11px] font-semibold text-slate-500 block">Xếp loại</label>
+          <select
+            value={scoreRangeFilter}
+            onChange={(e) => setScoreRangeFilter(e.target.value as 'all' | ScoreRankKey)}
+            className="w-full h-9 px-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-blue-600"
+          >
+            <option value="all">Tất cả mức điểm</option>
+            <option value="excellent">
+              {analytics.isUniformScale
+                ? `Giỏi (≥ ${formatPointsNumber(analytics.thresholds.excellentMin)}đ)`
+                : 'Giỏi (≥ 80%)'}
+            </option>
+            <option value="good">
+              {analytics.isUniformScale
+                ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} - <${formatPointsNumber(
+                    analytics.thresholds.excellentMin
+                  )}đ)`
+                : 'Khá (65% - 79.9%)'}
+            </option>
+            <option value="average">
+              {analytics.isUniformScale
+                ? `Trung bình (${formatPointsNumber(analytics.thresholds.averageMin)} - <${formatPointsNumber(
+                    analytics.thresholds.goodMin
+                  )}đ)`
+                : 'Trung bình (50% - 64.9%)'}
+            </option>
+            <option value="below">
+              {analytics.isUniformScale
+                ? `Dưới trung bình (< ${formatPointsNumber(analytics.thresholds.averageMin)}đ)`
+                : 'Dưới trung bình (< 50%)'}
+            </option>
+          </select>
+        </div>
+
+        <div className="space-y-1 flex-1 min-w-[200px]">
+          <label className="text-[11px] font-semibold text-slate-500 block">Tìm học sinh</label>
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchStudentTerm}
+              onChange={(e) => setSearchStudentTerm(e.target.value)}
+              placeholder="Tên, email hoặc tên đề thi..."
+              className="w-full h-9 pl-8 pr-8 rounded-xl border border-slate-300 text-xs font-medium text-slate-800 bg-white focus:outline-none focus:border-blue-600"
+            />
+            {searchStudentTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchStudentTerm('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                aria-label="Xóa từ khóa tìm kiếm"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <RotateCcw size={13} />
+            <span>Đặt lại</span>
+          </button>
+        )}
+      </div>
+
+      {/* 3. UNIFIED 5-METRIC SUMMARY STRIP */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+          {/* Metric 1: Số bài */}
+          <div className="p-4 sm:p-5">
+            <span className="text-[11px] font-semibold text-slate-500 block">Bài Đã Nộp</span>
+            <div className="text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-1">
+              {analytics.total}
+            </div>
+            <span className="text-[11px] text-slate-500 mt-1 block">
+              {hasActiveFilters ? `trên ${submissions.length} bài toàn bộ` : 'tổng lượt nộp hợp lệ'}
+            </span>
+          </div>
+
+          {/* Metric 2: Điểm TB */}
+          <div className="p-4 sm:p-5">
+            <span className="text-[11px] font-semibold text-slate-500 block">Điểm Trung Bình</span>
+            <div className="text-2xl font-extrabold text-blue-700 font-mono tabular-nums mt-1">
+              {analytics.isUniformScale ? (
+                <>
+                  {analytics.average.toFixed(2)}
+                  <span className="text-sm font-semibold text-slate-400">
+                    /{formatPointsNumber(analytics.scalePoints)}
+                  </span>
+                </>
+              ) : (
+                `${analytics.averagePercent.toFixed(1)}%`
+              )}
+            </div>
+            <span className="text-[11px] text-slate-500 mt-1 block tabular-nums">
+              {analytics.isUniformScale
+                ? `Đạt ${analytics.averagePercent.toFixed(1)}% thang điểm`
+                : `Quy đổi ${analytics.average.toFixed(2)}/10`}
+            </span>
+          </div>
+
+          {/* Metric 3: Cao nhất / Thấp nhất */}
+          <div className="p-4 sm:p-5">
+            <span className="text-[11px] font-semibold text-slate-500 block">Cao Nhất / Thấp Nhất</span>
+            <div className="text-2xl font-extrabold text-emerald-700 font-mono tabular-nums mt-1">
+              {analytics.max.toFixed(2)}
+              <span className="text-sm font-semibold text-slate-400">
+                /{formatPointsNumber(analytics.maxSubmissionScale)}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 mt-1 block font-mono tabular-nums">
+              Thấp nhất: {analytics.min.toFixed(2)}/{formatPointsNumber(analytics.minSubmissionScale)}đ
+            </span>
+          </div>
+
+          {/* Metric 4: Tỉ lệ Giỏi */}
+          <div className="p-4 sm:p-5">
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              Tỉ Lệ Đạt Giỏi ({analytics.isUniformScale ? `≥ ${formatPointsNumber(analytics.thresholds.excellentMin)}đ` : '≥ 80%'})
+            </span>
+            <div className="text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-1">
+              {excellentRate}%
+            </div>
+            <span className="text-[11px] text-slate-500 mt-1 block tabular-nums">
+              {analytics.excellentCount}/{analytics.total} học sinh
+            </span>
+          </div>
+
+          {/* Metric 5: Giám sát thi */}
+          <div className="p-4 sm:p-5 col-span-2 sm:col-span-1">
+            <span className="text-[11px] font-semibold text-slate-500 block">Giám Sát Thi</span>
+            <div
+              className={`text-2xl font-extrabold font-mono tabular-nums mt-1 flex items-center gap-2 ${
+                analytics.cheatingCount > 0 ? 'text-rose-700' : 'text-emerald-700'
+              }`}
+            >
+              {analytics.cheatingCount > 0 ? (
+                <ShieldAlert size={20} className="shrink-0" />
+              ) : (
+                <CheckCircle2 size={20} className="shrink-0" />
+              )}
+              <span>{analytics.cheatingCount}</span>
+            </div>
+            <span className="text-[11px] text-slate-500 mt-1 block">
+              {analytics.cheatingCount > 0 ? 'bài có cảnh báo rời tab' : 'Không ghi nhận vi phạm'}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Gradebook Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <Award size={18} className="text-blue-600" />
-            <h3 className="font-extrabold text-base text-slate-900">
-              Danh Sách Điểm Chi Tiết ({filteredSubmissions.length} bài nộp)
-            </h3>
+      {/* 4. SECTION SWITCHER TABS */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveSection('table')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer ${
+              activeSection === 'table'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Users size={15} />
+            <span>Bảng Điểm Học Sinh</span>
+            <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 tabular-nums">
+              {filteredSubmissions.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection('distribution')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer ${
+              activeSection === 'distribution'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BarChart3 size={15} />
+            <span>Phổ Điểm &amp; 3 Phần Thi</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection('questions')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer ${
+              activeSection === 'questions'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <ClipboardList size={15} />
+            <span>Phân Tích Từng Câu</span>
+            {totalQuestionStatCount > 0 && (
+              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 tabular-nums">
+                {totalQuestionStatCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Sort & Bulk Delete Controls (Hiển thị ngay trên thanh tab khi đang ở Tab 1) */}
+        {activeSection === 'table' && (
+          <div className="flex flex-wrap items-center gap-2 pb-2">
             {canDeleteSubmissions && selectedVisibleIds.length > 0 && (
               <button
                 type="button"
                 onClick={() => setShowBulkDeleteModal(true)}
-                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                className="h-8 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Trash2 size={13} />
                 <span>Xóa đã chọn ({selectedVisibleIds.length})</span>
               </button>
             )}
-          </div>
 
-          {/* Sắp xếp */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-400 font-semibold hidden sm:inline">Sắp xếp:</span>
-            <button
-              onClick={() => {
-                if (sortField === 'score') setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
-                else { setSortField('score'); setSortOrder('desc'); }
-              }}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1 transition-colors cursor-pointer ${
-                sortField === 'score' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 text-slate-600'
-              }`}
-            >
-              <ArrowUpDown size={13} />
-              <span>Điểm {sortField === 'score' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}</span>
-            </button>
-            <button
-              onClick={() => {
-                if (sortField === 'date') setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
-                else { setSortField('date'); setSortOrder('desc'); }
-              }}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1 transition-colors cursor-pointer ${
-                sortField === 'date' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 text-slate-600'
-              }`}
-            >
-              <Clock size={13} />
-              <span>Thời gian nộp {sortField === 'date' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Table Content */}
-        {filteredSubmissions.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600">
-                  {canDeleteSubmissions && (
-                    <th className="py-3.5 pl-4 pr-2 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={isAllFilteredSelected}
-                        onChange={toggleSelectAllFiltered}
-                        title="Chọn tất cả bài nộp đang hiển thị"
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                      />
-                    </th>
-                  )}
-                  <th className="py-3.5 px-4 w-12 text-center">Hạng</th>
-                  <th className="py-3.5 px-4">Học Sinh</th>
-                  <th className="py-3.5 px-4">Lớp Học</th>
-                  <th className="py-3.5 px-4">Đề Thi Đã Làm</th>
-                  <th className="py-3.5 px-4">Thời Gian Nộp</th>
-                  <th className="py-3.5 px-4 text-center">Điểm Tổng</th>
-                  <th className="py-3.5 px-4 text-center hidden md:table-cell">P.I (MCQ)</th>
-                  <th className="py-3.5 px-4 text-center hidden md:table-cell">P.II (Đ/S)</th>
-                  <th className="py-3.5 px-4 text-center hidden md:table-cell">P.III (Ngắn)</th>
-                  <th className="py-3.5 px-4 text-center">Giám Sát</th>
-                  <th className="py-3.5 px-4 text-right">Thao Tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredSubmissions.map((sub, idx) => {
-                  const cls = classrooms.find((c) => c.id === sub.classId);
-                  const isTop3 = idx < 3 && sortField === 'score' && sortOrder === 'desc';
-                  const submittedFormatted = formatSubmissionDateTime(sub.submittedAt);
-                  const isChecked = selectedSubIds.has(sub.id);
-                  return (
-                    <tr
-                      key={sub.id}
-                      className={`transition-colors ${
-                        isChecked ? 'bg-rose-50/50 hover:bg-rose-50/80' : 'hover:bg-slate-50/80'
-                      }`}
-                    >
-                      {canDeleteSubmissions && (
-                        <td className="py-3.5 pl-4 pr-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => toggleSelectSubmission(sub.id)}
-                            title={`Chọn bài nộp của ${sub.studentName}`}
-                            className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
-                          />
-                        </td>
-                      )}
-                      {/* Rank */}
-                      <td className="py-3.5 px-4 text-center font-black">
-                        {isTop3 ? (
-                          <span
-                            className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-white text-[11px] ${
-                              idx === 0
-                                ? 'bg-amber-500 shadow-xs'
-                                : idx === 1
-                                ? 'bg-slate-400'
-                                : 'bg-amber-700'
-                            }`}
-                          >
-                            {idx + 1}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 font-mono">{idx + 1}</span>
-                        )}
-                      </td>
-
-                      {/* Student Info */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                            {sub.studentName.charAt(0)}
-                          </div>
-                          <div>
-                            <span className="font-bold text-slate-900 block">{sub.studentName}</span>
-                            <span className="text-[11px] text-slate-400 font-mono">{sub.studentEmail}</span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Class */}
-                      <td className="py-3.5 px-4">
-                        <span className="font-semibold text-slate-700 block">{cls?.name || 'Tự luyện / Lớp đã xóa'}</span>
-                        <span className="text-[10px] font-mono text-slate-400">{cls?.code ? `#${cls.code}` : 'Tự do'}</span>
-                      </td>
-
-                      {/* Exam Title */}
-                      <td className="py-3.5 px-4 max-w-[200px]">
-                        <span className="font-semibold text-slate-800 line-clamp-1">{sub.examTitle}</span>
-                        <span className="text-[10px] text-slate-400">
-                          Thời lượng làm: {formatDurationSpent(sub.timeSpentSeconds)}
-                        </span>
-                      </td>
-
-                      {/* Submission Timestamp */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 font-mono font-bold text-slate-800 text-[11px]">
-                          <Clock size={12} className="text-blue-600 shrink-0" />
-                          <span>{submittedFormatted.time}</span>
-                        </div>
-                        <span className="text-[10px] text-slate-500 block mt-0.5 pl-4.5">
-                          {submittedFormatted.date}
-                        </span>
-                      </td>
-
-                      {/* Total Score */}
-                      <td className="py-3.5 px-4 text-center">
-                        {(() => {
-                          const subScale = getSubmissionScalePoints(sub, examsList);
-                          const rankInfo = classifyScoreByScale(sub.score, subScale);
-                          return (
-                            <span
-                              className={`inline-block px-3 py-1 rounded-xl font-black font-mono text-sm whitespace-nowrap ${
-                                rankInfo.key === 'excellent'
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                  : rankInfo.key === 'good'
-                                  ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                                  : rankInfo.key === 'average'
-                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                  : 'bg-rose-100 text-rose-800 border border-rose-300'
-                              }`}
-                            >
-                              {sub.score.toFixed(2)}
-                              <span className="text-[10px] font-semibold opacity-75">
-                                /{formatPointsNumber(subScale)}
-                              </span>
-                            </span>
-                          );
-                        })()}
-                      </td>
-
-                      {/* Part Scores */}
-                      <td className="py-3.5 px-4 text-center font-mono font-bold text-blue-700 hidden md:table-cell">
-                        {sub.partScores.part1.toFixed(2)}đ
-                      </td>
-                      <td className="py-3.5 px-4 text-center font-mono font-bold text-purple-700 hidden md:table-cell">
-                        {sub.partScores.part2.toFixed(2)}đ
-                      </td>
-                      <td className="py-3.5 px-4 text-center font-mono font-bold text-amber-700 hidden md:table-cell">
-                        {sub.partScores.part3.toFixed(2)}đ
-                      </td>
-
-                      {/* Anti-cheat status */}
-                      <td className="py-3.5 px-4 text-center">
-                        {sub.isDisqualified ? (
-                          <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold text-[10px]">
-                            Hủy bài (Gian lận)
-                          </span>
-                        ) : sub.infractionCount > 0 ? (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px] flex items-center justify-center gap-1">
-                            <AlertTriangle size={11} />
-                            <span>{sub.infractionCount} lần vi phạm</span>
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold text-[10px] flex items-center justify-center gap-1">
-                            <CheckCircle2 size={11} className="text-emerald-500" />
-                            <span>Chuẩn mực</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* View, PDF & Delete Actions */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPdfPreselectedStudent(sub);
-                              setShowPdfExportModal(true);
-                            }}
-                            title="Xuất phiếu điểm PDF / Excel / Word cho học sinh này"
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition-colors cursor-pointer"
-                          >
-                            <FileText size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setViewingSubmission(sub)}
-                            className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs inline-flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            <Eye size={13} />
-                            <span>Xem Bài</span>
-                          </button>
-                          {canDeleteSubmissions && (
-                            <button
-                              type="button"
-                              onClick={() => setSubmissionToDelete(sub)}
-                              title={`Xóa bài nộp của ${sub.studentName}`}
-                              className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200/80 transition-colors cursor-pointer"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="py-16 text-center text-slate-400 space-y-2">
-            <Users size={40} className="mx-auto text-slate-300" />
-            <p className="font-bold text-slate-600 text-sm">Không tìm thấy bài thi nào phù hợp</p>
-            <p className="text-xs text-slate-400">Hãy thử thay đổi điều kiện lọc hoặc từ khóa tìm kiếm</p>
+            <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5 text-[11px] font-semibold">
+              <button
+                type="button"
+                onClick={() => toggleSort('score')}
+                className={`px-2.5 py-1 rounded-md inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  sortField === 'score' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ArrowUpDown size={12} />
+                <span>Điểm {sortField === 'score' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSort('time')}
+                className={`px-2.5 py-1 rounded-md inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  sortField === 'time' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Clock size={12} />
+                <span>Thời lượng {sortField === 'time' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSort('date')}
+                className={`px-2.5 py-1 rounded-md inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  sortField === 'date' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Calendar size={12} />
+                <span>Ngày nộp {sortField === 'date' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* MODAL: XEM CHI TIẾT BÀI THI CỦA HỌC SINH                                  */}
-      {/* ========================================================================= */}
+      {/* ===================================================================== */}
+      {/* TAB 1: BẢNG ĐIỂM HỌC SINH                                             */}
+      {/* ===================================================================== */}
+      {activeSection === 'table' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          {filteredSubmissions.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-[11px]">
+                    {canDeleteSubmissions && (
+                      <th className="py-3 pl-4 pr-2 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isAllFilteredSelected}
+                          onChange={toggleSelectAllFiltered}
+                          title="Chọn tất cả bài nộp đang hiển thị"
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </th>
+                    )}
+                    <th className="py-3 px-3 w-12 text-center">#</th>
+                    <th className="py-3 px-4">Học Sinh</th>
+                    <th className="py-3 px-4">Lớp · Đề Thi</th>
+                    <th className="py-3 px-4 text-right">Điểm Tổng</th>
+                    <th className="py-3 px-3 text-right hidden lg:table-cell">P.I</th>
+                    <th className="py-3 px-3 text-right hidden lg:table-cell">P.II</th>
+                    <th className="py-3 px-3 text-right hidden lg:table-cell">P.III</th>
+                    <th className="py-3 px-4 hidden md:table-cell">Thời Gian Nộp</th>
+                    <th className="py-3 px-4">Giám Sát</th>
+                    <th className="py-3 px-4 text-right">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSubmissions.map((sub, idx) => {
+                    const cls = classrooms.find((c) => c.id === sub.classId);
+                    const subScale = getSubmissionScalePoints(sub, examsList);
+                    const rankInfo = classifyScoreByScale(sub.score, subScale);
+                    const rankStyle = RANK_STYLE_MAP[rankInfo.key];
+                    const submittedFormatted = formatSubmissionDateTime(sub.submittedAt);
+                    const isChecked = selectedSubIds.has(sub.id);
+                    const isTop3 = idx < 3 && sortField === 'score' && sortOrder === 'desc';
+
+                    return (
+                      <tr
+                        key={sub.id}
+                        className={`transition-colors ${
+                          isChecked ? 'bg-rose-50/50 hover:bg-rose-50/75' : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+                        {canDeleteSubmissions && (
+                          <td className="py-3 pl-4 pr-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleSelectSubmission(sub.id)}
+                              title={`Chọn bài nộp của ${sub.studentName}`}
+                              className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                            />
+                          </td>
+                        )}
+
+                        {/* Thứ hạng */}
+                        <td className="py-3 px-3 text-center font-mono font-bold tabular-nums">
+                          <span
+                            className={`inline-flex items-center justify-center w-6 h-6 rounded-md text-[11px] ${
+                              isTop3
+                                ? idx === 0
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : idx === 1
+                                  ? 'bg-slate-200 text-slate-800'
+                                  : 'bg-orange-100 text-orange-800'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                        </td>
+
+                        {/* Học sinh */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 font-bold flex items-center justify-center shrink-0 border border-slate-200">
+                              {sub.studentName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-bold text-slate-900 block truncate max-w-[180px]">
+                                {sub.studentName}
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-mono block truncate max-w-[180px]">
+                                {sub.studentEmail}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Lớp & Đề thi */}
+                        <td className="py-3 px-4 max-w-[230px]">
+                          <span className="font-semibold text-slate-800 block truncate" title={sub.examTitle}>
+                            {sub.examTitle}
+                          </span>
+                          <span className="text-[11px] text-slate-500 block truncate">
+                            {cls ? `${cls.name} (#${cls.code})` : 'Tự luyện'} · {formatDurationSpent(sub.timeSpentSeconds)}
+                          </span>
+                        </td>
+
+                        {/* Điểm tổng + thanh tỉ lệ + xếp loại */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex flex-col items-end">
+                            <div className="flex items-baseline gap-1.5 font-mono tabular-nums">
+                              <span className={`text-sm font-extrabold ${rankStyle.textClass}`}>
+                                {sub.score.toFixed(2)}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                /{formatPointsNumber(subScale)}
+                              </span>
+                              <span className={`text-[11px] font-bold ${rankStyle.textClass}`}>
+                                · {rankStyle.shortLabel}
+                              </span>
+                            </div>
+                            <div className="w-24 h-1.5 bg-slate-100 rounded-sm overflow-hidden mt-1">
+                              <div
+                                className={`h-full ${rankStyle.barClass}`}
+                                style={{ width: `${Math.min(100, rankInfo.percent)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Điểm 3 phần */}
+                        <td className="py-3 px-3 text-right font-mono font-semibold text-slate-700 tabular-nums hidden lg:table-cell">
+                          {sub.partScores.part1.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-semibold text-slate-700 tabular-nums hidden lg:table-cell">
+                          {sub.partScores.part2.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-semibold text-slate-700 tabular-nums hidden lg:table-cell">
+                          {sub.partScores.part3.toFixed(2)}
+                        </td>
+
+                        {/* Thời gian nộp */}
+                        <td className="py-3 px-4 whitespace-nowrap hidden md:table-cell">
+                          <span className="font-mono font-semibold text-slate-800 block tabular-nums">
+                            {submittedFormatted.time}
+                          </span>
+                          <span className="text-[11px] text-slate-500 block tabular-nums">
+                            {submittedFormatted.date}
+                          </span>
+                        </td>
+
+                        {/* Giám sát */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {sub.isDisqualified ? (
+                            <span className="inline-flex items-center gap-1 text-rose-700 font-bold text-[11px]">
+                              <XCircle size={13} className="shrink-0" />
+                              <span>Hủy bài</span>
+                            </span>
+                          ) : sub.infractionCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-amber-700 font-bold text-[11px]">
+                              <AlertTriangle size={13} className="shrink-0" />
+                              <span className="tabular-nums">{sub.infractionCount} vi phạm</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold text-[11px]">
+                              <CheckCircle2 size={13} className="shrink-0" />
+                              <span>Chuẩn mực</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Thao tác */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPdfPreselectedStudent(sub);
+                                setShowPdfExportModal(true);
+                              }}
+                              title="Xuất phiếu điểm PDF / Excel / Word"
+                              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-blue-700 transition-colors cursor-pointer"
+                            >
+                              <FileText size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setViewingSubmission(sub)}
+                              className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                            >
+                              <Eye size={13} />
+                              <span>Xem bài</span>
+                            </button>
+                            {canDeleteSubmissions && (
+                              <button
+                                type="button"
+                                onClick={() => setSubmissionToDelete(sub)}
+                                title={`Xóa bài nộp của ${sub.studentName}`}
+                                className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 transition-colors cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="py-16 px-4 text-center space-y-3">
+              <Users size={36} className="mx-auto text-slate-300" />
+              <div className="space-y-1">
+                <p className="font-bold text-slate-700 text-sm">
+                  {submissions.length === 0
+                    ? 'Chưa có bài nộp nào được ghi nhận'
+                    : 'Không tìm thấy bài thi phù hợp với bộ lọc'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {submissions.length === 0
+                    ? 'Khi học sinh hoàn thành và nộp bài thi, kết quả sẽ hiển thị tại đây.'
+                    : 'Hãy thử đổi lớp, chọn đề thi khác hoặc đặt lại bộ lọc để xem toàn bộ danh sách.'}
+                </p>
+              </div>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCcw size={13} />
+                  <span>Đặt lại bộ lọc</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 2: PHỔ ĐIỂM & HIỆU SUẤT 3 PHẦN THI                                */}
+      {/* ===================================================================== */}
+      {activeSection === 'distribution' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Cột trái: Phân bố 4 mức xếp loại (có thể nhấp để lọc nhanh học sinh) */}
+          <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-5">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900">Phân Bố Xếp Loại Lớp Học</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Nhấp vào một mức điểm để xem danh sách học sinh thuộc nhóm đó ·{' '}
+                  {analytics.isUniformScale
+                    ? `Thang ${formatPointsNumber(analytics.scalePoints)}đ`
+                    : 'Quy đổi theo % từng đề'}
+                </p>
+              </div>
+              <span className="text-xs font-mono font-bold text-slate-700 tabular-nums shrink-0">
+                {analytics.total} bài
+              </span>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              {(
+                [
+                  {
+                    key: 'excellent' as ScoreRankKey,
+                    title: analytics.isUniformScale
+                      ? `Giỏi (${formatPointsNumber(analytics.thresholds.excellentMin)} – ${formatPointsNumber(
+                          analytics.scalePoints
+                        )}đ · ≥ 80%)`
+                      : 'Giỏi (≥ 80% thang đề)',
+                    count: analytics.excellentCount,
+                    bar: 'bg-emerald-500',
+                    text: 'text-emerald-700',
+                  },
+                  {
+                    key: 'good' as ScoreRankKey,
+                    title: analytics.isUniformScale
+                      ? `Khá (${formatPointsNumber(analytics.thresholds.goodMin)} – <${formatPointsNumber(
+                          analytics.thresholds.excellentMin
+                        )}đ · 65–79.9%)`
+                      : 'Khá (65% – 79.9%)',
+                    count: analytics.goodCount,
+                    bar: 'bg-blue-500',
+                    text: 'text-blue-700',
+                  },
+                  {
+                    key: 'average' as ScoreRankKey,
+                    title: analytics.isUniformScale
+                      ? `Trung bình (${formatPointsNumber(analytics.thresholds.averageMin)} – <${formatPointsNumber(
+                          analytics.thresholds.goodMin
+                        )}đ · 50–64.9%)`
+                      : 'Trung bình (50% – 64.9%)',
+                    count: analytics.averageCount,
+                    bar: 'bg-amber-500',
+                    text: 'text-amber-700',
+                  },
+                  {
+                    key: 'below' as ScoreRankKey,
+                    title: analytics.isUniformScale
+                      ? `Dưới trung bình (< ${formatPointsNumber(analytics.thresholds.averageMin)}đ · < 50%)`
+                      : 'Dưới trung bình (< 50%)',
+                    count: analytics.belowCount,
+                    bar: 'bg-rose-500',
+                    text: 'text-rose-700',
+                  },
+                ]
+              ).map((tier) => {
+                const pct = analytics.total > 0 ? Math.round((tier.count / analytics.total) * 100) : 0;
+                return (
+                  <button
+                    key={tier.key}
+                    type="button"
+                    onClick={() => {
+                      setScoreRangeFilter(tier.key);
+                      setActiveSection('table');
+                    }}
+                    className="w-full text-left p-2.5 -mx-2.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between font-bold mb-1.5">
+                      <span className={`${tier.text} group-hover:underline`}>{tier.title}</span>
+                      <span className="font-mono tabular-nums text-slate-800">
+                        {tier.count} HS ({pct}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-md overflow-hidden">
+                      <div
+                        className={`h-full ${tier.bar} transition-all duration-300`}
+                        style={{ width: `${analytics.total > 0 ? (tier.count / analytics.total) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Cột phải: Hiệu suất 3 phần thi + Điểm nổi bật / Cần chú ý */}
+          <div className="space-y-5">
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4">
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900">Điểm Trung Bình Theo 3 Phần Thi</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  So sánh mức độ hoàn thành trung bình trên từng cấu phần đề thi
+                </p>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {[
+                  {
+                    label: 'Phần I · Trắc nghiệm (MCQ)',
+                    avg: partPerformance.part1Avg,
+                    max: partPerformance.part1Max,
+                    pct: partPerformance.part1Pct,
+                    bar: 'bg-blue-600',
+                  },
+                  {
+                    label: 'Phần II · Đúng / Sai (4 ý)',
+                    avg: partPerformance.part2Avg,
+                    max: partPerformance.part2Max,
+                    pct: partPerformance.part2Pct,
+                    bar: 'bg-indigo-600',
+                  },
+                  {
+                    label: 'Phần III · Trả lời ngắn',
+                    avg: partPerformance.part3Avg,
+                    max: partPerformance.part3Max,
+                    pct: partPerformance.part3Pct,
+                    bar: 'bg-amber-500',
+                  },
+                ].map((part) => (
+                  <div key={part.label} className="space-y-1">
+                    <div className="flex items-center justify-between font-semibold text-slate-700">
+                      <span>{part.label}</span>
+                      <span className="font-mono tabular-nums text-slate-900">
+                        {part.avg.toFixed(2)}/{formatPointsNumber(part.max)}đ ({part.pct.toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 rounded-md overflow-hidden">
+                      <div className={`h-full ${part.bar}`} style={{ width: `${part.pct}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {/* Top điểm cao */}
+              <div className="space-y-2.5">
+                <h4 className="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
+                  <Award size={15} className="text-amber-500" />
+                  <span>Điểm Cao Nhất</span>
+                </h4>
+                {spotlightStudents.topPerformers.length === 0 ? (
+                  <p className="text-xs text-slate-400">Chưa có dữ liệu.</p>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {spotlightStudents.topPerformers.map((sub, i) => {
+                      const scale = getSubmissionScalePoints(sub, examsList);
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => setViewingSubmission(sub)}
+                          className="w-full py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-50 px-1.5 -mx-1.5 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs font-semibold text-slate-800 truncate">
+                            {i + 1}. {sub.studentName}
+                          </span>
+                          <span className="font-mono font-bold text-xs text-emerald-700 tabular-nums shrink-0">
+                            {sub.score.toFixed(2)}/{formatPointsNumber(scale)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Cần lưu ý */}
+              <div className="space-y-2.5">
+                <h4 className="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
+                  <AlertTriangle size={15} className="text-rose-600" />
+                  <span>Cần Lưu Ý</span>
+                </h4>
+                {spotlightStudents.attentionNeeded.length === 0 ? (
+                  <p className="text-xs text-emerald-700 font-medium">
+                    Không có học sinh vi phạm hoặc dưới trung bình.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {spotlightStudents.attentionNeeded.map((sub) => {
+                      const scale = getSubmissionScalePoints(sub, examsList);
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => setViewingSubmission(sub)}
+                          className="w-full py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-50 px-1.5 -mx-1.5 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold text-slate-800 block truncate">
+                              {sub.studentName}
+                            </span>
+                            <span className="text-[10px] text-rose-700 block">
+                              {sub.isDisqualified
+                                ? 'Hủy bài'
+                                : sub.infractionCount > 0
+                                ? `${sub.infractionCount} lần rời tab`
+                                : 'Điểm dưới TB'}
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold text-xs text-slate-700 tabular-nums shrink-0">
+                            {sub.score.toFixed(2)}/{formatPointsNumber(scale)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 3: PHÂN TÍCH TỪNG CÂU HỎI                                         */}
+      {/* ===================================================================== */}
+      {activeSection === 'questions' && (
+        <div className="space-y-5">
+          {questionStatGroups.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 py-14 px-4 text-center space-y-2">
+              <ClipboardList size={36} className="mx-auto text-slate-300" />
+              <p className="font-bold text-slate-700 text-sm">Chưa có dữ liệu thống kê từng câu</p>
+              <p className="text-xs text-slate-500">
+                Chọn lớp hoặc đề thi có ít nhất 1 bài nộp để xem tỉ lệ đúng/sai chi tiết theo câu.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-600">
+                  Tỉ lệ học sinh chọn đúng, chọn sai hoặc bỏ trống trên từng câu hỏi.
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                  {(
+                    [
+                      { id: 'all', label: 'Tất cả câu' },
+                      { id: 'part_1_mcq', label: 'Phần I (MCQ)' },
+                      { id: 'part_2_true_false', label: 'Phần II (Đ/S)' },
+                      { id: 'part_3_short_answer', label: 'Phần III (Ngắn)' },
+                      { id: 'has_wrong', label: 'Có HS làm sai' },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setQuestionStatsFilter(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                        questionStatsFilter === tab.id
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {questionStatGroups.map((group) => {
+                const visibleQuestions = group.questions.filter((q) => {
+                  if (questionStatsFilter === 'all') return true;
+                  if (questionStatsFilter === 'has_wrong') return q.wrongCount > 0 || q.partialCount > 0;
+                  return q.part === questionStatsFilter;
+                });
+
+                const sortedByWrong = group.hasExamDefinition
+                  ? [...group.questions].sort(
+                      (a, b) => b.wrongCount + b.unansweredCount - (a.wrongCount + a.unansweredCount)
+                    )
+                  : [];
+                const hardestQuestion = sortedByWrong[0];
+                const easiestQuestion = group.hasExamDefinition
+                  ? [...group.questions].sort((a, b) => b.correctRate - a.correctRate)[0]
+                  : undefined;
+
+                return (
+                  <div key={group.examId} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                    <div className="px-4 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-extrabold text-slate-900">{group.examTitle}</span>
+                        <span className="text-slate-500 font-medium tabular-nums">
+                          · Thang {formatPointsNumber(group.totalPoints)}đ · {group.submissionCount} bài ·{' '}
+                          {group.questions.length} câu
+                        </span>
+                      </div>
+
+                      {group.hasExamDefinition && hardestQuestion && easiestQuestion && (
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold">
+                          <span className="text-emerald-700 inline-flex items-center gap-1 tabular-nums">
+                            <CheckCircle2 size={13} />
+                            <span>
+                              Đúng nhiều: Câu {easiestQuestion.questionNumber} ({easiestQuestion.correctCount}/
+                              {easiestQuestion.totalSubmissions})
+                            </span>
+                          </span>
+                          {hardestQuestion.wrongCount + hardestQuestion.unansweredCount > 0 && (
+                            <span className="text-rose-700 inline-flex items-center gap-1 tabular-nums">
+                              <AlertTriangle size={13} />
+                              <span>
+                                Sai nhiều: Câu {hardestQuestion.questionNumber} (
+                                {hardestQuestion.wrongCount + hardestQuestion.unansweredCount} HS)
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {visibleQuestions.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400">
+                        Không có câu hỏi nào thuộc bộ lọc hiện tại.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-600 font-bold text-[11px]">
+                              <th className="py-2.5 px-3 w-20 text-center">Câu</th>
+                              <th className="py-2.5 px-3 w-24">Phần</th>
+                              <th className="py-2.5 px-3 w-36">Đáp Án Đúng</th>
+                              <th className="py-2.5 px-3 min-w-[240px]">Phân Bố Chọn Đáp Án</th>
+                              <th className="py-2.5 px-3 w-20 text-right text-emerald-700">Đúng</th>
+                              <th className="py-2.5 px-3 w-20 text-right text-rose-700">Sai</th>
+                              <th className="py-2.5 px-3 w-20 text-right text-slate-500">Trống</th>
+                              <th className="py-2.5 px-3 w-32 text-right">Tỉ Lệ Đúng</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {visibleQuestions.map((qStat) => {
+                              const correctPct =
+                                qStat.totalSubmissions > 0 ? (qStat.correctCount / qStat.totalSubmissions) * 100 : 0;
+                              const partialPct =
+                                qStat.totalSubmissions > 0 ? (qStat.partialCount / qStat.totalSubmissions) * 100 : 0;
+                              const wrongPct =
+                                qStat.totalSubmissions > 0 ? (qStat.wrongCount / qStat.totalSubmissions) * 100 : 0;
+
+                              return (
+                                <tr key={qStat.questionId} className="hover:bg-slate-50/70 align-top">
+                                  <td className="py-2.5 px-3 text-center">
+                                    <span className="font-bold font-mono text-slate-900 block tabular-nums">
+                                      Câu {qStat.questionNumber}
+                                    </span>
+                                    {qStat.points > 0 && (
+                                      <span className="text-[10px] text-slate-400 font-mono tabular-nums">
+                                        {formatPointsNumber(qStat.points)}đ
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  <td className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                                    {qStat.partLabel}
+                                  </td>
+
+                                  <td className="py-2.5 px-3 font-mono font-bold text-emerald-700 text-[11px]">
+                                    {qStat.correctAnswerDisplay}
+                                  </td>
+
+                                  <td className="py-2.5 px-3">
+                                    {qStat.part === 'part_2_true_false' && qStat.tfSubItems ? (
+                                      <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono tabular-nums">
+                                        {qStat.tfSubItems.map((subIt) => (
+                                          <div
+                                            key={subIt.subKey}
+                                            className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-1"
+                                          >
+                                            <span className="font-bold text-slate-700">
+                                              {subIt.subKey} ({subIt.expected}):
+                                            </span>
+                                            <span>
+                                              <strong className="text-emerald-700">✓{subIt.correctCount}</strong>{' '}
+                                              <span className="text-slate-300">|</span>{' '}
+                                              <strong className="text-rose-600">✗{subIt.wrongCount}</strong>
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-1.5 text-[10px] font-mono tabular-nums">
+                                        {qStat.optionStats.map((opt) => (
+                                          <span
+                                            key={opt.key}
+                                            className={`px-2 py-0.5 rounded-md border font-semibold ${
+                                              opt.key === '__blank__'
+                                                ? 'bg-slate-100 border-slate-200 text-slate-500'
+                                                : opt.isCorrect
+                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                                : opt.count > 0
+                                                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                                                : 'bg-slate-50 border-slate-200 text-slate-400'
+                                            }`}
+                                          >
+                                            {opt.label}: {opt.count} ({opt.percent}%)
+                                            {opt.isCorrect ? ' ✓' : ''}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700 tabular-nums">
+                                    {qStat.correctCount}
+                                    {qStat.partialCount > 0 && (
+                                      <span className="block text-[10px] text-amber-700 font-semibold">
+                                        +{qStat.partialCount} bán phần
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 tabular-nums">
+                                    {qStat.wrongCount}
+                                  </td>
+
+                                  <td className="py-2.5 px-3 text-right font-mono text-slate-500 tabular-nums">
+                                    {qStat.unansweredCount}
+                                  </td>
+
+                                  <td className="py-2.5 px-3">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center justify-between font-mono text-[10px] font-bold tabular-nums">
+                                        <span className="text-emerald-700">{qStat.correctRate}%</span>
+                                        <span className="text-slate-400">
+                                          {qStat.correctCount}/{qStat.totalSubmissions}
+                                        </span>
+                                      </div>
+                                      <div className="w-full h-1.5 bg-slate-100 rounded-sm overflow-hidden flex">
+                                        <div className="h-full bg-emerald-500" style={{ width: `${correctPct}%` }} />
+                                        {partialPct > 0 && (
+                                          <div className="h-full bg-amber-400" style={{ width: `${partialPct}%` }} />
+                                        )}
+                                        {wrongPct > 0 && (
+                                          <div className="h-full bg-rose-500" style={{ width: `${wrongPct}%` }} />
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL: XEM CHI TIẾT BÀI THI CỦA HỌC SINH                              */}
+      {/* ===================================================================== */}
       {viewingSubmission && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-5 sm:p-7 space-y-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+            <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-slate-200">
               <div>
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-600">
-                  Chi Tiết Bài Nộp Của Học Sinh
+                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
+                  Chi Tiết Bài Nộp
                 </span>
                 <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">
                   {viewingSubmission.studentName}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {viewingSubmission.examTitle} · Lớp:{' '}
+                  {viewingSubmission.examTitle} ·{' '}
                   {classrooms.find((c) => c.id === viewingSubmission.classId)?.name || 'Tự luyện / Lớp đã xóa'}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <span className="text-[11px] text-slate-500 font-semibold block">Tổng điểm</span>
+                  <span className="text-2xl font-extrabold font-mono text-blue-700 tabular-nums">
+                    {viewingSubmission.score.toFixed(2)}
+                    <span className="text-sm text-slate-400">
+                      /{formatPointsNumber(currentViewingScaleInfo.totalPoints)}
+                    </span>
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
                     setPdfPreselectedStudent(viewingSubmission);
                     setShowPdfExportModal(true);
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
-                  title="Xuất phiếu kết quả học sinh dạng PDF / Excel / Word"
+                  className="h-9 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <FileText size={14} />
-                  <span>Xuất Phiếu Điểm (PDF / Word / Excel)</span>
+                  <span>Xuất Phiếu Điểm</span>
                 </button>
-                <div className="text-right">
-                  <span className="text-xs text-slate-400 font-semibold block">Tổng Điểm:</span>
-                  <span className="text-2xl font-black font-mono text-blue-600">
-                    {viewingSubmission.score.toFixed(2)}/{formatPointsNumber(currentViewingScaleInfo.totalPoints)}
-                  </span>
-                </div>
                 <button
+                  type="button"
                   onClick={() => setViewingSubmission(null)}
-                  className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  aria-label="Đóng cửa sổ chi tiết"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
             </div>
 
-            {/* Score Breakdown Pills (3 phần theo thang điểm của đề) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-              <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200">
-                <span className="text-[10px] font-bold text-blue-600 block">Phần I (MCQ)</span>
-                <span className="text-lg font-black font-mono text-blue-900">
+            {/* Score Breakdown Strip */}
+            <div className="rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 text-center">
+              <div className="p-3">
+                <span className="text-[11px] font-semibold text-slate-500 block">Phần I (MCQ)</span>
+                <span className="text-lg font-extrabold font-mono text-slate-900 tabular-nums">
                   {viewingSubmission.partScores.part1}đ
                   {currentViewingExam && (
-                    <span className="text-xs font-semibold text-blue-600">
+                    <span className="text-xs font-semibold text-slate-400">
                       /{formatPointsNumber(currentViewingScaleInfo.part1Max)}đ
                     </span>
                   )}
                 </span>
               </div>
-              <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200">
-                <span className="text-[10px] font-bold text-purple-600 block">Phần II (Đúng/Sai)</span>
-                <span className="text-lg font-black font-mono text-purple-900">
+              <div className="p-3">
+                <span className="text-[11px] font-semibold text-slate-500 block">Phần II (Đúng/Sai)</span>
+                <span className="text-lg font-extrabold font-mono text-slate-900 tabular-nums">
                   {viewingSubmission.partScores.part2}đ
                   {currentViewingExam && (
-                    <span className="text-xs font-semibold text-purple-600">
+                    <span className="text-xs font-semibold text-slate-400">
                       /{formatPointsNumber(currentViewingScaleInfo.part2Max)}đ
                     </span>
                   )}
                 </span>
               </div>
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200">
-                <span className="text-[10px] font-bold text-amber-600 block">Phần III (Ngắn)</span>
-                <span className="text-lg font-black font-mono text-amber-900">
+              <div className="p-3">
+                <span className="text-[11px] font-semibold text-slate-500 block">Phần III (Ngắn)</span>
+                <span className="text-lg font-extrabold font-mono text-slate-900 tabular-nums">
                   {viewingSubmission.partScores.part3}đ
                   {currentViewingExam && (
-                    <span className="text-xs font-semibold text-amber-600">
+                    <span className="text-xs font-semibold text-slate-400">
                       /{formatPointsNumber(currentViewingScaleInfo.part3Max)}đ
                     </span>
                   )}
@@ -1249,161 +1590,215 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
               </div>
             </div>
 
-            {/* Anti-cheat and Time Spent Notes */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2">
-                <Calendar size={15} className="text-blue-600" />
-                <span>
-                  Thời gian nộp bài:{' '}
-                  <strong className="font-mono text-slate-900">
-                    {formatSubmissionDateTime(viewingSubmission.submittedAt).full}
-                  </strong>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock size={15} className="text-slate-500" />
-                <span>
-                  Thời gian làm bài: <strong>{formatDurationSpent(viewingSubmission.timeSpentSeconds)}</strong>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <ShieldAlert size={15} className={viewingSubmission.infractionCount > 0 ? 'text-rose-500' : 'text-emerald-500'} />
-                <span>
-                  Giám sát: <strong>{viewingSubmission.infractionCount} lần cảnh báo rời tab</strong>
-                </span>
-              </div>
+            {/* Metadata strip */}
+            <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-700">
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar size={14} className="text-slate-500" />
+                Nộp lúc:{' '}
+                <strong className="font-mono text-slate-900 tabular-nums">
+                  {formatSubmissionDateTime(viewingSubmission.submittedAt).full}
+                </strong>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Clock size={14} className="text-slate-500" />
+                Thời gian làm: <strong>{formatDurationSpent(viewingSubmission.timeSpentSeconds)}</strong>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldAlert
+                  size={14}
+                  className={viewingSubmission.infractionCount > 0 ? 'text-rose-600' : 'text-emerald-600'}
+                />
+                Giám sát:{' '}
+                <strong className={viewingSubmission.infractionCount > 0 ? 'text-rose-700' : 'text-emerald-700'}>
+                  {viewingSubmission.infractionCount > 0
+                    ? `${viewingSubmission.infractionCount} lần rời tab`
+                    : 'Chuẩn mực'}
+                </strong>
+              </span>
             </div>
 
-            {/* Questions Detailed Review */}
+            {/* Detailed Question Review */}
             {!currentViewingExam ? (
-              <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-center space-y-1">
+              <div className="p-5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-center space-y-1">
                 <p className="font-bold">Đề thi gốc đã bị xóa hoặc gỡ khỏi hệ thống</p>
                 <p className="text-amber-800">Không thể hiển thị danh sách câu hỏi chi tiết của bài nộp này.</p>
               </div>
             ) : (
-            <div className="space-y-4">
-              <h4 className="font-extrabold text-sm text-slate-900">Chi Tiết Từng Câu Hỏi:</h4>
+              <div className="space-y-3">
+                <h4 className="font-extrabold text-sm text-slate-900">Chi Tiết Từng Câu Hỏi</h4>
 
-              {currentViewingExam.questions.map((q) => {
-                let isQuestionCorrect = false;
-                let studentDisplayAns = '';
-                let correctDisplayAns = '';
+                {currentViewingExam.questions.map((q) => {
+                  let status: 'correct' | 'partial' | 'wrong' | 'unanswered' = 'wrong';
+                  let studentDisplayAns = '';
+                  let correctDisplayAns = '';
 
-                if (q.part === 'part_1_mcq') {
-                  studentDisplayAns = viewingSubmission.answers[q.id] || 'Chưa trả lời';
-                  correctDisplayAns = q.correctAnswer;
-                  isQuestionCorrect = studentDisplayAns === correctDisplayAns;
-                } else if (q.part === 'part_2_true_false') {
-                  const aAns = viewingSubmission.answers[`${q.id}_a`];
-                  const bAns = viewingSubmission.answers[`${q.id}_b`];
-                  const cAns = viewingSubmission.answers[`${q.id}_c`];
-                  const dAns = viewingSubmission.answers[`${q.id}_d`];
-                  const fmtTF = (v: unknown) => (v === undefined || v === null ? '—' : v ? 'Đ' : 'S');
-                  studentDisplayAns = `a:${fmtTF(aAns)}, b:${fmtTF(bAns)}, c:${fmtTF(cAns)}, d:${fmtTF(dAns)}`;
-                  correctDisplayAns = q.items.map((it) => `${it.subKey}:${it.isCorrect ? 'Đ' : 'S'}`).join(', ');
-                } else if (q.part === 'part_3_short_answer') {
-                  studentDisplayAns = viewingSubmission.answers[q.id] || 'Chưa trả lời';
-                  correctDisplayAns = q.correctAnswer;
-                  isQuestionCorrect = studentDisplayAns.toString().trim() === correctDisplayAns.toString().trim();
-                }
+                  if (q.part === 'part_1_mcq') {
+                    const raw = viewingSubmission.answers[q.id];
+                    const clean = raw !== undefined && raw !== null ? String(raw).trim() : '';
+                    studentDisplayAns = clean || 'Chưa trả lời';
+                    correctDisplayAns = q.correctAnswer;
+                    status = !clean
+                      ? 'unanswered'
+                      : clean.toUpperCase() === q.correctAnswer.trim().toUpperCase()
+                      ? 'correct'
+                      : 'wrong';
+                  } else if (q.part === 'part_2_true_false') {
+                    const subItems = q.items || [];
+                    const fmtTF = (v: unknown) =>
+                      v === undefined || v === null || v === '' ? '—' : v === true || v === 'true' ? 'Đ' : 'S';
+                    let answered = 0;
+                    let matched = 0;
+                    const sParts: string[] = [];
+                    subItems.forEach((it) => {
+                      const val = fmtTF(viewingSubmission.answers[`${q.id}_${it.subKey}`]);
+                      const expected = it.isCorrect ? 'Đ' : 'S';
+                      sParts.push(`${it.subKey}:${val}`);
+                      if (val !== '—') {
+                        answered += 1;
+                        if (val === expected) matched += 1;
+                      }
+                    });
+                    studentDisplayAns = sParts.join(', ');
+                    correctDisplayAns = subItems.map((it) => `${it.subKey}:${it.isCorrect ? 'Đ' : 'S'}`).join(', ');
+                    status =
+                      answered === 0
+                        ? 'unanswered'
+                        : matched === subItems.length
+                        ? 'correct'
+                        : matched > 0
+                        ? 'partial'
+                        : 'wrong';
+                  } else if (q.part === 'part_3_short_answer') {
+                    const raw = viewingSubmission.answers[q.id];
+                    const clean = raw !== undefined && raw !== null ? String(raw).trim() : '';
+                    studentDisplayAns = clean || 'Chưa trả lời';
+                    correctDisplayAns = q.correctAnswer;
+                    status = !clean
+                      ? 'unanswered'
+                      : isAnswerEquivalent(clean, q.correctAnswer)
+                      ? 'correct'
+                      : 'wrong';
+                  }
 
-                return (
-                  <div
-                    key={q.id}
-                    className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2.5 text-xs shadow-xs"
-                  >
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-slate-900 text-white font-bold flex items-center justify-center text-[11px]">
-                          {q.questionNumber}
-                        </span>
-                        <span className="font-bold text-slate-700">
-                          {q.part === 'part_1_mcq'
-                            ? 'Trắc nghiệm 4 lựa chọn'
-                            : q.part === 'part_2_true_false'
-                            ? 'Đúng/Sai 4 ý'
-                            : 'Trả lời ngắn'}
-                        </span>
+                  return (
+                    <div key={q.id} className="p-4 rounded-xl border border-slate-200 bg-white space-y-2.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono font-bold text-[11px]">
+                            Câu {q.questionNumber}
+                          </span>
+                          <span className="font-semibold text-slate-600">
+                            {q.part === 'part_1_mcq'
+                              ? 'Trắc nghiệm 4 lựa chọn'
+                              : q.part === 'part_2_true_false'
+                              ? 'Đúng / Sai 4 ý'
+                              : 'Trả lời ngắn'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-slate-500 tabular-nums">{q.points}đ</span>
+                          {status === 'correct' ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                              <CheckCircle2 size={13} />
+                              <span>Đúng</span>
+                            </span>
+                          ) : status === 'partial' ? (
+                            <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
+                              <AlertTriangle size={13} />
+                              <span>Đúng 1 phần</span>
+                            </span>
+                          ) : status === 'unanswered' ? (
+                            <span className="inline-flex items-center gap-1 text-slate-500 font-semibold">
+                              <MinusCircle size={13} />
+                              <span>Bỏ trống</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-rose-700 font-bold">
+                              <XCircle size={13} />
+                              <span>Sai</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="font-semibold text-slate-500">Thang điểm: {q.points}đ</span>
+
+                      <p className="font-semibold text-slate-900">{q.prompt}</p>
+
+                      {(q.pdfAttachmentUrl || q.imageAttachment) && (
+                        <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 inline-block max-w-full">
+                          <ExamImage
+                            src={q.pdfAttachmentUrl || q.imageAttachment}
+                            alt="Ảnh đề bài"
+                            className="max-h-40 max-w-full w-auto rounded object-contain bg-white"
+                          />
+                        </div>
+                      )}
+
+                      {q.latex && (
+                        <div className="p-2.5 bg-slate-50 rounded-lg">
+                          <MathView math={q.latex} block />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
+                        <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-slate-500 block text-[10px]">Học sinh chọn:</span>
+                          <strong className="text-slate-900">{studentDisplayAns}</strong>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                          <span className="text-emerald-700 block text-[10px]">Đáp án chuẩn:</span>
+                          <strong className="text-emerald-900">{correctDisplayAns}</strong>
+                        </div>
+                      </div>
+
+                      {q.explanation && (
+                        <div className="p-2.5 rounded-lg bg-blue-50/60 border border-blue-100 text-slate-700 text-[11px]">
+                          <span className="font-bold text-blue-700 block mb-0.5">Lời giải:</span>
+                          <p>{q.explanation}</p>
+                        </div>
+                      )}
                     </div>
-
-                    <p className="font-semibold text-slate-900">{q.prompt}</p>
-
-                    {/* Ảnh đính kèm nếu có */}
-                    {(q.pdfAttachmentUrl || q.imageAttachment) && (
-                      <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 inline-block max-w-full">
-                        <ExamImage src={q.pdfAttachmentUrl || q.imageAttachment} alt="Ảnh đề bài" className="max-h-40 max-w-full w-auto rounded-lg object-contain bg-white" />
-                      </div>
-                    )}
-
-                    {q.latex && (
-                      <div className="p-2.5 bg-slate-50 rounded-xl">
-                        <MathView math={q.latex} block />
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
-                      <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-slate-400 block text-[10px]">Học sinh đã chọn:</span>
-                        <strong className="text-slate-900">{studentDisplayAns}</strong>
-                      </div>
-                      <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
-                        <span className="text-emerald-700 block text-[10px]">Đáp án chính xác:</span>
-                        <strong className="text-emerald-900">{correctDisplayAns}</strong>
-                      </div>
-                    </div>
-
-                    {q.explanation && (
-                      <div className="p-2.5 rounded-xl bg-blue-50/60 border border-blue-100 text-slate-700 text-[11px]">
-                        <span className="font-bold text-blue-700 block mb-0.5">Lời giải hướng dẫn:</span>
-                        <p>{q.explanation}</p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
             )}
 
-            {/* Footer action buttons */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
+            {/* Modal Footer */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => {
                   setPdfPreselectedStudent(viewingSubmission);
                   setShowPdfExportModal(true);
                 }}
-                className="w-full sm:flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                className="w-full sm:flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
-                <FileText size={16} />
+                <FileText size={15} />
                 <span>Xuất Phiếu Điểm (PDF / Word / Excel)</span>
               </button>
               {canDeleteSubmissions && (
                 <button
                   type="button"
                   onClick={() => setSubmissionToDelete(viewingSubmission)}
-                  className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Trash2 size={15} />
+                  <Trash2 size={14} />
                   <span>Xóa Bài Nộp</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setViewingSubmission(null)}
-                className="w-full sm:flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                className="w-full sm:flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
               >
-                Đóng Cửa Sổ Chi Tiết
+                Đóng
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: XÁC NHẬN XÓA 1 BÀI NỘP CỦA HỌC SINH                               */}
-      {/* ========================================================================= */}
+      {/* MODAL XÓA 1 BÀI NỘP */}
       <DeleteConfirmationModal
         isOpen={Boolean(submissionToDelete)}
         itemType="custom"
@@ -1432,9 +1827,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
         }}
       />
 
-      {/* ========================================================================= */}
-      {/* MODAL: XÁC NHẬN XÓA NHIỀU BÀI NỘP ĐÃ CHỌN                                */}
-      {/* ========================================================================= */}
+      {/* MODAL XÓA NHIỀU BÀI NỘP */}
       <DeleteConfirmationModal
         isOpen={showBulkDeleteModal}
         itemType="custom"
@@ -1453,9 +1846,7 @@ export const TeacherGradebookView: React.FC<TeacherGradebookViewProps> = ({
         }}
       />
 
-      {/* ========================================================================= */}
-      {/* MODAL: XUẤT BÁO CÁO KẾT QUẢ / PHIẾU ĐIỂM DẠNG PDF                         */}
-      {/* ========================================================================= */}
+      {/* MODAL XUẤT BÁO CÁO PDF / WORD / EXCEL */}
       {showPdfExportModal && (
         <Suspense fallback={null}>
           <GradebookPdfReportModal

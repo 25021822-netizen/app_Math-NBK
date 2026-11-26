@@ -60,7 +60,7 @@ const GUIDE_MARKDOWN = `# Giới Thiệu & Hướng Dẫn Sử Dụng Nền Tả
 2. **Xem bài giảng & Thảo luận:** Mở tab **Bài Giảng & Tài Liệu** để xem/tải PDF lý thuyết & bài tập; mở tab **Thảo Luận Lớp** để trao đổi bài tập với thầy cô và bạn bè.
 3. **Làm bài thi:** Vào tab **Đề Thi Đã Giao** → nhấn **Vào Làm Bài**. Hệ thống tự động lưu đáp án nháp mỗi 10 giây; bật toàn màn hình nếu đề có yêu cầu giám sát.
 4. **Xem lại bài đã làm:** Vào mục **Bài Đã Làm** để xem điểm, thời gian làm bài, đáp án chi tiết từng câu hoặc làm lại (nếu còn lượt).
-5. **Thực hành 3 môn:** Sử dụng đầy đủ **Vẽ Hình 2D/3D**, **Mô Phỏng (Vật Lý)** và **Thí Nghiệm (Hóa Học)** (có chế độ 3D xoay quan sát phân tử).
+5. **Thực hành 3 môn:** Sử dụng đầy đủ **Vẽ Hình 2D/3D**, **Vật Lý** và **Hóa Học** (có chế độ 3D xoay quan sát phân tử).
 6. **Trên điện thoại:** Nhấn vào **nút 3 gạch (Menu)** ở góc trên bên phải để mở danh sách chuyển trang.
 
 ---
@@ -162,7 +162,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
     <li><strong>Học &amp; Thảo luận:</strong> Mở tab <em>Bài Giảng &amp; Tài Liệu</em> để xem/tải PDF lý thuyết &amp; bài tập; dùng tab <em>Thảo Luận Lớp</em> để hỏi bài.</li>
     <li><strong>Làm bài thi:</strong> Vào tab <em>Đề Thi Đã Giao</em> → nhấn <em>Vào Làm Bài</em> → chọn đáp án và nhấn <em>Nộp Bài Thi</em> khi hoàn thành.</li>
     <li><strong>Xem lại kết quả:</strong> Vào mục <em>Bài Đã Làm</em> để xem điểm, thời gian làm, đáp án chi tiết từng câu hoặc làm lại nếu còn lượt.</li>
-    <li><strong>Thực hành 2D/3D &amp; Thí nghiệm:</strong> Truy cập đầy đủ cả 3 phòng <em>Vẽ Hình 2D/3D</em>, <em>Mô Phỏng (Vật Lý)</em> và <em>Thí Nghiệm (Hóa Học)</em>.</li>
+    <li><strong>Thực hành 2D/3D &amp; Thí nghiệm:</strong> Truy cập đầy đủ cả 3 phòng <em>Vẽ Hình 2D/3D</em>, <em>Vật Lý</em> và <em>Hóa Học</em>.</li>
     <li><strong>Trên điện thoại:</strong> Nhấn vào nút <strong>3 gạch (Menu)</strong> ở góc trên bên phải để chuyển nhanh giữa các trang.</li>
   </ol>
 
@@ -348,7 +348,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-1.5">
                   <div className="flex items-center gap-2 font-extrabold text-slate-900">
                     <Atom size={16} className="text-sky-600" />
-                    <span>Mô Phỏng Vật Lý</span>
+                    <span>Vật Lý</span>
                   </div>
                   <p className="text-xs text-slate-600">
                     Cơ học, dao động điều hòa, ném xiên, sóng cơ, giao thoa, quang học, mạch RLC, khí lý tưởng và hạt nhân.
@@ -358,7 +358,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-1.5">
                   <div className="flex items-center gap-2 font-extrabold text-slate-900">
                     <FlaskConical size={16} className="text-emerald-600" />
-                    <span>Thí Nghiệm Hóa Học 3D</span>
+                    <span>Hóa Học</span>
                   </div>
                   <p className="text-xs text-slate-600">
                     Pin Galvani điện cực tan, tinh chế kim loại, sản xuất công nghiệp (nhôm, H₂SO₄, NH₃...), điều chế Ester, chuẩn độ pH và quan sát phân tử 3D xoay 360°.
@@ -399,7 +399,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
               <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2">
                 <h3 className="font-black text-slate-900 text-sm">3. Thực hành phòng thí nghiệm &amp; hồ sơ</h3>
                 <ul className="list-disc pl-5 space-y-1 text-xs text-slate-600">
-                  <li>Học sinh được truy cập cả 3 phân hệ: <strong>Vẽ Hình 2D/3D</strong>, <strong>Mô Phỏng (Vật Lý)</strong> và <strong>Thí Nghiệm (Hóa Học)</strong>.</li>
+                  <li>Học sinh được truy cập cả 3 phân hệ: <strong>Vẽ Hình 2D/3D</strong>, <strong>Vật Lý</strong> và <strong>Hóa Học</strong>.</li>
                   <li>Trong phòng Hóa học, chuyển sang chế độ <strong>3D Phân Tử</strong> để xoay và phóng to/thu nhỏ mô hình phản ứng hóa học.</li>
                   <li>Vào mục <strong>Hồ Sơ</strong> để chọn ảnh đại diện, cập nhật thông tin cá nhân và đổi mật khẩu tài khoản.</li>
                 </ul>
