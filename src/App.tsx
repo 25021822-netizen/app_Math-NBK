@@ -44,6 +44,8 @@ import {
   dbDeleteSubmission,
   dbDeleteSubmissionsBatch,
   dbSaveCheatLog,
+  dbDeleteCheatLog,
+  dbClearAllCheatLogs,
   dbSaveLessons,
   dbSaveLesson,
   dbDeleteLesson,
@@ -1734,8 +1736,20 @@ export default function App() {
   };
 
   const handleRecordCheatLog = (log: CheatLog) => {
+    if (userProfileRef.current.role !== 'student') return;
     setCheatLogs((prev) => [log, ...prev]);
     dbSaveCheatLog(log).catch(console.error);
+  };
+
+  const handleDeleteCheatLog = async (logId: string) => {
+    if (!logId) return;
+    setCheatLogs((prev) => prev.filter((c) => c.id !== logId));
+    await dbDeleteCheatLog(logId);
+  };
+
+  const handleClearAllCheatLogs = async () => {
+    setCheatLogs([]);
+    await dbClearAllCheatLogs();
   };
 
   // Giáo viên đăng tải đề thi mới: Đồng bộ tức thời lên Firestore & Server DB cho toàn bộ học sinh thấy ngay
@@ -1970,6 +1984,8 @@ export default function App() {
           autoApprovalSettings={autoApprovalSettings}
           onUpdateAutoApprovalSettings={handleUpdateAutoApprovalSettings}
           onApproveAllUsers={handleApproveAllUsers}
+          onDeleteCheatLog={handleDeleteCheatLog}
+          onClearCheatLogs={handleClearAllCheatLogs}
         />
       );
     }
@@ -2042,6 +2058,7 @@ export default function App() {
             onSelectExamId={setActiveExamId}
             submissions={visibleTeacherSubmissions}
             onExitExam={() => setCurrentTab('classroom')}
+            isTeacherPreview={true}
           />
         );
       }

@@ -74,7 +74,7 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
   onExportImageToExam,
 }) => {
   const [geometryMode, setGeometryMode] = useState<'2d' | '3d'>('3d');
-  const [subMode3D, setSubMode3D] = useState<'threejs' | 'technical'>('threejs');
+  const [subMode3D, setSubMode3D] = useState<'threejs' | 'technical'>('technical');
   const [subMode2D, setSubMode2D] = useState<'function' | 'shapes'>('function');
 
   // ==========================================
@@ -882,16 +882,6 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
           <div className="flex bg-white p-2 rounded-2xl border border-slate-200 text-xs font-bold w-fit shadow-xs gap-1.5">
             <button
               type="button"
-              onClick={() => setSubMode3D('threejs')}
-              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                subMode3D === 'threejs' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Sparkles size={15} />
-              <span>Không Gian 3D Trực Quan (Đa Diện &amp; Mặt Cong)</span>
-            </button>
-            <button
-              type="button"
               onClick={() => setSubMode3D('technical')}
               className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                 subMode3D === 'technical' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -899,6 +889,16 @@ export const GeometryCanvasView: React.FC<GeometryCanvasViewProps> = ({
             >
               <Box size={15} />
               <span>Bản Vẽ Kỹ Thuật Dựng Hình Oxyz</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubMode3D('threejs')}
+              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                subMode3D === 'threejs' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Sparkles size={15} />
+              <span>Không Gian 3D Trực Quan (Đa Diện &amp; Mặt Cong)</span>
             </button>
           </div>
           <Suspense

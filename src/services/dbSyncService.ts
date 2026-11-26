@@ -86,6 +86,25 @@ function persistDeletedSubmissionIds() {
     }
   } catch {}
 }
+const DELETED_CHEAT_LOGS_STORAGE_KEY = 'math_liki_deleted_cheat_log_ids';
+const deletedCheatLogIdsSet: Set<string> = (() => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(DELETED_CHEAT_LOGS_STORAGE_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed.filter((id) => typeof id === 'string'));
+    }
+  } catch {}
+  return new Set<string>();
+})();
+function persistDeletedCheatLogIds() {
+  try {
+    if (typeof window !== 'undefined') {
+      const arr = Array.from(deletedCheatLogIdsSet).slice(-1000);
+      localStorage.setItem(DELETED_CHEAT_LOGS_STORAGE_KEY, JSON.stringify(arr));
+    }
+  } catch {}
+}
 const DELETED_BROADCASTS_STORAGE_KEY = 'math_liki_deleted_broadcast_ids';
 const ADMIN_BROADCASTS_CACHE_KEY = 'math_liki_admin_broadcasts';
 const deletedBroadcastIdsSet: Set<string> = (() => {
@@ -246,6 +265,7 @@ export interface DatabaseState {
   exams: Exam[];
   deletedExamIds?: string[];
   deletedSubmissionIds?: string[];
+  deletedCheatLogIds?: string[];
   adminBroadcasts?: AdminBroadcastMessage[];
   deletedBroadcastIds?: string[];
 }
@@ -775,19 +795,112 @@ export async function dbDeleteSubmissionsBatch(submissionIds: string[]): Promise
  * Lưu nhật ký vi phạm quy chế thi
  */
 export async function dbSaveCheatLog(log: CheatLog): Promise<boolean> {
+  if (log.id && deletedCheatLogIdsSet.delete(log.id)) {
+    persistDeletedCheatLogIds();
+  }
+  const cleanLog = cleanForFirestore(log);
   try {
-    await setDoc(doc(db, 'cheatLogs', log.id), log, { merge: true });
+    await setDoc(doc(db, 'cheatLogs', log.id), cleanLog, { merge: true });
 
     fetch('/api/db/cheat-logs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ log }),
+      body: JSON.stringify({ log: cleanLog }),
     }).catch(() => {});
 
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Admin xóa 1 nhật ký vi phạm quy chế thi khỏi Firestore & Server
+ */
+export async function dbDeleteCheatLog(logId: string): Promise<boolean> {
+  if (!logId) return false;
+  return dbDeleteCheatLogsBatch([logId]);
+}
+
+/**
+ * Admin xóa nhiều nhật ký vi phạm quy chế thi khỏi Firestore & Server
+ */
+export async function dbDeleteCheatLogsBatch(logIds: string[]): Promise<boolean> {
+  const uniqueIds = Array.from(new Set(logIds.filter((id) => typeof id === 'string' && id.trim())));
+  if (uniqueIds.length === 0) return false;
+
+  const idSet = new Set(uniqueIds);
+  uniqueIds.forEach((id) => deletedCheatLogIdsSet.add(id));
+  persistDeletedCheatLogIds();
+
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.cheatLogs = activeAccumulatorRef.cheatLogs.filter((c) => !idSet.has(c.id));
+    activeDispatchRef?.();
+  }
+
+  const serverPromise = fetch('/api/db/cheat-logs/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ logIds: uniqueIds }),
+  }).catch((err) => {
+    console.warn('Lỗi dbDeleteCheatLogsBatch Server API:', err);
+    return null;
+  });
+
+  const firestorePromise = Promise.allSettled(
+    uniqueIds.map((id) =>
+      deleteDoc(doc(db, 'cheatLogs', id)).catch((err) => {
+        if (err instanceof Error && err.message.toLowerCase().includes('permission')) {
+          handleFirestoreError(err, OperationType.DELETE, `cheatLogs/${id}`);
+        }
+        console.warn(`Lỗi xóa cheatLog ${id} trên Firestore:`, err);
+      })
+    )
+  );
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
+}
+
+/**
+ * Admin xóa toàn bộ nhật ký vi phạm quy chế thi khỏi Firestore & Server
+ */
+export async function dbClearAllCheatLogs(): Promise<boolean> {
+  if (activeAccumulatorRef) {
+    activeAccumulatorRef.cheatLogs.forEach((c) => {
+      if (c?.id) deletedCheatLogIdsSet.add(c.id);
+    });
+    activeAccumulatorRef.cheatLogs = [];
+    persistDeletedCheatLogIds();
+    activeDispatchRef?.();
+  }
+
+  const serverPromise = fetch('/api/db/cheat-logs/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }).catch((err) => {
+    console.warn('Lỗi dbClearAllCheatLogs Server API:', err);
+    return null;
+  });
+
+  const firestorePromise = (async () => {
+    try {
+      const snap = await getDocs(collection(db, 'cheatLogs'));
+      snap.docs.forEach((d) => {
+        deletedCheatLogIdsSet.add(d.id);
+      });
+      persistDeletedCheatLogIds();
+      await Promise.allSettled(snap.docs.map((d) => deleteDoc(d.ref)));
+    } catch (err) {
+      if (err instanceof Error && err.message.toLowerCase().includes('permission')) {
+        handleFirestoreError(err, OperationType.DELETE, 'cheatLogs');
+      }
+      console.warn('Lỗi dbClearAllCheatLogs Firestore:', err);
+    }
+  })();
+
+  await Promise.allSettled([serverPromise, firestorePromise]);
+  return true;
 }
 
 /**
@@ -2155,6 +2268,7 @@ export function startDbPolling(
     classroomMessages: {},
     exams: initialCachedExams.filter((e) => e && e.id && e.id !== 'exam_bgd_2025_01' && !deletedExamIdsSet.has(e.id)),
     deletedExamIds: Array.from(deletedExamIdsSet),
+    deletedCheatLogIds: Array.from(deletedCheatLogIdsSet),
     adminBroadcasts: initialCachedBroadcasts.filter((b) => b && b.id && !deletedBroadcastIdsSet.has(b.id)),
     deletedBroadcastIds: Array.from(deletedBroadcastIdsSet),
   };
@@ -2163,6 +2277,7 @@ export function startDbPolling(
     stateAccumulator.version += 1;
     stateAccumulator.lastUpdated = new Date().toISOString();
     stateAccumulator.deletedExamIds = Array.from(deletedExamIdsSet);
+    stateAccumulator.deletedCheatLogIds = Array.from(deletedCheatLogIdsSet);
     stateAccumulator.deletedBroadcastIds = Array.from(deletedBroadcastIdsSet);
     onRemoteUpdate({ ...stateAccumulator });
   };
@@ -2268,10 +2383,27 @@ export function startDbPolling(
 
   // 4. Lắng nghe Nhật ký gian lận thi trên Firestore Real-time
   const unsubCheatLogs = onSnapshot(collection(db, 'cheatLogs'), (snapshot) => {
+    let removedUpdated = false;
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        if (!deletedCheatLogIdsSet.has(change.doc.id)) {
+          deletedCheatLogIdsSet.add(change.doc.id);
+          removedUpdated = true;
+        }
+      }
+    });
+    if (removedUpdated) {
+      persistDeletedCheatLogIds();
+    }
+
     const list: CheatLog[] = [];
     snapshot.forEach((d) => {
-      list.push(d.data() as CheatLog);
+      const log = d.data() as CheatLog;
+      if (log && log.id && !deletedCheatLogIdsSet.has(log.id) && !deletedExamIdsSet.has(log.examId)) {
+        list.push(log);
+      }
     });
+    list.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
     stateAccumulator.cheatLogs = list;
     dispatchUpdate();
   }, (err) => {
@@ -2541,6 +2673,25 @@ export function startDbPolling(
               const filteredSubs = stateAccumulator.submissions.filter((s) => !deletedSubmissionIdsSet.has(s.id));
               if (filteredSubs.length !== stateAccumulator.submissions.length) {
                 stateAccumulator.submissions = filteredSubs;
+              }
+              hasChanges = true;
+            }
+          }
+
+          // Đồng bộ danh sách nhật ký thi đã bị xóa từ Server
+          if (Array.isArray(json.data.deletedCheatLogIds)) {
+            let deletedCheatUpdated = false;
+            json.data.deletedCheatLogIds.forEach((delId: unknown) => {
+              if (typeof delId === 'string' && delId && !deletedCheatLogIdsSet.has(delId)) {
+                deletedCheatLogIdsSet.add(delId);
+                deletedCheatUpdated = true;
+              }
+            });
+            if (deletedCheatUpdated) {
+              persistDeletedCheatLogIds();
+              const filteredLogs = stateAccumulator.cheatLogs.filter((c) => !deletedCheatLogIdsSet.has(c.id));
+              if (filteredLogs.length !== stateAccumulator.cheatLogs.length) {
+                stateAccumulator.cheatLogs = filteredLogs;
               }
               hasChanges = true;
             }

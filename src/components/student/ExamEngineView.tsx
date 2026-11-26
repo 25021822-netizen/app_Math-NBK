@@ -44,6 +44,7 @@ interface ExamEngineViewProps {
   studentProfile?: { id: string; name: string; email: string };
   defaultClassId?: string;
   submissions?: StudentExamSubmission[];
+  isTeacherPreview?: boolean;
 }
 
 const DUMMY_EMPTY_EXAM: Exam = {
@@ -70,6 +71,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   studentProfile,
   defaultClassId = 'cls_12a1',
   submissions = [],
+  isTeacherPreview = false,
 }) => {
   const currentExam = examsList.find((e) => e.id === activeExamId) || examsList[0] || DUMMY_EMPTY_EXAM;
   const [exam, setExam] = useState<Exam>(currentExam);
@@ -301,13 +303,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     return () => clearInterval(saveTimer);
   }, [exam.id, studentId, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
 
-  // Cấu hình kiểm soát màn hình từ đề thi (mặc định bật trừ khi giáo viên chọn Tắt)
-  const isScreenMonitoringEnabled = exam.enableScreenMonitoring !== false;
+  // Cấu hình kiểm soát màn hình từ đề thi (chỉ áp dụng cho học sinh, giáo viên xem đề không tính gian lận)
+  const isScreenMonitoringEnabled = !isTeacherPreview && exam.enableScreenMonitoring !== false;
   const maxAllowedInfractions = exam.maxInfractions && exam.maxInfractions > 0 ? exam.maxInfractions : 3;
 
   // 4. Cơ chế chống gian lận đa tầng: Bắt sự kiện rời màn hình / đổi tab (chỉ khi BẬT kiểm soát màn hình)
   useEffect(() => {
-    if (!isScreenMonitoringEnabled || isSubmitted || isDisqualified || isMaxAttemptsReached || !isExamTimeActive) return;
+    if (isTeacherPreview || !isScreenMonitoringEnabled || isSubmitted || isDisqualified || isMaxAttemptsReached || !isExamTimeActive) return;
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
@@ -326,10 +328,10 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [isScreenMonitoringEnabled, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
+  }, [isTeacherPreview, isScreenMonitoringEnabled, isSubmitted, isDisqualified, isMaxAttemptsReached, isExamTimeActive]);
 
   const registerInfraction = (reason: string) => {
-    if (!isScreenMonitoringEnabled || isSubmittedRef.current || isDisqualifiedRef.current) return;
+    if (isTeacherPreview || !isScreenMonitoringEnabled || isSubmittedRef.current || isDisqualifiedRef.current) return;
 
     // Chống đếm trùng khi 1 thao tác rời tab kích hoạt đồng thời visibilitychange, blur và fullscreenchange
     const now = Date.now();
@@ -576,7 +578,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (!isSubmitted && isExamTimeActive && !isMaxAttemptsReached) {
+                  if (!isTeacherPreview && !isSubmitted && isExamTimeActive && !isMaxAttemptsReached) {
                     setShowExitModal(true);
                   } else {
                     exitFullscreen();
@@ -584,7 +586,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                   }
                 }}
                 className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors"
-                title="Rời phòng thi"
+                title={isTeacherPreview ? 'Quay lại' : 'Rời phòng thi'}
               >
                 <ArrowLeft size={18} />
               </button>
@@ -592,7 +594,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
             <div>
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-black uppercase tracking-wider text-blue-600">
-                  Phòng Thi Trực Tuyến
+                  {isTeacherPreview ? 'Xem Đề Thi (Giáo Viên)' : 'Phòng Thi Trực Tuyến'}
                 </span>
                 <span className="text-slate-300">·</span>
                 <span className="text-xs font-semibold text-slate-500">
@@ -630,8 +632,13 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               <span className="font-mono font-black text-base tabular-nums">{formatTimer(timeLeft)}</span>
             </div>
 
-            {/* Anti-Cheat Infraction Indicator or Free Practice Badge */}
-            {isScreenMonitoringEnabled ? (
+            {/* Anti-Cheat Infraction Indicator or Teacher Preview / Free Practice Badge */}
+            {isTeacherPreview ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-bold">
+                <Eye size={15} className="text-emerald-600" />
+                <span>Chế độ giáo viên · Không tính gian lận</span>
+              </div>
+            ) : isScreenMonitoringEnabled ? (
               <div
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold ${
                   infractionCount === 0

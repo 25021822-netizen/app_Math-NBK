@@ -994,6 +994,7 @@ interface ServerDatabase {
   exams: any[];
   deletedExamIds?: string[];
   deletedSubmissionIds?: string[];
+  deletedCheatLogIds?: string[];
   adminBroadcasts?: any[];
   deletedBroadcastIds?: string[];
   adminSettings?: {
@@ -1053,6 +1054,7 @@ function getCleanInitialDb(): ServerDatabase {
     exams: [],
     deletedExamIds: [],
     deletedSubmissionIds: [],
+    deletedCheatLogIds: [],
     adminBroadcasts: [],
     deletedBroadcastIds: [],
     adminSettings: {
@@ -1082,6 +1084,9 @@ function loadDatabase(): ServerDatabase {
     parsed.exams = parsed.exams || [];
     parsed.deletedExamIds = Array.isArray(parsed.deletedExamIds) ? parsed.deletedExamIds : [];
     parsed.deletedSubmissionIds = Array.isArray(parsed.deletedSubmissionIds) ? parsed.deletedSubmissionIds : [];
+    parsed.deletedCheatLogIds = Array.isArray(parsed.deletedCheatLogIds) ? parsed.deletedCheatLogIds : [];
+    const deletedCheatSet = new Set(parsed.deletedCheatLogIds);
+    parsed.cheatLogs = (parsed.cheatLogs || []).filter((c: any) => c && !deletedCheatSet.has(c.id));
     parsed.adminBroadcasts = Array.isArray(parsed.adminBroadcasts) ? parsed.adminBroadcasts : [];
     parsed.deletedBroadcastIds = Array.isArray(parsed.deletedBroadcastIds) ? parsed.deletedBroadcastIds : [];
     // Cấu hình duyệt tự động mặc định nếu chưa có
@@ -1421,11 +1426,52 @@ app.post('/api/db/submissions/delete', (req, res) => {
 // 9. Lưu nhật ký vi phạm quy chế thi
 app.post('/api/db/cheat-logs', (req, res) => {
   const { log } = req.body;
-  if (log) {
-    serverDb.cheatLogs = [log, ...serverDb.cheatLogs];
+  if (log && log.id) {
+    serverDb.cheatLogs = [log, ...(serverDb.cheatLogs || []).filter((c: any) => c.id !== log.id)];
+    serverDb.deletedCheatLogIds = (serverDb.deletedCheatLogIds || []).filter((id) => id !== log.id);
     serverDb.version = (serverDb.version || 1) + 1;
     saveDatabase(serverDb);
   }
+  res.json({ success: true, version: serverDb.version });
+});
+
+// 9b. Admin xóa 1 hoặc nhiều nhật ký thi
+app.post('/api/db/cheat-logs/delete', (req, res) => {
+  const { logId, logIds } = req.body || {};
+  const idsToDelete = new Set<string>();
+  if (typeof logId === 'string' && logId.trim()) {
+    idsToDelete.add(logId.trim());
+  }
+  if (Array.isArray(logIds)) {
+    logIds.forEach((id: unknown) => {
+      if (typeof id === 'string' && id.trim()) {
+        idsToDelete.add(id.trim());
+      }
+    });
+  }
+
+  if (idsToDelete.size > 0) {
+    serverDb.cheatLogs = (serverDb.cheatLogs || []).filter((c: any) => !idsToDelete.has(c.id));
+    const delSet = new Set(serverDb.deletedCheatLogIds || []);
+    idsToDelete.forEach((id) => delSet.add(id));
+    serverDb.deletedCheatLogIds = Array.from(delSet).slice(-1000);
+    serverDb.version = (serverDb.version || 1) + 1;
+    saveDatabase(serverDb);
+  }
+
+  res.json({ success: true, deletedCount: idsToDelete.size, version: serverDb.version });
+});
+
+// 9c. Admin xóa toàn bộ nhật ký thi
+app.post('/api/db/cheat-logs/clear', (_req, res) => {
+  const delSet = new Set(serverDb.deletedCheatLogIds || []);
+  (serverDb.cheatLogs || []).forEach((c: any) => {
+    if (c?.id) delSet.add(c.id);
+  });
+  serverDb.deletedCheatLogIds = Array.from(delSet).slice(-1000);
+  serverDb.cheatLogs = [];
+  serverDb.version = (serverDb.version || 1) + 1;
+  saveDatabase(serverDb);
   res.json({ success: true, version: serverDb.version });
 });
 

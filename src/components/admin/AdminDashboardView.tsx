@@ -36,6 +36,8 @@ interface AdminDashboardViewProps {
   autoApprovalSettings?: AutoApprovalSettings;
   onUpdateAutoApprovalSettings?: (settings: AutoApprovalSettings) => void;
   onApproveAllUsers?: (targetRole?: 'all' | 'student' | 'teacher') => void;
+  onDeleteCheatLog?: (logId: string) => void | Promise<void>;
+  onClearCheatLogs?: () => void | Promise<void>;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
@@ -49,10 +51,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   autoApprovalSettings: propAutoApprovalSettings,
   onUpdateAutoApprovalSettings,
   onApproveAllUsers,
+  onDeleteCheatLog,
+  onClearCheatLogs,
 }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'pending_requests' | 'cheat_logs'>('users');
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
+  const [confirmClearAllLogs, setConfirmClearAllLogs] = useState(false);
+  const [isClearingLogs, setIsClearingLogs] = useState(false);
 
   // Auto-Approval Configuration State
   const [autoApproval, setAutoApproval] = useState<AutoApprovalSettings>(
@@ -971,9 +977,53 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 Ghi nhận các sự kiện chuyển ứng dụng, rời màn hình toàn phần trong lúc làm bài thi
               </p>
             </div>
-            <span className="text-xs font-bold tabular-nums text-rose-700 shrink-0">
-              {allLogs.length} vi phạm được ghi nhận
-            </span>
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <span className="text-xs font-bold tabular-nums text-rose-700">
+                {allLogs.length} vi phạm được ghi nhận
+              </span>
+              {allLogs.length > 0 && onClearCheatLogs && (
+                confirmClearAllLogs ? (
+                  <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-xl">
+                    <span className="text-[11px] font-bold text-rose-700">Xóa toàn bộ?</span>
+                    <button
+                      type="button"
+                      disabled={isClearingLogs}
+                      onClick={async () => {
+                        setIsClearingLogs(true);
+                        try {
+                          await onClearCheatLogs();
+                          setConfirmClearAllLogs(false);
+                          setApprovalMessage('Đã xóa toàn bộ nhật ký thi thành công!');
+                          setTimeout(() => setApprovalMessage(null), 3500);
+                        } finally {
+                          setIsClearingLogs(false);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                    >
+                      {isClearingLogs ? 'Đang xóa...' : 'Xác nhận'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isClearingLogs}
+                      onClick={() => setConfirmClearAllLogs(false)}
+                      className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 font-bold text-[11px] transition-colors cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearAllLogs(true)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={13} />
+                    <span>Xóa tất cả</span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
 
           {allLogs.length === 0 ? (
@@ -1017,9 +1067,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     <p className="text-[11px] text-slate-400">Đề thi: {log.examTitle}</p>
                   </div>
 
-                  <div className="text-left sm:text-right shrink-0">
+                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
                     <span
-                      className={`font-bold block ${
+                      className={`font-bold ${
                         log.actionTaken === 'auto_submitted_disqualified'
                           ? 'text-rose-600'
                           : 'text-amber-600'
@@ -1029,6 +1079,21 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         ? 'Tự động nộp bài & Đình chỉ'
                         : `Cảnh báo vi phạm lần ${log.infractionNumber}`}
                     </span>
+                    {onDeleteCheatLog && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await onDeleteCheatLog(log.id);
+                          setApprovalMessage(`Đã xóa nhật ký thi của "${log.studentName}".`);
+                          setTimeout(() => setApprovalMessage(null), 3000);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-500 hover:text-rose-600 font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Xóa nhật ký thi này"
+                      >
+                        <Trash2 size={13} />
+                        <span>Xóa</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
