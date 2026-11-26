@@ -8,23 +8,9 @@ import {
 } from '../../lib/scoringEngine';
 import {
   User,
-  Mail,
-  Phone,
-  School,
-  GraduationCap,
-  Award,
-  Flame,
-  Zap,
   CheckCircle2,
-  Shield,
-  Clock,
-  BookOpen,
-  Users,
   Edit3,
   Save,
-  BarChart3,
-  Camera,
-  Share2,
   Lock,
   Key,
   Eye,
@@ -40,7 +26,6 @@ interface UserProfileViewProps {
   classrooms: Classroom[];
   submissions: StudentExamSubmission[];
   examsList?: Exam[];
-  onOpenFriendsModal?: () => void;
   onNavigateToClassroom?: () => void;
   onLogout?: () => void;
 }
@@ -51,7 +36,6 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   classrooms,
   submissions,
   examsList = [],
-  onOpenFriendsModal,
   onNavigateToClassroom,
   onLogout,
 }) => {
@@ -230,25 +214,19 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{name}</h1>
             </div>
 
-            <p className="text-blue-100 text-xs sm:text-sm font-medium">{schoolName}</p>
+            <p className="text-blue-100 text-xs sm:text-sm font-medium">
+              {isAdmin ? 'Quản Trị Hệ Thống · Toán Học LIKI' : schoolName}
+            </p>
             <p className="text-blue-200/90 text-xs font-mono">{userProfile.email}</p>
           </div>
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
-            {onOpenFriendsModal && (
-              <button
-                onClick={onOpenFriendsModal}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-white text-blue-900 font-bold text-xs shadow-xs hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <Users size={16} className="text-blue-600" />
-                <span>Mạng Lưới Bạn Bè</span>
-              </button>
-            )}
             {onLogout && (
               <button
+                type="button"
                 onClick={onLogout}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-rose-500/80 border border-white/20 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-rose-500/80 border border-white/20 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 title="Đăng xuất khỏi tài khoản"
               >
                 <LogOut size={16} />
@@ -268,71 +246,96 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       )}
 
       {/* Stats Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {isTeacher ? (
-          <>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Lớp Giảng Dạy</span>
-              <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
-                {myClassrooms.length}
-              </span>
-              <span className="text-[10px] text-blue-600 font-semibold">Nhóm lớp hoạt động</span>
+      {isAdmin ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-between gap-3">
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 block uppercase">Vai Trò Hệ Thống</span>
+              <span className="text-lg font-black text-rose-700 mt-1 block">Quản Trị Viên (Admin)</span>
+              <span className="text-[11px] text-slate-500 font-medium">Toàn quyền tài khoản, duyệt &amp; thông báo</span>
             </div>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Tổng Học Sinh</span>
-              <span className="text-2xl font-black text-indigo-600 font-mono mt-1 block">
-                {myClassrooms.reduce((acc, c) => acc + c.studentIds.length, 0)}
-              </span>
-              <span className="text-[10px] text-slate-400 font-semibold">Đang theo học</span>
+            <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <ShieldCheck size={20} />
             </div>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Đề Thi Đã Giao</span>
-              <span className="text-2xl font-black text-amber-600 font-mono mt-1 block">
-                {myClassrooms.reduce((acc, c) => acc + c.assignedExamIds.length, 0)}
-              </span>
-              <span className="text-[10px] text-amber-700 font-semibold">Bài tập trên lớp</span>
+          </div>
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-between gap-3">
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 block uppercase">Mã Tài Khoản</span>
+              <span className="text-lg font-black text-slate-900 font-mono mt-1 block">{userProfile.id}</span>
+              <span className="text-[11px] text-emerald-600 font-semibold">Phiên bảo mật 24 giờ</span>
             </div>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Môn Giảng Dạy</span>
-              <span className="text-base font-extrabold text-blue-600 mt-2 block">
-                {subject || 'Toán Học'}
-              </span>
-              <span className="text-[10px] text-blue-500 font-semibold">Đang Giảng Dạy</span>
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <Key size={20} />
             </div>
-          </>
-        ) : (
-          <>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Đề Thi Đã Nộp</span>
-              <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
-                {mySubmissions.length}
-              </span>
-              <span className="text-[10px] text-blue-600 font-semibold">{profileScoreStats.scaleText}</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Tỉ Lệ Đạt Điểm Khá/Giỏi</span>
-              <span className="text-2xl font-black text-indigo-600 font-mono mt-1 block">
-                {mySubmissions.length > 0 ? `${profileScoreStats.goodRatePercent}%` : '0%'}
-              </span>
-              <span className="text-[10px] text-indigo-500 font-semibold">Mục tiêu thi THPT</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Nhóm Lớp Tham Gia</span>
-              <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block">
-                {myClassrooms.length}
-              </span>
-              <span className="text-[10px] text-emerald-700 font-semibold">Đang học & làm bài</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Hồ Sơ Học Tập</span>
-              <span className="text-base font-extrabold text-purple-600 mt-2 block">
-                Khối {userProfile.grade} THPT
-              </span>
-              <span className="text-[10px] text-purple-500 font-semibold">Chính thức</span>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {isTeacher ? (
+            <>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Lớp Giảng Dạy</span>
+                <span className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1 block">
+                  {myClassrooms.length}
+                </span>
+                <span className="text-[10px] text-blue-600 font-semibold">Nhóm lớp hoạt động</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Tổng Học Sinh</span>
+                <span className="text-2xl font-black text-indigo-600 font-mono tabular-nums mt-1 block">
+                  {myClassrooms.reduce((acc, c) => acc + c.studentIds.length, 0)}
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold">Đang theo học</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Đề Thi Đã Giao</span>
+                <span className="text-2xl font-black text-amber-600 font-mono tabular-nums mt-1 block">
+                  {myClassrooms.reduce((acc, c) => acc + c.assignedExamIds.length, 0)}
+                </span>
+                <span className="text-[10px] text-amber-700 font-semibold">Bài tập trên lớp</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Môn Giảng Dạy</span>
+                <span className="text-base font-extrabold text-blue-600 mt-2 block">
+                  {subject || 'Toán Học'}
+                </span>
+                <span className="text-[10px] text-blue-500 font-semibold">Đang Giảng Dạy</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Đề Thi Đã Nộp</span>
+                <span className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1 block">
+                  {mySubmissions.length}
+                </span>
+                <span className="text-[10px] text-blue-600 font-semibold">{profileScoreStats.scaleText}</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Tỉ Lệ Đạt Điểm Khá/Giỏi</span>
+                <span className="text-2xl font-black text-indigo-600 font-mono tabular-nums mt-1 block">
+                  {mySubmissions.length > 0 ? `${profileScoreStats.goodRatePercent}%` : '0%'}
+                </span>
+                <span className="text-[10px] text-indigo-500 font-semibold">Mục tiêu thi THPT</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Nhóm Lớp Tham Gia</span>
+                <span className="text-2xl font-black text-emerald-600 font-mono tabular-nums mt-1 block">
+                  {myClassrooms.length}
+                </span>
+                <span className="text-[10px] text-emerald-700 font-semibold">Đang học & làm bài</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-400 block uppercase">Hồ Sơ Học Tập</span>
+                <span className="text-base font-extrabold text-purple-600 mt-2 block">
+                  Khối {userProfile.grade} THPT
+                </span>
+                <span className="text-[10px] text-purple-500 font-semibold">Chính thức</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Main Form: Cập nhật thông tin hồ sơ */}
       <form onSubmit={handleSaveProfile} className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6 shadow-xs">
@@ -341,7 +344,9 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             <Edit3 size={20} className="text-blue-600" />
             <h2 className="text-lg font-extrabold text-slate-900">Chi Tiết Hồ Sơ Cá Nhân</h2>
           </div>
-          <span className="text-xs text-slate-400">Cập nhật hồ sơ phục vụ thi cử & nhóm lớp</span>
+          <span className="text-xs text-slate-400">
+            {isAdmin ? 'Thông tin tài khoản Quản trị viên' : 'Cập nhật hồ sơ phục vụ thi cử & nhóm lớp'}
+          </span>
         </div>
 
         {/* Chọn Avatar mẫu có sẵn */}
@@ -398,7 +403,9 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="font-bold text-slate-700">Email trường học *</label>
+            <label className="font-bold text-slate-700">
+              {isAdmin ? 'Email quản trị *' : 'Email trường học *'}
+            </label>
             <input
               type="email"
               value={email}
@@ -408,16 +415,18 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="font-bold text-slate-700">Trường THPT *</label>
-            <input
-              type="text"
-              value={schoolName}
-              onChange={(e) => setSchoolName(e.target.value)}
-              className="w-full h-11 px-3.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
-              required
-            />
-          </div>
+          {!isAdmin && (
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700">Trường THPT *</label>
+              <input
+                type="text"
+                value={schoolName}
+                onChange={(e) => setSchoolName(e.target.value)}
+                className="w-full h-11 px-3.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 focus:outline-none"
+                required
+              />
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="font-bold text-slate-700">Số điện thoại liên hệ</label>
@@ -429,103 +438,115 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             />
           </div>
 
-          {/* Khối Lớp Đang Học / Môn Giảng Dạy: Cố định theo tài khoản đã đăng ký */}
-          <div className="space-y-1 sm:col-span-2">
-            <div className="flex items-center justify-between">
-              <label className="font-bold text-slate-700">
-                {isTeacher ? 'Môn Giảng Dạy *' : 'Khối Lớp Đang Học *'}
-              </label>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                <Lock size={10} />
-                <span>Không cho phép sửa</span>
-              </span>
+          {/* Khối Lớp Đang Học / Môn Giảng Dạy: Cố định theo tài khoản đã đăng ký (ẩn với Admin) */}
+          {!isAdmin && (
+            <div className="space-y-1 sm:col-span-2">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-slate-700">
+                  {isTeacher ? 'Môn Giảng Dạy *' : 'Khối Lớp Đang Học *'}
+                </label>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                  <Lock size={10} />
+                  <span>Không cho phép sửa</span>
+                </span>
+              </div>
+              {isTeacher ? (
+                <div className="space-y-1">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={resolveTeacherSubject('teacher', userProfile.subject) || subject}
+                      readOnly
+                      disabled
+                      className="w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-300 bg-slate-100/90 text-slate-800 font-bold cursor-not-allowed select-none shadow-inner"
+                    />
+                    <Lock size={15} className="absolute right-3 top-3 text-slate-400" />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={`Khối Lớp ${userProfile.grade}`}
+                      readOnly
+                      disabled
+                      className="w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-300 bg-slate-100/90 text-slate-800 font-bold cursor-not-allowed select-none shadow-inner"
+                    />
+                    <Lock size={15} className="absolute right-3 top-3 text-slate-400" />
+                  </div>
+                </div>
+              )}
             </div>
-            {isTeacher ? (
-              <div className="space-y-1">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={resolveTeacherSubject('teacher', userProfile.subject) || subject}
-                    readOnly
-                    disabled
-                    className="w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-300 bg-slate-100/90 text-slate-800 font-bold cursor-not-allowed select-none shadow-inner"
-                  />
-                  <Lock size={15} className="absolute right-3 top-3 text-slate-400" />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={`Khối Lớp ${userProfile.grade}`}
-                    readOnly
-                    disabled
-                    className="w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-300 bg-slate-100/90 text-slate-800 font-bold cursor-not-allowed select-none shadow-inner"
-                  />
-                  <Lock size={15} className="absolute right-3 top-3 text-slate-400" />
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Tiểu sử & Mục tiêu */}
+        {/* Tiểu sử & Ghi chú */}
         <div className="space-y-1 text-xs">
           <label className="font-bold text-slate-700">
-            {isTeacher ? 'Lời giới thiệu & Thông điệp giảng dạy' : 'Mục tiêu học tập & Kỳ thi hướng tới'}
+            {isAdmin
+              ? 'Ghi chú quản trị hệ thống'
+              : isTeacher
+              ? 'Lời giới thiệu & Thông điệp giảng dạy'
+              : 'Mục tiêu học tập & Kỳ thi hướng tới'}
           </label>
           <textarea
             rows={3}
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            placeholder="Viết vài dòng chia sẻ về mục tiêu học tập môn Toán..."
+            placeholder={
+              isAdmin
+                ? 'Nhập ghi chú hoặc thông tin liên hệ của Quản trị viên...'
+                : 'Viết vài dòng chia sẻ về mục tiêu học tập môn Toán...'
+            }
             className="w-full p-3 rounded-xl border border-slate-300 text-xs focus:border-blue-600 focus:outline-none leading-relaxed"
           />
         </div>
 
-        {/* Danh sách lớp học đang tham gia */}
-        <div className="pt-2 border-t border-slate-100 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700">
-              {isTeacher ? 'Các nhóm lớp đang quản lý' : 'Các nhóm lớp đang tham gia'} ({myClassrooms.length})
-            </span>
-            {onNavigateToClassroom && (
-              <button
-                type="button"
-                onClick={onNavigateToClassroom}
-                className="text-xs font-bold text-blue-600 hover:underline"
-              >
-                Đến Cổng Nhóm Lớp
-              </button>
-            )}
-          </div>
-
-          {myClassrooms.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {myClassrooms.map((cls) => (
-                <div
-                  key={cls.id}
-                  className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
+        {/* Danh sách lớp học đang tham gia (ẩn đối với Admin) */}
+        {!isAdmin && (
+          <div className="pt-2 border-t border-slate-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700">
+                {isTeacher ? 'Các nhóm lớp đang quản lý' : 'Các nhóm lớp đang tham gia'} ({myClassrooms.length})
+              </span>
+              {onNavigateToClassroom && (
+                <button
+                  type="button"
+                  onClick={onNavigateToClassroom}
+                  className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
                 >
-                  <div>
-                    <h4 className="font-bold text-slate-900">{cls.name}</h4>
-                    <span className="text-[11px] text-slate-400 font-mono">
-                      Mã lớp: {cls.code} · Khối {cls.grade}
+                  Đến Cổng Nhóm Lớp
+                </button>
+              )}
+            </div>
+
+            {myClassrooms.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {myClassrooms.map((cls) => (
+                  <div
+                    key={cls.id}
+                    className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <h4 className="font-bold text-slate-900">{cls.name}</h4>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        Mã lớp: {cls.code} · Khối {cls.grade}
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 font-bold text-[10px]">
+                      {cls.studentIds.length} học sinh
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 font-bold text-[10px]">
-                    {cls.studentIds.length} học sinh
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-slate-400 bg-slate-50 p-4 rounded-xl text-center">
-              Chưa tham gia nhóm lớp nào.
-            </p>
-          )}
-        </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 bg-slate-50 p-4 rounded-xl text-center">
+                Chưa tham gia nhóm lớp nào.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Nút lưu thay đổi */}
         <div className="pt-3 border-t border-slate-100 flex justify-end">

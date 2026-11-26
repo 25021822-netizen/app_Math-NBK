@@ -10,9 +10,6 @@ import {
 } from '../utils/notificationService';
 import {
   BookOpen,
-  Flame,
-  Zap,
-  UserCheck,
   Users,
   Compass,
   User,
@@ -22,19 +19,15 @@ import {
   Volume2,
   VolumeX,
   LogOut,
-  Check,
   CheckCircle2,
   FileCheck,
   ShieldAlert,
   GraduationCap,
-  Box,
-  Wand2,
   Menu,
   X,
   BarChart3,
   FileText,
   ChevronRight,
-  Shield,
   Layers,
   Atom,
   FlaskConical,
@@ -47,14 +40,7 @@ interface NavbarProps {
   currentTab: string;
   onSelectTab: (tab: string) => void;
   userRole: UserRole;
-  onSelectRole?: (role: UserRole) => void;
-  streakDays: number;
-  xp: number;
-  deviceMode?: 'desktop' | 'tablet' | 'mobile';
-  onSelectDeviceMode?: (mode: 'desktop' | 'tablet' | 'mobile') => void;
-  onOpenFriendsModal?: () => void;
-  friendsCount?: number;
-  pendingRequestsCount?: number;
+  xp?: number;
   userName?: string;
   userAvatar?: string;
   onLogout?: () => void;
@@ -70,12 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   onSelectTab,
   userRole,
-  onSelectRole,
-  streakDays,
-  xp,
-  onOpenFriendsModal,
-  friendsCount = 0,
-  pendingRequestsCount = 0,
+  xp = 0,
   userName = 'Người Dùng',
   userAvatar,
   onLogout,
@@ -185,7 +166,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="relative inline-flex items-center gap-1.5">
                     <span>Nhóm Lớp</span>
                     {unreadClassroomMessagesCount > 0 && (
-                      <span className="inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-black leading-none text-white bg-rose-500 rounded-full shadow-xs animate-pulse">
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-black leading-none text-white bg-rose-500 rounded-full shadow-xs tabular-nums">
                         {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
                       </span>
                     )}
@@ -261,7 +242,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="relative inline-flex items-center gap-1.5">
                     <span>Quản Lý Nhóm Lớp</span>
                     {unreadClassroomMessagesCount > 0 && (
-                      <span className="inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-black leading-none text-white bg-rose-500 rounded-full shadow-xs animate-pulse">
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-black leading-none text-white bg-rose-500 rounded-full shadow-xs tabular-nums">
                         {unreadClassroomMessagesCount > 99 ? '99+' : unreadClassroomMessagesCount}
                       </span>
                     )}
@@ -407,34 +388,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden lg:inline">Hướng Dẫn</span>
             </button>
 
-            {/* Friends Network Button */}
-            {onOpenFriendsModal && (
-              <button
-                onClick={onOpenFriendsModal}
-                title="Mạng lưới bạn bè qua ID"
-                className="relative p-2 sm:px-3 sm:py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap shadow-xs cursor-pointer"
-              >
-                <UserCheck size={16} />
-                <span className="hidden sm:inline">Bạn Bè</span>
-                {friendsCount > 0 && (
-                  <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-mono font-bold">
-                    {friendsCount}
-                  </span>
-                )}
-                {pendingRequestsCount > 0 && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 absolute -top-1 -right-1 animate-pulse" />
-                )}
-              </button>
-            )}
-
-
             {/* Push Notification Bell Icon with Badge & Dropdown */}
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setShowNotifDropdown(!showNotifDropdown)}
                 title={
                   notificationsEnabled
-                    ? 'Thông báo hệ thống, bài mới & chat (Đang BẬT)'
+                    ? 'Thông báo hệ thống (Đang BẬT)'
                     : 'Thông báo đang TẮT (Bấm để mở cài đặt)'
                 }
                 className={`relative p-2 rounded-xl border transition-all cursor-pointer ${
@@ -451,7 +412,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <BellOff size={18} />
                 )}
                 {notificationsEnabled && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white font-mono font-bold text-[10px] flex items-center justify-center animate-pulse shadow-xs">
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white font-mono tabular-nums font-bold text-[10px] flex items-center justify-center shadow-xs">
                     {unreadCount}
                   </span>
                 )}
@@ -512,7 +473,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                           </div>
                           <span className="text-[10px] text-slate-500 block truncate">
                             {notificationsEnabled
-                              ? 'Báo khi đăng bài, đăng đề & nhắc tên trong chat'
+                              ? userRole === 'admin'
+                                ? 'Nhận thông báo đăng ký mới & hoạt động hệ thống'
+                                : 'Báo khi đăng bài, đăng đề & nhắc tên trong chat'
                               : 'Đang tạm dừng nhận thông báo'}
                           </span>
                         </div>
@@ -722,11 +685,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-[10px] text-slate-500 font-mono font-bold">
-                    {xp} XP
-                  </span>
-                </div>
+                {userRole === 'student' && (
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] text-slate-500 font-mono tabular-nums font-bold">
+                      {xp} XP
+                    </span>
+                  </div>
+                )}
               </div>
 
 
@@ -1086,7 +1051,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <div>
                           <div className="text-xs font-extrabold">Trung Tâm Quản Trị Hệ Thống</div>
                           <div className={`text-[10px] ${currentTab === 'admin_dashboard' ? 'text-blue-100' : 'text-slate-400'}`}>
-                            Phê duyệt và quản lý người dùng hệ thống
+                            Quản lý tài khoản, duyệt đăng ký &amp; nhật ký thi
                           </div>
                         </div>
                       </div>
@@ -1119,7 +1084,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             )}
                           </div>
                           <div className={`text-[10px] ${currentTab === 'admin_broadcasts' ? 'text-blue-100' : 'text-slate-400'}`}>
-                            Gửi thông báo tin nhắn đến tất cả tài khoản &amp; Nhóm Lớp
+                            Gửi thông báo tới mọi người, giáo viên hoặc học sinh
                           </div>
                         </div>
                       </div>

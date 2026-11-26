@@ -222,7 +222,6 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<UserProfile>(initialSession.user);
   const rememberSessionRef = useRef<boolean>(initialSession.remembered);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [cheatLogs, setCheatLogs] = useState<CheatLog[]>([]);
   const [examsList, setExamsList] = useState<Exam[]>(() => {
     try {
@@ -272,7 +271,6 @@ export default function App() {
     autoApproveStudents: true,
     autoApproveTeachers: true,
     defaultTier: 'free',
-    notifyAdminOnAutoApproval: true,
   });
 
   // Tải cấu hình duyệt tự động từ Server DB hoặc Cache
@@ -2224,7 +2222,6 @@ export default function App() {
           currentTab={currentTab}
           onSelectTab={setCurrentTab}
           userRole={userRole}
-          streakDays={userProfile.streakDays}
           xp={userProfile.xp}
           userName={userProfile.name}
           userAvatar={userProfile.avatar}

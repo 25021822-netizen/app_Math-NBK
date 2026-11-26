@@ -1,13 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { UserProfile, CheatLog, UserRole, AutoApprovalSettings, TeachingSubject, TEACHING_SUBJECTS } from '../../types/math';
+import { UserProfile, CheatLog, AutoApprovalSettings, TeachingSubject, TEACHING_SUBJECTS } from '../../types/math';
 import {
   Users,
   ShieldAlert,
-  Database,
   CheckCircle2,
   Clock,
   AlertTriangle,
-  Sparkles,
   Zap,
   Search,
   UserPlus,
@@ -15,22 +13,17 @@ import {
   Check,
   ShieldCheck,
   GraduationCap,
-  Award,
-  Filter,
   Eye,
   EyeOff,
   Key,
-  Lock,
   Copy,
   RefreshCw,
-  Edit3,
   Trash2,
   ToggleLeft,
   ToggleRight,
-  SlidersHorizontal,
-  CheckCheck,
   UserCheck,
 } from 'lucide-react';
+import { copyTextSafe } from '../../utils/clipboard';
 
 interface AdminDashboardViewProps {
   cheatLogs: CheatLog[];
@@ -44,8 +37,6 @@ interface AdminDashboardViewProps {
   onUpdateAutoApprovalSettings?: (settings: AutoApprovalSettings) => void;
   onApproveAllUsers?: (targetRole?: 'all' | 'student' | 'teacher') => void;
 }
-
-import { copyTextSafe } from '../../utils/clipboard';
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   cheatLogs,
@@ -63,8 +54,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
 
-
-
   // Auto-Approval Configuration State
   const [autoApproval, setAutoApproval] = useState<AutoApprovalSettings>(
     propAutoApprovalSettings || {
@@ -72,7 +61,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       autoApproveStudents: true,
       autoApproveTeachers: true,
       defaultTier: 'free',
-      notifyAdminOnAutoApproval: true,
     }
   );
 
@@ -147,7 +135,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           )
         );
       }
-      setApprovalMessage(`⚡ Đã tự động phê duyệt và kích hoạt thành công tất cả ${pendingCount} tài khoản!`);
+      setApprovalMessage(`Đã tự động phê duyệt và kích hoạt thành công tất cả ${pendingCount} tài khoản!`);
       setTimeout(() => setApprovalMessage(null), 4000);
     } catch (err) {
       console.error(err);
@@ -160,10 +148,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'teacher' | 'student'>('all');
   const [userSearchTerm, setUserSearchTerm] = useState('');
 
-  // ==========================================
-  // ==========================================
-  // STATE CẤP TÀI KHOẢN MỚI & MẬT KHẨU (CHỈ ADMIN MỚI CÓ QUYỀN)
-  // ==========================================
+  // State cấp tài khoản mới & mật khẩu (chỉ Admin mới có quyền)
   const [showCreateUserModal, setShowCreateUserModal] = useState<boolean>(false);
   const [newUserId, setNewUserId] = useState('');
   const [newUserName, setNewUserName] = useState('');
@@ -321,7 +306,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
     const finalEmail =
       newUserEmail.trim() ||
-      `${newUserName.trim().toLowerCase().replace(/\s+/g, '')}.${Math.floor(100 + Math.random() * 900)}@thpt-nbk.edu.vn`;
+      `${newUserName.trim().toLowerCase().replace(/\s+/g, '')}.${Math.floor(100 + Math.random() * 900)}@liki.edu.vn`;
 
     const newUser: UserProfile = {
       id: trimmedId,
@@ -369,55 +354,89 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     return matchesRole && matchesSearch;
   });
 
+  const teacherCount = useMemo(() => usersList.filter((u) => u.role === 'teacher').length, [usersList]);
+  const studentCount = useMemo(() => usersList.filter((u) => u.role === 'student').length, [usersList]);
+
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-8 space-y-8">
+    <div className="w-full max-w-5xl mx-auto px-4 py-8 space-y-6">
       {/* Top Header */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1.5">
-            <ShieldCheck size={16} />
-            <span>Trung Tâm Quản Trị Hệ Thống Toàn Quyền (Super Admin)</span>
-          </span>
-          <h1 className="text-2xl font-extrabold text-slate-900 mt-1">Math&NBK Admin Center</h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
-            Quản lý tài khoản Giáo viên, Học sinh và theo dõi nhật ký thi.
-          </p>
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1.5">
+              <ShieldCheck size={16} />
+              <span>Trung Tâm Quản Trị Hệ Thống</span>
+            </span>
+            <h1 className="text-2xl font-extrabold text-slate-900 mt-1">Quản Trị Toán Học LIKI</h1>
+            <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
+              Quản lý tài khoản Giáo viên, Học sinh, duyệt đăng ký và theo dõi nhật ký thi.
+            </p>
+          </div>
+
+          {/* Tab switchers */}
+          <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('users')}
+              className={`px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'users' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users size={14} />
+              <span className="tabular-nums">Tài Khoản ({usersList.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('pending_requests')}
+              className={`px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'pending_requests' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Clock size={14} className={pendingCount > 0 ? 'text-amber-600' : ''} />
+              <span>Chờ Duyệt</span>
+              {pendingCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-mono tabular-nums text-[10px] font-bold">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('cheat_logs')}
+              className={`px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'cheat_logs' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <ShieldAlert size={14} />
+              <span className="tabular-nums">Nhật Ký Thi ({allLogs.length})</span>
+            </button>
+          </div>
         </div>
 
-        {/* Tab switchers */}
-        <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold gap-1">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
-              activeTab === 'users' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-            }`}
-          >
-            <Users size={14} />
-            <span>Tài Khoản ({usersList.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('pending_requests')}
-            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
-              activeTab === 'pending_requests' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-            }`}
-          >
-            <Clock size={14} className={pendingCount > 0 ? 'text-amber-500' : ''} />
-            <span>Chờ Duyệt</span>
-            {pendingCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono text-[10px] font-bold animate-pulse">
-                {pendingCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('cheat_logs')}
-            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
-              activeTab === 'cheat_logs' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-            }`}
-          >
-            <ShieldAlert size={14} />
-            <span>Nhật Ký Thi ({allLogs.length})</span>
-          </button>
+        {/* Summary Metrics Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-100 text-xs">
+          <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 font-semibold block">Tổng tài khoản</span>
+            <span className="text-lg font-black text-slate-900 font-mono tabular-nums">{usersList.length}</span>
+          </div>
+          <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 font-semibold block">Giáo viên / Học sinh</span>
+            <span className="text-lg font-black text-slate-900 font-mono tabular-nums">
+              {teacherCount} <span className="text-slate-400 font-normal text-sm">/</span> {studentCount}
+            </span>
+          </div>
+          <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 font-semibold block">Chờ phê duyệt</span>
+            <span className={`text-lg font-black font-mono tabular-nums ${pendingCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {pendingCount}
+            </span>
+          </div>
+          <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 font-semibold block">Cảnh báo phòng thi</span>
+            <span className={`text-lg font-black font-mono tabular-nums ${allLogs.length > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+              {allLogs.length}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -434,14 +453,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         <div className="space-y-6">
           {/* Callout thông báo yêu cầu chờ duyệt nếu có */}
           {pendingCount > 0 && (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in shadow-xs">
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in shadow-xs">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold font-mono tabular-nums text-sm shrink-0">
                   {pendingCount}
                 </div>
                 <div>
                   <h5 className="font-extrabold text-xs text-amber-950">
-                    Có {pendingCount} yêu cầu đăng ký tài khoản mới đang chờ duyệt!
+                    Có {pendingCount} yêu cầu đăng ký tài khoản mới đang chờ duyệt
                   </h5>
                   <p className="text-[11px] text-amber-800 mt-0.5">
                     Học sinh hoặc giáo viên vừa đăng ký và cần Quản trị viên đối chiếu phê duyệt để kích hoạt.
@@ -450,19 +469,21 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
                   onClick={handleBulkApprove}
                   disabled={isBulkApproving}
-                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs transition-all shrink-0 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
-                  <Zap size={14} className="fill-current" />
-                  <span>{isBulkApproving ? 'Đang duyệt...' : `⚡ Phê Duyệt Tự Động Tất Cả (${pendingCount})`}</span>
+                  <Zap size={14} />
+                  <span>{isBulkApproving ? 'Đang duyệt...' : `Phê Duyệt Tất Cả (${pendingCount})`}</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setActiveTab('pending_requests')}
-                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
                   <Clock size={14} />
-                  <span>Xem Chi Tiết →</span>
+                  <span>Xem Chi Tiết</span>
                 </button>
               </div>
             </div>
@@ -551,138 +572,170 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-slate-900">{u.name}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
-                      </td>
-                      <td className="px-6 py-4 font-mono font-bold text-blue-700">
-                        {u.id}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] ${
-                              u.role === 'teacher'
-                                ? 'bg-purple-100 text-purple-700'
-                                : u.role === 'admin'
-                                ? 'bg-rose-100 text-rose-700'
-                                : 'bg-blue-100 text-blue-700'
-                            }`}
-                          >
-                            {u.role === 'teacher' ? 'Giáo viên' : u.role === 'admin' ? 'Quản trị' : 'Học sinh'}
-                          </span>
-                          {u.role === 'student' && (
-                            <span className="text-[11px] font-semibold text-slate-500">Khối {u.grade}</span>
-                          )}
-                          {u.role === 'teacher' && u.subject && (
-                            <span className="text-[11px] font-semibold text-slate-600">{u.subject}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 font-mono text-xs">
-                          {revealedPasswordUserIds.includes(u.id) ? (
-                            <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                              {u.password || '(Chưa đặt)'}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-black tracking-widest bg-slate-100 px-2 py-0.5 rounded">
-                              ••••••••
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => toggleRevealPassword(u.id)}
-                            className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors"
-                            title={revealedPasswordUserIds.includes(u.id) ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                          >
-                            {revealedPasswordUserIds.includes(u.id) ? <EyeOff size={14} /> : <Eye size={14} />}
-                          </button>
-                          {u.password && (
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-500">
+                        <div className="space-y-2">
+                          <p className="font-semibold text-slate-700">
+                            {usersList.length === 0
+                              ? 'Chưa có tài khoản nào trên hệ thống.'
+                              : 'Không tìm thấy tài khoản phù hợp với từ khóa hoặc bộ lọc hiện tại.'}
+                          </p>
+                          {(userSearchTerm.trim() || userRoleFilter !== 'all') && (
                             <button
                               type="button"
-                              onClick={() => handleCopyPassword(u.id, u.password)}
-                              className="p-1 rounded text-slate-400 hover:text-emerald-600 transition-colors"
-                              title="Sao chép mật khẩu"
+                              onClick={() => {
+                                setUserSearchTerm('');
+                                setUserRoleFilter('all');
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
                             >
-                              {copiedPasswordUserId === u.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                              Xóa bộ lọc
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditPassword(u)}
-                            className="p-1 rounded text-slate-400 hover:text-purple-600 transition-colors ml-0.5"
-                            title="Đổi mật khẩu người dùng này"
-                          >
-                            <Key size={14} />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {u.status === 'pending_approval' ? (
-                          <div className="flex flex-col gap-1 items-start">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-                              <Clock size={11} className="text-amber-600" />
-                              <span>Chờ duyệt</span>
-                            </span>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleApprove(u.id)}
-                                className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] shadow-2xs transition-colors"
-                                title="Phê duyệt kích hoạt tài khoản"
-                              >
-                                Duyệt
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleReject(u.id)}
-                                className="px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-[10px] transition-colors"
-                                title="Từ chối yêu cầu đăng ký"
-                              >
-                                Từ chối
-                              </button>
-                            </div>
-                          </div>
-                        ) : u.status === 'rejected' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                            <X size={12} className="text-rose-600" />
-                            <span>Đã từ chối</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 size={12} className="text-emerald-600" />
-                            <span>Hoạt động</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {u.role !== 'admin' ? (
-                            <button
-                              type="button"
-                              onClick={() => setUserToDelete(u)}
-                              className="px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold transition-colors flex items-center gap-1 text-[11px]"
-                              title={`Xóa vĩnh viễn tài khoản ${u.name} (${u.id})`}
-                            >
-                              <Trash2 size={13} />
-                              <span>Xóa</span>
-                            </button>
-                          ) : (
-                            <span
-                              className="px-2 py-1 rounded-lg text-slate-400 bg-slate-50 border border-slate-200 text-[10px] font-semibold cursor-not-allowed inline-flex items-center gap-1"
-                              title="Tài khoản Quản Trị Viên hệ thống không thể xóa"
-                            >
-                              <ShieldCheck size={12} className="text-rose-500" />
-                              <span>Cố định</span>
-                            </span>
                           )}
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredUsers.map((u) => (
+                      <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-6 py-3.5">
+                          <div className="font-bold text-slate-900">{u.name}</div>
+                          <div className="text-[11px] text-slate-500 font-mono">{u.email}</div>
+                        </td>
+                        <td className="px-6 py-3.5 font-mono font-bold text-blue-700">
+                          {u.id}
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span
+                              className={`font-bold ${
+                                u.role === 'teacher'
+                                  ? 'text-purple-700'
+                                  : u.role === 'admin'
+                                  ? 'text-rose-700'
+                                  : 'text-blue-700'
+                              }`}
+                            >
+                              {u.role === 'teacher' ? 'Giáo viên' : u.role === 'admin' ? 'Quản trị' : 'Học sinh'}
+                            </span>
+                            {u.role === 'student' && (
+                              <>
+                                <span aria-hidden="true" className="text-slate-300">·</span>
+                                <span className="text-[11px] font-semibold text-slate-500">Khối {u.grade}</span>
+                              </>
+                            )}
+                            {u.role === 'teacher' && u.subject && (
+                              <>
+                                <span aria-hidden="true" className="text-slate-300">·</span>
+                                <span className="text-[11px] font-semibold text-slate-600">{u.subject}</span>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-1.5 font-mono text-xs">
+                            {revealedPasswordUserIds.includes(u.id) ? (
+                              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                {u.password || '(Chưa đặt)'}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-black tracking-widest bg-slate-100 px-2 py-0.5 rounded">
+                                ••••••••
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => toggleRevealPassword(u.id)}
+                              className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                              title={revealedPasswordUserIds.includes(u.id) ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                            >
+                              {revealedPasswordUserIds.includes(u.id) ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                            {u.password && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPassword(u.id, u.password)}
+                                className="p-1 rounded text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer"
+                                title="Sao chép mật khẩu"
+                              >
+                                {copiedPasswordUserId === u.id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditPassword(u)}
+                              className="p-1 rounded text-slate-400 hover:text-purple-600 transition-colors ml-0.5 cursor-pointer"
+                              title="Đổi mật khẩu người dùng này"
+                            >
+                              <Key size={14} />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3.5">
+                          {u.status === 'pending_approval' ? (
+                            <div className="flex flex-col gap-1.5 items-start">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700">
+                                <Clock size={12} className="text-amber-600" />
+                                <span>Chờ duyệt</span>
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApprove(u.id)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition-colors cursor-pointer"
+                                  title="Phê duyệt kích hoạt tài khoản"
+                                >
+                                  Duyệt
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReject(u.id)}
+                                  className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-[10px] transition-colors cursor-pointer"
+                                  title="Từ chối yêu cầu đăng ký"
+                                >
+                                  Từ chối
+                                </button>
+                              </div>
+                            </div>
+                          ) : u.status === 'rejected' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700">
+                              <X size={12} className="text-rose-600" />
+                              <span>Đã từ chối</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                              <CheckCircle2 size={12} className="text-emerald-600" />
+                              <span>Hoạt động</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {u.role !== 'admin' ? (
+                              <button
+                                type="button"
+                                onClick={() => setUserToDelete(u)}
+                                className="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold transition-colors flex items-center gap-1 text-[11px] cursor-pointer"
+                                title={`Xóa vĩnh viễn tài khoản ${u.name} (${u.id})`}
+                              >
+                                <Trash2 size={13} />
+                                <span>Xóa</span>
+                              </button>
+                            ) : (
+                              <span
+                                className="px-2.5 py-1 rounded-lg text-slate-400 bg-slate-50 border border-slate-200 text-[10px] font-semibold cursor-not-allowed inline-flex items-center gap-1"
+                                title="Tài khoản Quản Trị Viên hệ thống không thể xóa"
+                              >
+                                <ShieldCheck size={12} className="text-rose-500" />
+                                <span>Cố định</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -693,35 +746,26 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {/* TAB: YÊU CẦU ĐĂNG KÝ TÀI KHOẢN CHỜ ADMIN PHÊ DUYỆT */}
       {activeTab === 'pending_requests' && (
         <div className="space-y-6">
-          {/* BẢNG ĐIỀU KHIỂN CHẾ ĐỘ DUYỆT TỰ ĐỘNG CỦA ADMIN */}
-          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 border border-indigo-500/30 text-white shadow-xl relative overflow-hidden space-y-5">
-            {/* Ambient background glow */}
-            <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-60 h-60 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
-
-            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/30 text-cyan-300 font-mono text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
-                    <Zap size={12} className="text-cyan-400 animate-pulse" />
-                    <span>Hệ Thống Duyệt Tự Động Admin</span>
+          {/* Bảng điều khiển chế độ duyệt tự động của Admin */}
+          <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 text-white shadow-sm space-y-5">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-bold uppercase tracking-wider text-cyan-400 inline-flex items-center gap-1.5">
+                    <Zap size={13} />
+                    <span>Duyệt Tự Động Tài Khoản</span>
                   </span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
-                    autoApproval.enabled
-                      ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-300'
-                      : 'bg-slate-700/50 border border-slate-600/40 text-slate-400'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${autoApproval.enabled ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                    <span>{autoApproval.enabled ? 'Đang BẬT' : 'Đang TẮT'}</span>
+                  <span aria-hidden="true" className="text-slate-600">·</span>
+                  <span className={`font-bold ${autoApproval.enabled ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    {autoApproval.enabled ? 'Đang BẬT' : 'Đang TẮT'}
                   </span>
                 </div>
 
-                <h3 className="text-lg font-black text-white flex items-center gap-2 mt-1">
-                  <span>Cấu Hình Tự Động Phê Duyệt Tài Khoản</span>
-                  <Sparkles size={18} className="text-amber-400" />
+                <h3 className="text-lg font-black text-white">
+                  Cấu Hình Tự Động Phê Duyệt Tài Khoản
                 </h3>
-                <p className="text-xs text-blue-200/80 max-w-2xl leading-relaxed">
-                  Khi kích hoạt, tài khoản đăng ký mới sẽ được tự động kích hoạt ngay lập tức mà không cần quản trị viên can thiệp thủ công.
+                <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                  Khi bật, tài khoản đăng ký mới thuộc vai trò được chọn sẽ tự động kích hoạt ngay mà không cần chờ duyệt thủ công.
                 </p>
               </div>
 
@@ -730,22 +774,21 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleToggleAutoApproval('enabled')}
-                  className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all flex items-center gap-2 shadow-lg cursor-pointer ${
+                  className={`px-4 py-2.5 rounded-2xl font-bold text-xs transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                     autoApproval.enabled
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-emerald-500/25 ring-2 ring-emerald-400/30'
-                      : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 shadow-black/20'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                   }`}
                 >
                   {autoApproval.enabled ? <ToggleRight size={20} className="text-white" /> : <ToggleLeft size={20} className="text-slate-400" />}
-                  <span>{autoApproval.enabled ? 'Chế Độ: ĐANG BẬT' : 'Chế Độ: ĐANG TẮT'}</span>
+                  <span>{autoApproval.enabled ? 'Đang BẬT' : 'Đang TẮT'}</span>
                 </button>
               </div>
             </div>
 
             {/* Granular Options & Toggles */}
-            <div className="relative z-10 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              {/* Auto-approve Students */}
-              <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
+            <div className="pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <label className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={autoApproval.autoApproveStudents}
@@ -754,12 +797,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 />
                 <div>
                   <span className="font-bold text-white block">Tự duyệt Học sinh</span>
-                  <span className="text-[10px] text-blue-200/60 block">Kích hoạt ngay khi HS đăng ký</span>
+                  <span className="text-[11px] text-slate-400 block">Kích hoạt ngay khi Học sinh đăng ký</span>
                 </div>
               </label>
 
-              {/* Auto-approve Teachers */}
-              <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
+              <label className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={autoApproval.autoApproveTeachers}
@@ -768,31 +810,17 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 />
                 <div>
                   <span className="font-bold text-white block">Tự duyệt Giáo viên</span>
-                  <span className="text-[10px] text-blue-200/60 block">Kích hoạt ngay khi GV đăng ký</span>
-                </div>
-              </label>
-
-              {/* Notify Admin */}
-              <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={autoApproval.notifyAdminOnAutoApproval ?? true}
-                  onChange={(e) => handleToggleAutoApproval('notifyAdminOnAutoApproval', e.target.checked)}
-                  className="w-4 h-4 rounded-md accent-cyan-500 text-cyan-600 focus:ring-0 cursor-pointer"
-                />
-                <div>
-                  <span className="font-bold text-white block">Thông báo cho Admin</span>
-                  <span className="text-[10px] text-blue-200/60 block">Gửi push notification khi duyệt</span>
+                  <span className="text-[11px] text-slate-400 block">Kích hoạt ngay khi Giáo viên đăng ký</span>
                 </div>
               </label>
             </div>
 
             {/* Quick Bulk Approval Action Banner */}
-            <div className="relative z-10 pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-white/5">
-              <div className="text-xs text-blue-200/80 flex items-center gap-2">
+            <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-white/10">
+              <div className="text-xs text-slate-300 flex items-center gap-2">
                 <UserCheck size={16} className="text-cyan-400 shrink-0" />
                 <span>
-                  Hàng đợi: <strong className="text-amber-300 font-mono font-bold text-sm">{pendingCount}</strong> tài khoản đang chờ phê duyệt.
+                  Hàng đợi: <strong className="text-amber-300 font-mono tabular-nums font-bold text-sm">{pendingCount}</strong> tài khoản đang chờ phê duyệt.
                 </span>
               </div>
 
@@ -800,17 +828,17 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 type="button"
                 onClick={handleBulkApprove}
                 disabled={pendingCount === 0 || isBulkApproving}
-                className={`px-5 py-2.5 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
+                className={`px-5 py-2.5 rounded-2xl font-bold text-xs transition-colors flex items-center justify-center gap-2 whitespace-nowrap ${
                   pendingCount === 0
-                    ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
-                    : 'bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 shadow-orange-500/25 active:scale-95'
+                    ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                    : 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
                 }`}
               >
-                <Zap size={16} className={pendingCount > 0 ? 'fill-current' : ''} />
+                <Zap size={15} />
                 <span>
                   {isBulkApproving
-                    ? 'Đang Tự Động Kích Hoạt...'
-                    : `Phê Duyệt Tự Động Tất Cả (${pendingCount} Yêu Cầu)`}
+                    ? 'Đang Kích Hoạt...'
+                    : `Phê Duyệt Tất Cả (${pendingCount})`}
                 </span>
               </button>
             </div>
@@ -934,65 +962,78 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {/* TAB 3: CHEAT LOGS */}
       {activeTab === 'cheat_logs' && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs space-y-4 p-6">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div>
               <h3 className="font-extrabold text-base text-slate-900">
                 Nhật Ký Giám Sát Chống Gian Lận Trực Tuyến
               </h3>
               <p className="text-xs text-slate-500">
-                Ghi nhận các sự kiện chuyển ứng dụng, rời màn hình và vi phạm quá 3 lần
+                Ghi nhận các sự kiện chuyển ứng dụng, rời màn hình toàn phần trong lúc làm bài thi
               </p>
             </div>
-            <span className="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-bold">
+            <span className="text-xs font-bold tabular-nums text-rose-700 shrink-0">
               {allLogs.length} vi phạm được ghi nhận
             </span>
           </div>
 
-          <div className="space-y-3">
-            {allLogs.map((log) => (
-              <div
-                key={log.id}
-                className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900">{log.studentName}</span>
-                    <span className="text-slate-400">·</span>
-                    <span className="text-slate-500 font-mono">
-                      {new Date(log.timestamp).toLocaleTimeString('vi-VN')}
-                    </span>
+          {allLogs.length === 0 ? (
+            <div className="p-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                <CheckCircle2 size={24} />
+              </div>
+              <h4 className="font-extrabold text-sm text-slate-900">Chưa Có Cảnh Báo Vi Phạm Nào</h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                Khi thí sinh thoát chế độ toàn màn hình hoặc chuyển sang tab khác trong phòng thi có bật giám sát, nhật ký sẽ tự động hiển thị tại đây.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {allLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+                >
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold text-slate-900">{log.studentName}</span>
+                      <span aria-hidden="true" className="text-slate-300">·</span>
+                      <span className="text-slate-500 font-mono tabular-nums">
+                        {new Date(log.timestamp).toLocaleTimeString('vi-VN')}
+                      </span>
+                      <span aria-hidden="true" className="text-slate-300">·</span>
+                      <span
+                        className={`font-bold tabular-nums ${
+                          log.infractionNumber >= 3
+                            ? 'text-rose-700'
+                            : log.infractionNumber === 2
+                            ? 'text-amber-700'
+                            : 'text-slate-700'
+                        }`}
+                      >
+                        Lần {log.infractionNumber}
+                      </span>
+                    </div>
+                    <p className="text-slate-600">{log.reason}</p>
+                    <p className="text-[11px] text-slate-400">Đề thi: {log.examTitle}</p>
+                  </div>
+
+                  <div className="text-left sm:text-right shrink-0">
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        log.infractionNumber >= 3
-                          ? 'bg-red-600 text-white'
-                          : log.infractionNumber === 2
-                          ? 'bg-amber-500 text-white'
-                          : 'bg-yellow-400 text-slate-900'
+                      className={`font-bold block ${
+                        log.actionTaken === 'auto_submitted_disqualified'
+                          ? 'text-rose-600'
+                          : 'text-amber-600'
                       }`}
                     >
-                      Lần {log.infractionNumber}
+                      {log.actionTaken === 'auto_submitted_disqualified'
+                        ? 'Tự động nộp bài & Đình chỉ'
+                        : `Cảnh báo vi phạm lần ${log.infractionNumber}`}
                     </span>
                   </div>
-                  <p className="text-slate-600">{log.reason}</p>
-                  <p className="text-[11px] text-slate-400">Đề thi: {log.examTitle}</p>
                 </div>
-
-                <div className="text-right">
-                  <span
-                    className={`font-bold block ${
-                      log.actionTaken === 'auto_submitted_disqualified'
-                        ? 'text-red-600'
-                        : 'text-amber-600'
-                    }`}
-                  >
-                    {log.actionTaken === 'auto_submitted_disqualified'
-                      ? 'Tự động nộp bài & Đình chỉ'
-                      : `Cảnh báo vi phạm lần ${log.infractionNumber}`}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

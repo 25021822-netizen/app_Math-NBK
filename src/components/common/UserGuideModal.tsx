@@ -80,8 +80,9 @@ const GUIDE_MARKDOWN = `# Giới Thiệu & Hướng Dẫn Sử Dụng Nền Tả
 ## 4. Hướng Dẫn Dành Cho Quản Trị Viên (Admin)
 
 1. **Tab Tài Khoản:** Xem danh sách người dùng, cấp tài khoản mới, đổi mật khẩu hoặc xóa tài khoản.
-2. **Tab Chờ Duyệt:** Phê duyệt / từ chối yêu cầu đăng ký mới và bật/tắt chế độ tự động phê duyệt.
+2. **Tab Chờ Duyệt:** Phê duyệt / từ chối yêu cầu đăng ký mới và bật/tắt chế độ tự động phê duyệt theo vai trò.
 3. **Tab Nhật Ký Thi:** Theo dõi lịch sử vi phạm quy chế thi trên toàn hệ thống.
+4. **Thông Báo Chung:** Gửi tin nhắn thông báo đến tất cả mọi người, chỉ Giáo viên hoặc chỉ Học sinh; theo dõi và thu hồi thông báo đã phát.
 `;
 
 export const UserGuideModal: React.FC<UserGuideModalProps> = ({
@@ -175,8 +176,9 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
   <h2>4. Hướng Dẫn Dành Cho Quản Trị Viên</h2>
   <ul>
     <li><strong>Tab Tài Khoản:</strong> Tạo mới, xem/đổi mật khẩu, phân quyền và quản lý toàn bộ tài khoản.</li>
-    <li><strong>Tab Chờ Duyệt:</strong> Phê duyệt hoặc từ chối tài khoản mới, bật/tắt phê duyệt tự động.</li>
+    <li><strong>Tab Chờ Duyệt:</strong> Phê duyệt hoặc từ chối tài khoản mới, bật/tắt phê duyệt tự động theo vai trò.</li>
     <li><strong>Tab Nhật Ký Thi:</strong> Theo dõi toàn bộ nhật ký cảnh báo vi phạm quy chế thi.</li>
+    <li><strong>Thông Báo Chung:</strong> Gửi thông báo tới tất cả mọi người, chỉ Giáo viên hoặc chỉ Học sinh, hiển thị trực tiếp tại Nhóm Lớp và cho phép thu hồi toàn hệ thống.</li>
   </ul>
 </body>
 </html>`;
@@ -399,7 +401,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <ul className="list-disc pl-5 space-y-1 text-xs text-slate-600">
                   <li>Học sinh được truy cập cả 3 phân hệ: <strong>Vẽ Hình 2D/3D</strong>, <strong>Mô Phỏng (Vật Lý)</strong> và <strong>Thí Nghiệm (Hóa Học)</strong>.</li>
                   <li>Trong phòng Hóa học, chuyển sang chế độ <strong>3D Phân Tử</strong> để xoay và phóng to/thu nhỏ mô hình phản ứng hóa học.</li>
-                  <li>Vào mục <strong>Hồ Sơ</strong> để chọn ảnh đại diện và đổi mật khẩu; nhấn <strong>Bạn Bè</strong> trên thanh menu để kết bạn qua Mã ID.</li>
+                  <li>Vào mục <strong>Hồ Sơ</strong> để chọn ảnh đại diện, cập nhật thông tin cá nhân và đổi mật khẩu tài khoản.</li>
                 </ul>
               </div>
             </div>
@@ -439,11 +441,19 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
           {activeTab === 'admin' && (
             <div className="space-y-4">
               <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50/70 space-y-2">
-                <h3 className="font-black text-rose-950 text-sm">Quản trị hệ thống toàn diện</h3>
+                <h3 className="font-black text-rose-950 text-sm">1. Trung tâm quản trị hệ thống</h3>
                 <ul className="list-disc pl-5 space-y-1 text-xs text-rose-950">
                   <li><strong>Tab Tài Khoản:</strong> Xem danh sách giáo viên &amp; học sinh, cấp tài khoản mới, đổi mật khẩu hoặc xóa tài khoản.</li>
                   <li><strong>Tab Chờ Duyệt:</strong> Phê duyệt / từ chối các tài khoản đăng ký mới và bật/tắt chế độ tự động phê duyệt theo vai trò.</li>
                   <li><strong>Tab Nhật Ký Thi:</strong> Theo dõi toàn bộ lịch sử vi phạm quy chế thi (thoát toàn màn hình, rời tab) trên hệ thống.</li>
+                </ul>
+              </div>
+
+              <div className="p-4 rounded-2xl border border-blue-200 bg-blue-50/60 space-y-2">
+                <h3 className="font-black text-blue-950 text-sm">2. Thông báo chung hệ thống</h3>
+                <ul className="list-disc pl-5 space-y-1 text-xs text-blue-950">
+                  <li>Chọn đối tượng nhận cụ thể: <strong>Tất cả mọi người</strong>, <strong>Chỉ Giáo viên</strong> hoặc <strong>Chỉ Học sinh</strong>.</li>
+                  <li>Thông báo hiển thị trực tiếp trong mục <strong>Nhóm Lớp</strong> của đúng nhóm người dùng được chọn; mỗi tài khoản có thể tự xóa hẳn khỏi hộp thư của mình hoặc Admin có thể thu hồi toàn hệ thống.</li>
                 </ul>
               </div>
             </div>
