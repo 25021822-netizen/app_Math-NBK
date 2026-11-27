@@ -3,16 +3,16 @@ import { UserProfile } from '../../types/math';
 import {
   X,
   RotateCcw,
-  Plus,
-  Trash2,
   Users,
-  Sparkles,
   Volume2,
   VolumeX,
   History,
   Check,
   Play,
   Award,
+  Flag,
+  Trophy,
+  Sparkles,
 } from 'lucide-react';
 
 interface ClassroomLuckyWheelModalProps {
@@ -24,32 +24,35 @@ interface ClassroomLuckyWheelModalProps {
   userRole: string;
 }
 
-type WheelMode = 'students' | 'custom';
+type LuckyGameMode = 'wheel' | 'duck_race';
 
 interface SpinRecord {
   id: string;
   label: string;
-  mode: WheelMode;
+  game: LuckyGameMode;
   spunAt: string;
 }
 
-interface StoredWheelState {
-  mode: WheelMode;
-  customItems: string[];
+interface StoredLuckyState {
+  gameMode: LuckyGameMode;
   excludedStudentIds: string[];
   removeAfterWin: boolean;
   soundEnabled: boolean;
   history: SpinRecord[];
 }
 
-const DEFAULT_CUSTOM_ITEMS = [
-  '+1 điểm cộng',
-  'Miễn 1 lần kiểm tra',
-  'Giải 1 bài tập mẫu',
-  'Tràng pháo tay',
-  'Chọn bạn trả lời thay',
-  'Thưởng +50 XP',
-];
+interface DuckRunner {
+  id: string;
+  name: string;
+  color: string;
+  hatColor: string;
+  laneIndex: number;
+  progress: number; // 0 -> 100
+  speed: number;
+  wobblePhase: number;
+  boostTimer: number;
+  finishedOrder: number | null;
+}
 
 const WHEEL_COLORS = [
   { fill: '#2563EB', text: '#FFFFFF' }, // blue-600
@@ -62,6 +65,17 @@ const WHEEL_COLORS = [
   { fill: '#84CC16', text: '#0F172A' }, // lime-500
   { fill: '#F97316', text: '#FFFFFF' }, // orange-500
   { fill: '#6366F1', text: '#FFFFFF' }, // indigo-500
+];
+
+const DUCK_PALETTES = [
+  { body: '#FACC15', hat: '#EF4444' },
+  { body: '#FDE047', hat: '#2563EB' },
+  { body: '#FB923C', hat: '#10B981' },
+  { body: '#FBBF24', hat: '#7C3AED' },
+  { body: '#FEF08A', hat: '#EC4899' },
+  { body: '#F59E0B', hat: '#0EA5E9' },
+  { body: '#FDE68A', hat: '#14B8A6' },
+  { body: '#FCA5A5', hat: '#1E293B' },
 ];
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
@@ -112,6 +126,41 @@ export const ClassroomLuckyWheelLogo: React.FC<{ size?: number; className?: stri
   </svg>
 );
 
+const RacingDuckSvg: React.FC<{ bodyColor: string; hatColor: string; number: number; isBoosting?: boolean }> = ({
+  bodyColor,
+  hatColor,
+  number,
+  isBoosting = false,
+}) => (
+  <svg width="36" height="30" viewBox="0 0 40 34" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    {/* Water ripple under duck */}
+    <ellipse cx="18" cy="29.5" rx="13" ry="2.6" fill="#E0F2FE" opacity="0.85" />
+    {isBoosting && (
+      <path d="M1 22 L7 20 M0 26 L6 25" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" opacity="0.9" />
+    )}
+    {/* Duck body */}
+    <ellipse cx="18" cy="22" rx="11.5" ry="7.8" fill={bodyColor} stroke="#78350F" strokeWidth="1.3" />
+    {/* Wing */}
+    <path d="M12 20 C16 17.5, 22 18.5, 23 22 C20 24.5, 14 24.5, 12 20 Z" fill="#FFFFFF" fillOpacity="0.45" />
+    {/* Tail */}
+    <path d="M6.5 21 L2.5 16.5 L8.5 18.5 Z" fill={bodyColor} stroke="#78350F" strokeWidth="1.2" strokeLinejoin="round" />
+    {/* Duck head */}
+    <circle cx="27.5" cy="13.5" r="6.5" fill={bodyColor} stroke="#78350F" strokeWidth="1.3" />
+    {/* Cute cap / bandana */}
+    <path d="M22.5 10.5 C24 6.5, 31 6.5, 32.5 10.5 Z" fill={hatColor} stroke="#1E293B" strokeWidth="1" />
+    <path d="M31.5 10.2 L35.5 10.8" stroke={hatColor} strokeWidth="2.2" strokeLinecap="round" />
+    {/* Beak */}
+    <path d="M33.2 13.2 L38.5 14.5 L33.2 16.2 Z" fill="#EA580C" stroke="#7C2D12" strokeWidth="1" strokeLinejoin="round" />
+    {/* Eye */}
+    <circle cx="29.5" cy="12.5" r="1.3" fill="#0F172A" />
+    <circle cx="29.9" cy="12.1" r="0.45" fill="#FFFFFF" />
+    {/* Lane number */}
+    <text x="17.5" y="24.5" textAnchor="middle" fill="#0F172A" fontSize="8" fontWeight="900">
+      {number}
+    </text>
+  </svg>
+);
+
 export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> = ({
   isOpen,
   onClose,
@@ -120,20 +169,15 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
   enrolledStudents,
   userRole,
 }) => {
-  const storageKey = `mathnbk_lucky_wheel_${classId}`;
+  const storageKey = `mathnbk_lucky_v2_${classId}`;
 
-  const loadInitialState = (): StoredWheelState => {
-    const defaultMode: WheelMode = enrolledStudents.length > 0 ? 'students' : 'custom';
+  const loadInitialState = (): StoredLuckyState => {
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
-        const parsed = JSON.parse(raw) as Partial<StoredWheelState>;
+        const parsed = JSON.parse(raw) as Partial<StoredLuckyState>;
         return {
-          mode: parsed.mode === 'custom' || parsed.mode === 'students' ? parsed.mode : defaultMode,
-          customItems:
-            Array.isArray(parsed.customItems) && parsed.customItems.length > 0
-              ? parsed.customItems
-              : DEFAULT_CUSTOM_ITEMS,
+          gameMode: parsed.gameMode === 'duck_race' ? 'duck_race' : 'wheel',
           excludedStudentIds: Array.isArray(parsed.excludedStudentIds) ? parsed.excludedStudentIds : [],
           removeAfterWin: Boolean(parsed.removeAfterWin),
           soundEnabled: parsed.soundEnabled !== false,
@@ -144,8 +188,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
       // ignore localStorage errors
     }
     return {
-      mode: defaultMode,
-      customItems: DEFAULT_CUSTOM_ITEMS,
+      gameMode: 'wheel',
       excludedStudentIds: [],
       removeAfterWin: false,
       soundEnabled: true,
@@ -153,42 +196,49 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
     };
   };
 
-  const [mode, setMode] = useState<WheelMode>(() => loadInitialState().mode);
-  const [customItems, setCustomItems] = useState<string[]>(() => loadInitialState().customItems);
+  const [gameMode, setGameMode] = useState<LuckyGameMode>(() => loadInitialState().gameMode);
   const [excludedStudentIds, setExcludedStudentIds] = useState<string[]>(() => loadInitialState().excludedStudentIds);
   const [removeAfterWin, setRemoveAfterWin] = useState<boolean>(() => loadInitialState().removeAfterWin);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => loadInitialState().soundEnabled);
   const [history, setHistory] = useState<SpinRecord[]>(() => loadInitialState().history);
 
-  const [newCustomItem, setNewCustomItem] = useState('');
+  // Wheel state
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [winner, setWinner] = useState<{ id: string; label: string } | null>(null);
+  const [winner, setWinner] = useState<{ id: string; label: string; game: LuckyGameMode } | null>(null);
+
+  // Duck race state
+  const [ducks, setDucks] = useState<DuckRunner[]>([]);
+  const [isRacing, setIsRacing] = useState(false);
+  const [racePodium, setRacePodium] = useState<{ id: string; name: string; rank: number }[]>([]);
 
   const spinTimeoutRef = useRef<number | null>(null);
   const tickIntervalRef = useRef<number | null>(null);
+  const raceRafRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const isBusy = isSpinning || isRacing;
 
   // Sync state when switching classroom
   useEffect(() => {
     const next = loadInitialState();
-    setMode(next.mode);
-    setCustomItems(next.customItems);
+    setGameMode(next.gameMode);
     setExcludedStudentIds(next.excludedStudentIds);
     setRemoveAfterWin(next.removeAfterWin);
     setSoundEnabled(next.soundEnabled);
     setHistory(next.history);
     setWinner(null);
     setIsSpinning(false);
+    setIsRacing(false);
+    setRacePodium([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId]);
 
   // Persist per classroom
   useEffect(() => {
     try {
-      const stateToSave: StoredWheelState = {
-        mode,
-        customItems,
+      const stateToSave: StoredLuckyState = {
+        gameMode,
         excludedStudentIds,
         removeAfterWin,
         soundEnabled,
@@ -198,19 +248,51 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
     } catch {
       // ignore localStorage quota errors
     }
-  }, [storageKey, mode, customItems, excludedStudentIds, removeAfterWin, soundEnabled, history]);
+  }, [storageKey, gameMode, excludedStudentIds, removeAfterWin, soundEnabled, history]);
 
   useEffect(() => {
     return () => {
       if (spinTimeoutRef.current) window.clearTimeout(spinTimeoutRef.current);
       if (tickIntervalRef.current) window.clearInterval(tickIntervalRef.current);
+      if (raceRafRef.current) window.cancelAnimationFrame(raceRafRef.current);
     };
   }, []);
 
-  const playTickSound = () => {
+  const activeStudents = useMemo(() => {
+    const excludedSet = new Set(excludedStudentIds);
+    return enrolledStudents
+      .filter((s) => !excludedSet.has(s.id))
+      .map((s) => ({ id: s.id, label: s.name || s.id }));
+  }, [enrolledStudents, excludedStudentIds]);
+
+  // Keep idle duck runners synced with activeStudents when not mid-race
+  useEffect(() => {
+    if (isRacing) return;
+    setDucks(
+      activeStudents.map((stu, idx) => {
+        const pal = DUCK_PALETTES[idx % DUCK_PALETTES.length];
+        return {
+          id: stu.id,
+          name: stu.label,
+          color: pal.body,
+          hatColor: pal.hat,
+          laneIndex: idx,
+          progress: 0,
+          speed: 0,
+          wobblePhase: idx * 0.9,
+          boostTimer: 0,
+          finishedOrder: null,
+        };
+      })
+    );
+  }, [activeStudents, isRacing]);
+
+  const playTickSound = (freq = 640) => {
     if (!soundEnabled || typeof window === 'undefined') return;
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
       if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
       const ctx = audioCtxRef.current;
@@ -218,8 +300,8 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(640, ctx.currentTime);
-      gain.gain.setValueAtTime(0.05, ctx.currentTime);
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(0.045, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.035);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -230,10 +312,38 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
     }
   };
 
+  const playQuackSound = () => {
+    if (!soundEnabled || typeof window === 'undefined') return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(340, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.09);
+      gain.gain.setValueAtTime(0.04, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.11);
+    } catch {
+      // ignore audio context errors
+    }
+  };
+
   const playWinSound = () => {
     if (!soundEnabled || typeof window === 'undefined') return;
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
       if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
       const ctx = audioCtxRef.current;
@@ -257,32 +367,18 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
     }
   };
 
-  const activeEntries = useMemo(() => {
-    if (mode === 'students') {
-      const excludedSet = new Set(excludedStudentIds);
-      return enrolledStudents
-        .filter((s) => !excludedSet.has(s.id))
-        .map((s) => ({ id: s.id, label: s.name || s.id }));
-    }
-    return customItems
-      .map((label, idx) => ({ id: `custom_${idx}_${label}`, label: label.trim() }))
-      .filter((item) => item.label.length > 0);
-  }, [mode, enrolledStudents, excludedStudentIds, customItems]);
-
+  // --- WHEEL SPIN ---
   const handleSpin = () => {
-    if (isSpinning || activeEntries.length === 0) return;
+    if (isBusy || activeStudents.length === 0) return;
 
     setIsSpinning(true);
     setWinner(null);
 
-    const n = activeEntries.length;
+    const n = activeStudents.length;
     const winningIdx = Math.floor(Math.random() * n);
-    const chosenEntry = activeEntries[winningIdx];
+    const chosenEntry = activeStudents[winningIdx];
     const sliceAngle = 360 / n;
 
-    // Slice i spans [i * sliceAngle, (i + 1) * sliceAngle] clockwise from top (0 deg).
-    // Rotating clockwise by R deg moves slice center from centerAngle to (centerAngle + R) mod 360.
-    // We want (centerAngle + R) mod 360 === 0 => R mod 360 === (360 - centerAngle) mod 360.
     const jitter = (Math.random() - 0.5) * sliceAngle * 0.65;
     const targetCenter = winningIdx * sliceAngle + sliceAngle / 2 + jitter;
     const desiredMod = ((360 - targetCenter) % 360 + 360) % 360;
@@ -305,20 +401,20 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
         tickIntervalRef.current = null;
       }
       setIsSpinning(false);
-      setWinner(chosenEntry);
+      setWinner({ id: chosenEntry.id, label: chosenEntry.label, game: 'wheel' });
       playWinSound();
 
       setHistory((prev) => [
         {
           id: `spin_${Date.now()}`,
           label: chosenEntry.label,
-          mode,
+          game: 'wheel',
           spunAt: new Date().toISOString(),
         },
         ...prev.slice(0, 14),
       ]);
 
-      if (removeAfterWin && mode === 'students') {
+      if (removeAfterWin) {
         setExcludedStudentIds((prev) =>
           prev.includes(chosenEntry.id) ? prev : [...prev, chosenEntry.id]
         );
@@ -326,36 +422,123 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
     }, 4200);
   };
 
+  // --- DUCK RACE ---
+  const handleStartDuckRace = () => {
+    if (isBusy || activeStudents.length === 0) return;
+    if (raceRafRef.current) window.cancelAnimationFrame(raceRafRef.current);
+
+    setIsRacing(true);
+    setWinner(null);
+    setRacePodium([]);
+    playQuackSound();
+
+    const runners: DuckRunner[] = activeStudents.map((stu, idx) => {
+      const pal = DUCK_PALETTES[idx % DUCK_PALETTES.length];
+      return {
+        id: stu.id,
+        name: stu.label,
+        color: pal.body,
+        hatColor: pal.hat,
+        laneIndex: idx,
+        progress: 0,
+        speed: 13 + Math.random() * 6,
+        wobblePhase: idx * 0.9,
+        boostTimer: 0,
+        finishedOrder: null,
+      };
+    });
+
+    setDucks(runners);
+
+    let lastTs = performance.now();
+    let finishCounter = 0;
+    let lastQuackAt = lastTs;
+    const podiumList: { id: string; name: string; rank: number }[] = [];
+
+    const step = (now: number) => {
+      const dt = Math.min(0.05, Math.max(0.008, (now - lastTs) / 1000));
+      lastTs = now;
+
+      if (now - lastQuackAt > 1100 && finishCounter === 0) {
+        lastQuackAt = now;
+        if (Math.random() < 0.65) playQuackSound();
+      }
+
+      let allDone = true;
+
+      for (let i = 0; i < runners.length; i++) {
+        const d = runners[i];
+        d.wobblePhase += dt * 11;
+
+        if (d.finishedOrder !== null) continue;
+        allDone = false;
+
+        // Dynamic speed fluctuation & random splash boosts for exciting overtakes
+        if (d.boostTimer > 0) {
+          d.boostTimer -= dt;
+        } else if (Math.random() < 0.035) {
+          d.boostTimer = 0.45 + Math.random() * 0.45;
+        }
+
+        const drift = (Math.random() - 0.48) * 14;
+        d.speed = Math.max(9.5, Math.min(26, d.speed + drift * dt * 5));
+        const effectiveSpeed = d.boostTimer > 0 ? d.speed * 1.48 : d.speed;
+        d.progress = Math.min(100, d.progress + effectiveSpeed * dt);
+
+        if (d.progress >= 100) {
+          finishCounter += 1;
+          d.finishedOrder = finishCounter;
+          podiumList.push({ id: d.id, name: d.name, rank: finishCounter });
+        }
+      }
+
+      setDucks(runners.map((r) => ({ ...r })));
+      if (podiumList.length > 0) {
+        setRacePodium([...podiumList]);
+      }
+
+      // Stop as soon as all ducks finish (or top 3 + 1.2s buffer, here waiting all ducks is ~0.8s extra and super clean)
+      if (!allDone) {
+        raceRafRef.current = window.requestAnimationFrame(step);
+      } else {
+        setIsRacing(false);
+        const firstWinner = podiumList[0];
+        if (firstWinner) {
+          setWinner({ id: firstWinner.id, label: firstWinner.name, game: 'duck_race' });
+          playWinSound();
+          setHistory((prev) => [
+            {
+              id: `duck_${Date.now()}`,
+              label: firstWinner.name,
+              game: 'duck_race',
+              spunAt: new Date().toISOString(),
+            },
+            ...prev.slice(0, 14),
+          ]);
+          if (removeAfterWin) {
+            setExcludedStudentIds((prev) =>
+              prev.includes(firstWinner.id) ? prev : [...prev, firstWinner.id]
+            );
+          }
+        }
+      }
+    };
+
+    raceRafRef.current = window.requestAnimationFrame(step);
+  };
+
   const handleToggleStudent = (studentId: string) => {
-    if (isSpinning) return;
+    if (isBusy) return;
     setExcludedStudentIds((prev) =>
       prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
     );
   };
 
   const handleRestoreAllStudents = () => {
-    if (isSpinning) return;
+    if (isBusy) return;
     setExcludedStudentIds([]);
     setWinner(null);
-  };
-
-  const handleAddCustomItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = newCustomItem.trim();
-    if (!clean || isSpinning) return;
-    setCustomItems((prev) => [...prev, clean]);
-    setNewCustomItem('');
-  };
-
-  const handleDeleteCustomItem = (idx: number) => {
-    if (isSpinning) return;
-    setCustomItems((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleResetCustomDefaults = () => {
-    if (isSpinning) return;
-    setCustomItems(DEFAULT_CUSTOM_ITEMS);
-    setWinner(null);
+    setRacePodium([]);
   };
 
   if (!isOpen) return null;
@@ -363,8 +546,16 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
   const cx = 160;
   const cy = 160;
   const radius = 148;
-  const n = activeEntries.length;
+  const n = activeStudents.length;
   const sliceAngle = n > 0 ? 360 / n : 360;
+
+  const sortedLiveDucks = [...ducks].sort((a, b) => {
+    if (a.finishedOrder !== null && b.finishedOrder !== null) return a.finishedOrder - b.finishedOrder;
+    if (a.finishedOrder !== null) return -1;
+    if (b.finishedOrder !== null) return 1;
+    return b.progress - a.progress;
+  });
+  const currentLeaderId = sortedLiveDucks[0]?.progress && sortedLiveDucks[0].progress > 0 ? sortedLiveDucks[0].id : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -380,9 +571,8 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                 Lucky · {className}
               </h3>
               <p className="text-[11px] text-slate-500">
-                {mode === 'students'
-                  ? `Gọi tên ngẫu nhiên (${activeEntries.length}/${enrolledStudents.length} học sinh trên vòng quay)`
-                  : `Quay phần thưởng / thử thách (${activeEntries.length} mục)`}
+                {gameMode === 'wheel' ? 'Vòng quay may mắn' : 'Đua vịt gọi tên'} ·{' '}
+                {activeStudents.length}/{enrolledStudents.length} học sinh tham gia
               </p>
             </div>
           </div>
@@ -391,7 +581,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
             <button
               type="button"
               onClick={() => setSoundEnabled((s) => !s)}
-              title={soundEnabled ? 'Tắt âm thanh vòng quay' : 'Bật âm thanh vòng quay'}
+              title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
               className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
             >
               {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
@@ -400,7 +590,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
               type="button"
               onClick={onClose}
               className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              aria-label="Đóng vòng quay may mắn"
+              aria-label="Đóng Lucky"
             >
               <X size={18} />
             </button>
@@ -409,157 +599,289 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
 
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left: Interactive Wheel */}
+          {/* Left: Game Stage */}
           <div className="lg:col-span-7 flex flex-col items-center space-y-4">
-            {/* Mode Switcher */}
+            {/* Game Mode Switcher: Vòng quay & Đua vịt */}
             <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
               <button
                 type="button"
-                disabled={isSpinning}
+                disabled={isBusy}
                 onClick={() => {
-                  setMode('students');
+                  setGameMode('wheel');
                   setWinner(null);
+                  setRacePodium([]);
                 }}
                 className={`px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  mode === 'students'
+                  gameMode === 'wheel'
                     ? 'bg-white text-blue-700 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Users size={14} />
-                <span>Học sinh lớp ({enrolledStudents.length})</span>
+                <Sparkles size={14} />
+                <span>Vòng Quay</span>
               </button>
               <button
                 type="button"
-                disabled={isSpinning}
+                disabled={isBusy}
                 onClick={() => {
-                  setMode('custom');
+                  setGameMode('duck_race');
                   setWinner(null);
+                  setRacePodium([]);
                 }}
                 className={`px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  mode === 'custom'
+                  gameMode === 'duck_race'
                     ? 'bg-white text-amber-700 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Sparkles size={14} />
-                <span>Tùy chỉnh mục quay</span>
+                <Flag size={14} />
+                <span>Đua Vịt</span>
               </button>
             </div>
 
-            {/* Wheel Stage */}
-            <div className="relative flex items-center justify-center pt-3 pb-1">
-              {/* Top Pointer */}
-              <div
-                className="absolute top-0 left-1/2 -translate-x-1/2 z-20 drop-shadow-md"
-                aria-hidden="true"
-              >
-                <svg width="28" height="28" viewBox="0 0 28 28">
-                  <path
-                    d="M14 27 L3 4 Q2 1 6 1 H22 Q26 1 25 4 Z"
-                    fill="#DC2626"
-                    stroke="#FFFFFF"
-                    strokeWidth="2"
-                  />
-                </svg>
-              </div>
+            {gameMode === 'wheel' ? (
+              <>
+                {/* Wheel Stage */}
+                <div className="relative flex items-center justify-center pt-3 pb-1">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 drop-shadow-md" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 28 28">
+                      <path
+                        d="M14 27 L3 4 Q2 1 6 1 H22 Q26 1 25 4 Z"
+                        fill="#DC2626"
+                        stroke="#FFFFFF"
+                        strokeWidth="2"
+                      />
+                    </svg>
+                  </div>
 
-              {/* Rotating Wheel SVG */}
-              <div
-                className="relative w-[290px] h-[290px] sm:w-[320px] sm:h-[320px] rounded-full shadow-lg border-4 border-slate-900 bg-slate-100 select-none"
-              >
-                <svg
-                  viewBox="0 0 320 320"
-                  className="w-full h-full"
-                  style={{
-                    transform: `rotate(${rotation}deg)`,
-                    transition: isSpinning
-                      ? 'transform 4.2s cubic-bezier(0.12, 0.85, 0.16, 1)'
-                      : 'none',
-                  }}
-                >
-                  {n === 0 ? (
-                    <g>
-                      <circle cx={cx} cy={cy} r={radius} fill="#E2E8F0" />
-                      <text
-                        x={cx}
-                        y={cy - 18}
-                        textAnchor="middle"
-                        fill="#475569"
-                        fontSize="12"
-                        fontWeight="700"
-                      >
-                        Chưa có mục nào để quay
-                      </text>
-                    </g>
-                  ) : n === 1 ? (
-                    <g>
-                      <circle cx={cx} cy={cy} r={radius} fill={WHEEL_COLORS[0].fill} stroke="#FFFFFF" strokeWidth="2" />
-                      <text
-                        x={cx}
-                        y={cy - 55}
-                        textAnchor="middle"
-                        fill={WHEEL_COLORS[0].text}
-                        fontSize="14"
-                        fontWeight="800"
-                      >
-                        {truncateLabel(activeEntries[0].label, 20)}
-                      </text>
-                    </g>
-                  ) : (
-                    activeEntries.map((entry, idx) => {
-                      const startAngle = idx * sliceAngle;
-                      const endAngle = (idx + 1) * sliceAngle;
-                      const midAngle = startAngle + sliceAngle / 2;
-                      const palette = WHEEL_COLORS[idx % WHEEL_COLORS.length];
-                      const fontSize = n > 18 ? 8.5 : n > 12 ? 10 : n > 7 ? 11.5 : 13;
-                      const maxChars = n > 14 ? 12 : 16;
-
-                      return (
-                        <g key={entry.id}>
-                          <path
-                            d={createSlicePath(cx, cy, radius, startAngle, endAngle)}
-                            fill={palette.fill}
-                            stroke="#FFFFFF"
-                            strokeWidth="1.75"
-                          />
-                          <g transform={`rotate(${midAngle} ${cx} ${cy})`}>
-                            <text
-                              x={cx}
-                              y={cy - radius * 0.62}
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                              transform={`rotate(-90 ${cx} ${cy - radius * 0.62})`}
-                              fill={palette.text}
-                              fontSize={fontSize}
-                              fontWeight="800"
-                            >
-                              {truncateLabel(entry.label, maxChars)}
-                            </text>
-                          </g>
+                  <div className="relative w-[290px] h-[290px] sm:w-[320px] sm:h-[320px] rounded-full shadow-lg border-4 border-slate-900 bg-slate-100 select-none">
+                    <svg
+                      viewBox="0 0 320 320"
+                      className="w-full h-full"
+                      style={{
+                        transform: `rotate(${rotation}deg)`,
+                        transition: isSpinning
+                          ? 'transform 4.2s cubic-bezier(0.12, 0.85, 0.16, 1)'
+                          : 'none',
+                      }}
+                    >
+                      {n === 0 ? (
+                        <g>
+                          <circle cx={cx} cy={cy} r={radius} fill="#E2E8F0" />
+                          <text
+                            x={cx}
+                            y={cy - 22}
+                            textAnchor="middle"
+                            fill="#475569"
+                            fontSize="12"
+                            fontWeight="700"
+                          >
+                            Chưa có học sinh tham gia
+                          </text>
                         </g>
-                      );
-                    })
+                      ) : n === 1 ? (
+                        <g>
+                          <circle cx={cx} cy={cy} r={radius} fill={WHEEL_COLORS[0].fill} stroke="#FFFFFF" strokeWidth="2" />
+                          <text
+                            x={cx}
+                            y={cy - 55}
+                            textAnchor="middle"
+                            fill={WHEEL_COLORS[0].text}
+                            fontSize="14"
+                            fontWeight="800"
+                          >
+                            {truncateLabel(activeStudents[0].label, 20)}
+                          </text>
+                        </g>
+                      ) : (
+                        activeStudents.map((entry, idx) => {
+                          const startAngle = idx * sliceAngle;
+                          const endAngle = (idx + 1) * sliceAngle;
+                          const midAngle = startAngle + sliceAngle / 2;
+                          const palette = WHEEL_COLORS[idx % WHEEL_COLORS.length];
+                          const fontSize = n > 18 ? 8.5 : n > 12 ? 10 : n > 7 ? 11.5 : 13;
+                          const maxChars = n > 14 ? 12 : 16;
+
+                          return (
+                            <g key={entry.id}>
+                              <path
+                                d={createSlicePath(cx, cy, radius, startAngle, endAngle)}
+                                fill={palette.fill}
+                                stroke="#FFFFFF"
+                                strokeWidth="1.75"
+                              />
+                              <g transform={`rotate(${midAngle} ${cx} ${cy})`}>
+                                <text
+                                  x={cx}
+                                  y={cy - radius * 0.62}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  transform={`rotate(-90 ${cx} ${cy - radius * 0.62})`}
+                                  fill={palette.text}
+                                  fontSize={fontSize}
+                                  fontWeight="800"
+                                >
+                                  {truncateLabel(entry.label, maxChars)}
+                                </text>
+                              </g>
+                            </g>
+                          );
+                        })
+                      )}
+                    </svg>
+
+                    {/* Center Spin Hub */}
+                    <button
+                      type="button"
+                      onClick={handleSpin}
+                      disabled={isBusy || activeStudents.length === 0}
+                      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-white hover:bg-amber-50 disabled:opacity-60 border-4 border-slate-900 shadow-lg flex flex-col items-center justify-center text-slate-900 font-black text-xs transition-transform active:scale-95 cursor-pointer z-10"
+                    >
+                      <Play size={16} className="fill-blue-600 text-blue-600 ml-0.5" />
+                      <span className="text-[10px] tracking-wider uppercase mt-0.5">
+                        {isSpinning ? '...' : 'QUAY'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {!winner && (
+                  <button
+                    type="button"
+                    onClick={handleSpin}
+                    disabled={isBusy || activeStudents.length === 0}
+                    className="w-full max-w-xs py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Play size={14} className="fill-current" />
+                    <span>{isSpinning ? 'Đang quay...' : 'Quay Vòng May Mắn'}</span>
+                  </button>
+                )}
+              </>
+            ) : (
+              /* DUCK RACE STAGE */
+              <div className="w-full space-y-3">
+                <div className="rounded-2xl border border-sky-300 bg-gradient-to-b from-sky-500 to-cyan-600 p-3 shadow-inner overflow-hidden">
+                  {/* Track Header */}
+                  <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-sky-50 pb-2 border-b border-white/20">
+                    <span>Xuất phát</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Flag size={11} />
+                      <span>Vạch đích</span>
+                    </span>
+                  </div>
+
+                  {ducks.length === 0 ? (
+                    <div className="py-12 text-center text-xs font-bold text-white/90">
+                      Chưa có học sinh nào trên đường đua.
+                    </div>
+                  ) : (
+                    <div className="relative divide-y divide-white/20 max-h-[300px] overflow-y-auto pr-1 mt-1">
+                      {/* Finish Checkered Line */}
+                      <div
+                        className="pointer-events-none absolute top-0 bottom-0 right-5 w-2 opacity-80"
+                        style={{
+                          backgroundImage:
+                            'repeating-linear-gradient(0deg, #FFFFFF 0px, #FFFFFF 6px, #0F172A 6px, #0F172A 12px)',
+                        }}
+                        aria-hidden="true"
+                      />
+
+                      {ducks.map((duck, idx) => {
+                        const isLeader = currentLeaderId === duck.id;
+                        const bobY = isRacing && duck.finishedOrder === null ? Math.sin(duck.wobblePhase) * 2.5 : 0;
+                        const tiltDeg = isRacing && duck.finishedOrder === null ? Math.cos(duck.wobblePhase) * 4 : 0;
+
+                        return (
+                          <div key={duck.id} className="relative h-11 flex items-center">
+                            {/* Lane Number & Student Name Watermark */}
+                            <div className="flex items-center gap-1.5 z-0 pointer-events-none pl-1">
+                              <span className="w-5 h-5 rounded-md bg-slate-900/35 text-white font-mono font-bold text-[10px] flex items-center justify-center tabular-nums">
+                                {idx + 1}
+                              </span>
+                              <span className="text-[11px] font-bold text-white/90 drop-shadow-xs truncate max-w-[140px]">
+                                {duck.name}
+                              </span>
+                              {isLeader && (
+                                <span className="text-[10px] font-black text-amber-200 drop-shadow-xs">
+                                  · Dẫn đầu
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Swimming Duck */}
+                            <div
+                              className="absolute top-1/2 z-10 flex items-center"
+                              style={{
+                                left: `calc(${duck.progress * 0.84}% + 4px)`,
+                                transform: `translateY(calc(-50% + ${bobY}px)) rotate(${tiltDeg}deg)`,
+                              }}
+                            >
+                              <RacingDuckSvg
+                                bodyColor={duck.color}
+                                hatColor={duck.hatColor}
+                                number={idx + 1}
+                                isBoosting={duck.boostTimer > 0 && duck.finishedOrder === null}
+                              />
+                            </div>
+
+                            {/* Finish Rank Badge */}
+                            {duck.finishedOrder !== null && duck.finishedOrder <= 3 && (
+                              <span
+                                className={`ml-auto mr-7 z-10 px-1.5 py-0.5 rounded font-mono font-black text-[10px] ${
+                                  duck.finishedOrder === 1
+                                    ? 'bg-amber-300 text-amber-950'
+                                    : duck.finishedOrder === 2
+                                    ? 'bg-slate-100 text-slate-800'
+                                    : 'bg-orange-200 text-orange-950'
+                                }`}
+                              >
+                                #{duck.finishedOrder}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
-                </svg>
+                </div>
 
-                {/* Center Spin Hub */}
-                <button
-                  type="button"
-                  onClick={handleSpin}
-                  disabled={isSpinning || activeEntries.length === 0}
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-white hover:bg-amber-50 disabled:opacity-60 border-4 border-slate-900 shadow-lg flex flex-col items-center justify-center text-slate-900 font-black text-xs transition-transform active:scale-95 cursor-pointer z-10"
-                >
-                  <Play size={16} className="fill-blue-600 text-blue-600 ml-0.5" />
-                  <span className="text-[10px] tracking-wider uppercase mt-0.5">
-                    {isSpinning ? '...' : 'QUAY'}
-                  </span>
-                </button>
+                {/* Live Podium during/after race */}
+                {racePodium.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    {racePodium.slice(0, 3).map((p) => (
+                      <span
+                        key={p.id}
+                        className={`px-2.5 py-1 rounded-lg font-bold inline-flex items-center gap-1 border ${
+                          p.rank === 1
+                            ? 'bg-amber-50 border-amber-300 text-amber-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <Trophy size={12} className={p.rank === 1 ? 'text-amber-500' : 'text-slate-400'} />
+                        <span>
+                          Hạng {p.rank}: {p.name}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {!winner && (
+                  <button
+                    type="button"
+                    onClick={handleStartDuckRace}
+                    disabled={isBusy || activeStudents.length === 0}
+                    className="w-full py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 disabled:opacity-45 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Flag size={14} />
+                    <span>{isRacing ? 'Các chú vịt đang tăng tốc...' : 'Xuất Phát Đua Vịt'}</span>
+                  </button>
+                )}
               </div>
-            </div>
+            )}
 
-            {/* Winner Display */}
-            {winner ? (
+            {/* Winner Banner (Shared for both Wheel & Duck Race) */}
+            {winner && (
               <div className="w-full p-4 rounded-2xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in zoom-in-95">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
@@ -567,7 +889,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                   </div>
                   <div className="min-w-0">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 block">
-                      Kết Quả Vòng Quay
+                      {winner.game === 'duck_race' ? 'Vịt Về Đích Đầu Tiên' : 'Người Được Chọn'}
                     </span>
                     <span className="text-base font-extrabold text-slate-900 block truncate">
                       {winner.label}
@@ -576,171 +898,98 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                 </div>
                 <button
                   type="button"
-                  onClick={handleSpin}
-                  disabled={activeEntries.length === 0}
+                  onClick={gameMode === 'wheel' ? handleSpin : handleStartDuckRace}
+                  disabled={activeStudents.length === 0}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 text-white font-bold text-xs whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  Quay tiếp
+                  {gameMode === 'wheel' ? 'Quay tiếp' : 'Đua ván mới'}
                 </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSpin}
-                disabled={isSpinning || activeEntries.length === 0}
-                className="w-full max-w-xs py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-              >
-                <Play size={14} className="fill-current" />
-                <span>{isSpinning ? 'Đang quay...' : 'Bắt Đầu Quay May Mắn'}</span>
-              </button>
             )}
           </div>
 
-          {/* Right: Entries Manager & History */}
+          {/* Right: Class Student Roster & History */}
           <div className="lg:col-span-5 space-y-4 text-xs">
-            {mode === 'students' ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-extrabold text-slate-900">
-                    Danh sách học sinh ({activeEntries.length}/{enrolledStudents.length})
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-extrabold text-slate-900 inline-flex items-center gap-1.5">
+                  <Users size={14} className="text-blue-600" />
+                  <span>
+                    Học sinh tham gia ({activeStudents.length}/{enrolledStudents.length})
                   </span>
-                  {excludedStudentIds.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleRestoreAllStudents}
-                      disabled={isSpinning}
-                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <RotateCcw size={12} />
-                      <span>Khôi phục đủ</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Toggle auto remove winner */}
-                <label className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer">
-                  <span className="text-[11px] font-semibold text-slate-700">
-                    Tự động bỏ tên vừa trúng (không gọi lặp)
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={removeAfterWin}
-                    onChange={(e) => setRemoveAfterWin(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                </label>
-
-                {enrolledStudents.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-slate-500 space-y-1">
-                    <p className="font-semibold text-slate-700">Lớp chưa có học sinh nào.</p>
-                    <p className="text-[11px]">
-                      {userRole === 'teacher'
-                        ? 'Hãy thêm học sinh vào lớp hoặc chuyển sang tab "Tùy chỉnh mục quay".'
-                        : 'Bạn có thể chuyển sang tab "Tùy chỉnh mục quay" để quay phần thưởng.'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
-                    {enrolledStudents.map((stu) => {
-                      const isIncluded = !excludedStudentIds.includes(stu.id);
-                      return (
-                        <button
-                          key={stu.id}
-                          type="button"
-                          onClick={() => handleToggleStudent(stu.id)}
-                          disabled={isSpinning}
-                          className={`w-full px-3 py-2 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-                            isIncluded
-                              ? 'bg-white border-slate-200 text-slate-900 hover:border-blue-300'
-                              : 'bg-slate-100 border-slate-200 text-slate-400 line-through'
-                          }`}
-                        >
-                          <span className="font-semibold truncate">{stu.name}</span>
-                          <span
-                            className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
-                              isIncluded
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-slate-200 text-transparent'
-                            }`}
-                          >
-                            <Check size={11} />
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-extrabold text-slate-900">
-                    Các ô trên vòng quay ({customItems.length})
-                  </span>
+                </span>
+                {excludedStudentIds.length > 0 && (
                   <button
                     type="button"
-                    onClick={handleResetCustomDefaults}
-                    disabled={isSpinning}
-                    className="text-[11px] font-bold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 cursor-pointer"
+                    onClick={handleRestoreAllStudents}
+                    disabled={isBusy}
+                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 cursor-pointer"
                   >
                     <RotateCcw size={12} />
-                    <span>Mặc định</span>
+                    <span>Khôi phục đủ</span>
                   </button>
-                </div>
-
-                <form onSubmit={handleAddCustomItem} className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={newCustomItem}
-                    onChange={(e) => setNewCustomItem(e.target.value)}
-                    placeholder="Thêm tên / phần thưởng / câu hỏi..."
-                    maxLength={60}
-                    className="flex-1 h-9 px-3 rounded-xl border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:border-blue-600"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!newCustomItem.trim() || isSpinning}
-                    className="h-9 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 text-white font-bold text-xs inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <Plus size={14} />
-                    <span>Thêm</span>
-                  </button>
-                </form>
-
-                <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
-                  {customItems.map((item, idx) => (
-                    <div
-                      key={`${idx}_${item}`}
-                      className="px-3 py-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="w-2.5 h-2.5 rounded-sm shrink-0"
-                          style={{ backgroundColor: WHEEL_COLORS[idx % WHEEL_COLORS.length].fill }}
-                        />
-                        <span className="font-semibold text-slate-800 truncate">{item}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCustomItem(idx)}
-                        disabled={isSpinning || customItems.length <= 1}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30 cursor-pointer"
-                        title="Xóa mục này"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                )}
               </div>
-            )}
 
-            {/* Spin History */}
+              {/* Toggle auto remove winner */}
+              <label className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer">
+                <span className="text-[11px] font-semibold text-slate-700">
+                  Tự động bỏ tên vừa thắng (không lặp lại)
+                </span>
+                <input
+                  type="checkbox"
+                  checked={removeAfterWin}
+                  onChange={(e) => setRemoveAfterWin(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+              </label>
+
+              {enrolledStudents.length === 0 ? (
+                <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-slate-500 space-y-1">
+                  <p className="font-semibold text-slate-700">Lớp chưa có học sinh nào.</p>
+                  <p className="text-[11px]">
+                    {userRole === 'teacher'
+                      ? 'Hãy thêm học sinh vào nhóm lớp để sử dụng Vòng quay và Đua vịt.'
+                      : 'Khi lớp có thành viên tham gia, danh sách sẽ hiển thị tại đây.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                  {enrolledStudents.map((stu) => {
+                    const isIncluded = !excludedStudentIds.includes(stu.id);
+                    return (
+                      <button
+                        key={stu.id}
+                        type="button"
+                        onClick={() => handleToggleStudent(stu.id)}
+                        disabled={isBusy}
+                        className={`w-full px-3 py-2 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                          isIncluded
+                            ? 'bg-white border-slate-200 text-slate-900 hover:border-blue-300'
+                            : 'bg-slate-100 border-slate-200 text-slate-400 line-through'
+                        }`}
+                      >
+                        <span className="font-semibold truncate">{stu.name}</span>
+                        <span
+                          className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                            isIncluded ? 'bg-blue-600 text-white' : 'bg-slate-200 text-transparent'
+                          }`}
+                        >
+                          <Check size={11} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* History */}
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="font-extrabold text-slate-900 inline-flex items-center gap-1.5">
                   <History size={14} className="text-blue-600" />
-                  <span>Lịch sử quay lớp này</span>
+                  <span>Lịch sử Lucky lớp này</span>
                 </span>
                 {history.length > 0 && (
                   <button
@@ -754,14 +1003,25 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
               </div>
 
               {history.length === 0 ? (
-                <p className="text-[11px] text-slate-400">Chưa có lượt quay nào trong lớp này.</p>
+                <p className="text-[11px] text-slate-400">Chưa có lượt chơi nào trong lớp này.</p>
               ) : (
-                <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 pr-1">
+                <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 pr-1">
                   {history.map((rec, i) => (
                     <div key={rec.id} className="py-1.5 flex items-center justify-between gap-2 text-[11px]">
-                      <span className="font-semibold text-slate-800 truncate">
-                        {i + 1}. {rec.label}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-semibold text-slate-800 truncate">
+                          {i + 1}. {rec.label}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                            rec.game === 'duck_race'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-blue-50 text-blue-700'
+                          }`}
+                        >
+                          {rec.game === 'duck_race' ? 'Đua vịt' : 'Vòng quay'}
+                        </span>
+                      </div>
                       <span className="font-mono text-slate-400 tabular-nums shrink-0">
                         {new Date(rec.spunAt).toLocaleTimeString('vi-VN', {
                           hour: '2-digit',
