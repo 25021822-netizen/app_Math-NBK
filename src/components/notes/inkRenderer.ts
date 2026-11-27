@@ -328,11 +328,14 @@ export function drawInkImage(
   let img = imageCache.get(item.id);
   if (!img) {
     img = new Image();
-    img.src = item.dataUrl;
-    imageCache.set(item.id, img);
     img.onload = () => {
       onImageLoad?.();
     };
+    img.onerror = () => {
+      onImageLoad?.();
+    };
+    img.src = item.dataUrl;
+    imageCache.set(item.id, img);
   }
   if (img.complete && img.naturalWidth > 0) {
     ctx.save();
@@ -405,8 +408,8 @@ export function getElementBounds(el: InkElement): Bounds {
     const lines = (el.text || '').split('\n');
     const size = el.fontSize || 22;
     const maxLen = lines.reduce((m, l) => Math.max(m, l.length), 1);
-    const estWidth = Math.max(40, maxLen * size * 0.58);
-    const estHeight = Math.max(size * 1.35, lines.length * size * 1.35);
+    const estWidth = Math.max(48, maxLen * size * 0.62 + 8);
+    const estHeight = Math.max(size * 1.4, lines.length * size * 1.38);
     return {
       minX: el.x,
       minY: el.y,

@@ -18,7 +18,6 @@ import {
   Maximize2,
   Minimize2,
   Minus,
-  MousePointer2,
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
@@ -144,6 +143,65 @@ function formatShortDate(iso: string): string {
   }
 }
 
+function sanitizeNotebooks(rawList: unknown): InkNoteBook[] {
+  if (!Array.isArray(rawList) || rawList.length === 0) return [];
+  const cleaned: InkNoteBook[] = [];
+  for (const item of rawList) {
+    if (!item || typeof item !== 'object') continue;
+    const nb = item as Partial<InkNoteBook>;
+    const rawPages = Array.isArray(nb.pages) && nb.pages.length > 0 ? nb.pages : [createBlankPage()];
+    const pages: NotePage[] = rawPages.map((p) => ({
+      id: typeof p?.id === 'string' && p.id ? p.id : createId('page'),
+      paperStyle:
+        p?.paperStyle === 'blank' ||
+        p?.paperStyle === 'lined' ||
+        p?.paperStyle === 'grid' ||
+        p?.paperStyle === 'dots'
+          ? p.paperStyle
+          : 'grid',
+      paperTheme:
+        p?.paperTheme === 'white' ||
+        p?.paperTheme === 'cream' ||
+        p?.paperTheme === 'slate' ||
+        p?.paperTheme === 'chalkboard'
+          ? p.paperTheme
+          : 'white',
+      elements: Array.isArray(p?.elements) ? p.elements : [],
+    }));
+    const idx =
+      typeof nb.activePageIndex === 'number' && Number.isFinite(nb.activePageIndex)
+        ? Math.max(0, Math.min(pages.length - 1, nb.activePageIndex))
+        : 0;
+    cleaned.push({
+      id: typeof nb.id === 'string' && nb.id ? nb.id : createId('nb'),
+      title: typeof nb.title === 'string' && nb.title.trim() ? nb.title : 'Ghi chú chưa đặt tên',
+      subject:
+        nb.subject === 'Chung' ||
+        nb.subject === 'Toán Học' ||
+        nb.subject === 'Vật Lý' ||
+        nb.subject === 'Hóa Học'
+          ? nb.subject
+          : 'Toán Học',
+      createdAt: typeof nb.createdAt === 'string' ? nb.createdAt : new Date().toISOString(),
+      updatedAt: typeof nb.updatedAt === 'string' ? nb.updatedAt : new Date().toISOString(),
+      activePageIndex: idx,
+      pages,
+    });
+  }
+  return cleaned;
+}
+
+function loadNotebooksFromStorage(key: string): InkNoteBook[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const sanitized = sanitizeNotebooks(JSON.parse(raw));
+      if (sanitized.length > 0) return sanitized;
+    }
+  } catch {}
+  return [createNewNotebook('Nháp giải bài tập #1', 'Toán Học', 'grid', 'white')];
+}
+
 export const InkNotesView: React.FC<InkNotesViewProps> = ({
   currentUserId,
   currentUserName,
@@ -156,28 +214,11 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   // ==========================================
   // NOTEBOOKS STATE & PERSISTENCE
   // ==========================================
-  const [notebooks, setNotebooks] = useState<InkNoteBook[]>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {}
-    return [createNewNotebook('Nháp giải bài tập #1', 'Toán Học', 'grid', 'white')];
-  });
+  const [notebooks, setNotebooks] = useState<InkNoteBook[]>(() => loadNotebooksFromStorage(storageKey));
 
   const [activeNotebookId, setActiveNotebookId] = useState<string>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed[0]?.id) return parsed[0].id;
-      }
-    } catch {}
-    return '';
+    const initial = loadNotebooksFromStorage(storageKey);
+    return initial[0]?.id || '';
   });
 
   // Ensure activeNotebookId points to a valid notebook
@@ -187,22 +228,14 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     }
   }, [notebooks, activeNotebookId]);
 
-  // Reload notebooks if user changes
+  // Reload notebooks ONLY when storageKey actually changes across accounts
+  const prevStorageKeyRef = useRef<string>(storageKey);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setNotebooks(parsed);
-          setActiveNotebookId(parsed[0].id);
-          return;
-        }
-      }
-    } catch {}
-    const starter = createNewNotebook('Nháp giải bài tập #1', 'Toán Học', 'grid', 'white');
-    setNotebooks([starter]);
-    setActiveNotebookId(starter.id);
+    if (prevStorageKeyRef.current === storageKey) return;
+    prevStorageKeyRef.current = storageKey;
+    const loaded = loadNotebooksFromStorage(storageKey);
+    setNotebooks(loaded);
+    setActiveNotebookId(loaded[0]?.id || '');
   }, [storageKey]);
 
   const activeNotebook = useMemo(
@@ -214,8 +247,10 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     Math.max(0, activeNotebook?.activePageIndex ?? 0),
     Math.max(0, (activeNotebook?.pages?.length ?? 1) - 1)
   );
-  const activePage: NotePage =
-    activeNotebook?.pages?.[activePageIndex] || createBlankPage();
+  const activePage: NotePage = useMemo(
+    () => activeNotebook?.pages?.[activePageIndex] || createBlankPage(),
+    [activeNotebook, activePageIndex]
+  );
 
   // Debounced localStorage save + status notice
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
@@ -234,7 +269,9 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   // ==========================================
   // UI & TOOL STATES
   // ==========================================
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterSubject, setFilterSubject] = useState<'Tất cả' | NoteSubject>('Tất cả');
@@ -302,6 +339,8 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     scrollLeft: number;
     scrollTop: number;
   } | null>(null);
+  const isPointerDownRef = useRef<boolean>(false);
+  const eraserHistoryPushedRef = useRef<boolean>(false);
   const erasedThisGestureRef = useRef<Set<string>>(new Set());
   const laserStrokesRef = useRef<LaserStroke[]>([]);
   const isDrawingLaserRef = useRef<boolean>(false);
@@ -672,6 +711,11 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
         return;
       }
 
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+        return;
+      }
+
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault();
         const delSet = new Set(selectedIds);
@@ -692,19 +736,39 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [handleUndo, handleRedo, selectedIds, activePage.elements, commitPageElements]);
+  }, [handleUndo, handleRedo, selectedIds, activePage.elements, commitPageElements, isFullscreen]);
 
   const insertImageDataUrl = useCallback(
-    (dataUrl: string) => {
+    (rawDataUrl: string) => {
       const img = new Image();
       img.onload = () => {
+        const natW = img.naturalWidth || 400;
+        const natH = img.naturalHeight || 300;
+
+        // Compress large images so localStorage never hits 5MB quota
+        let finalDataUrl = rawDataUrl;
+        const maxStoreDim = 1280;
+        const storeScale = Math.min(1, maxStoreDim / Math.max(natW, natH));
+        if (rawDataUrl.length > 180_000 || storeScale < 1) {
+          try {
+            const off = document.createElement('canvas');
+            off.width = Math.max(1, Math.round(natW * storeScale));
+            off.height = Math.max(1, Math.round(natH * storeScale));
+            const octx = off.getContext('2d');
+            if (octx) {
+              octx.fillStyle = '#ffffff';
+              octx.fillRect(0, 0, off.width, off.height);
+              octx.drawImage(img, 0, 0, off.width, off.height);
+              finalDataUrl = off.toDataURL('image/jpeg', 0.86);
+            }
+          } catch {}
+        }
+
         const maxW = 680;
         const maxH = 520;
-        let w = img.naturalWidth || 400;
-        let h = img.naturalHeight || 300;
-        const ratio = Math.min(1, maxW / w, maxH / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
+        const ratio = Math.min(1, maxW / natW, maxH / natH);
+        const w = Math.max(40, Math.round(natW * ratio));
+        const h = Math.max(40, Math.round(natH * ratio));
 
         const newItem: InkImageItem = {
           id: createId('img'),
@@ -713,14 +777,14 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
           y: Math.round((PAGE_HEIGHT - h) / 2),
           width: w,
           height: h,
-          dataUrl,
+          dataUrl: finalDataUrl,
         };
         commitPageElements([...activePage.elements, newItem]);
         setSelectedIds([newItem.id]);
         setTool('select');
         showToast('Đã chèn ảnh vào trang ghi chú');
       };
-      img.src = dataUrl;
+      img.src = rawDataUrl;
     },
     [activePage.elements, commitPageElements, showToast]
   );
@@ -760,15 +824,56 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   // ==========================================
   // POINTER INTERACTIONS ON CANVAS
   // ==========================================
-  const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>): InkPoint => {
-    const canvas = overlayCanvasRef.current!;
+  const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>): InkPoint | null => {
+    const canvas = overlayCanvasRef.current;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
     const scaleX = PAGE_WIDTH / rect.width;
     const scaleY = PAGE_HEIGHT / rect.height;
     const x = Math.max(0, Math.min(PAGE_WIDTH, (e.clientX - rect.left) * scaleX));
     const y = Math.max(0, Math.min(PAGE_HEIGHT, (e.clientY - rect.top) * scaleY));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     const p = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5;
     return { x, y, p, t: performance.now() };
+  };
+
+  const applyStrokeEraserAt = (x: number, y: number) => {
+    const hit = activePage.elements.filter(
+      (el) =>
+        el.kind !== 'image' &&
+        !erasedThisGestureRef.current.has(el.id) &&
+        hitTestElement(el, x, y, 16)
+    );
+    if (hit.length === 0) return;
+
+    hit.forEach((h) => erasedThisGestureRef.current.add(h.id));
+
+    if (!eraserHistoryPushedRef.current && activePage) {
+      const h = getPageHistory(activePage.id);
+      h.past.push(activePage.elements);
+      if (h.past.length > 40) h.past.shift();
+      h.future = [];
+      eraserHistoryPushedRef.current = true;
+      setHistoryTick((t) => t + 1);
+    }
+
+    const erasedSet = new Set(erasedThisGestureRef.current);
+    const now = new Date().toISOString();
+    setNotebooks((prev) =>
+      prev.map((nb) => {
+        if (nb.id !== activeNotebook?.id) return nb;
+        return {
+          ...nb,
+          updatedAt: now,
+          pages: nb.pages.map((p, idx) =>
+            idx === activePageIndex
+              ? { ...p, elements: p.elements.filter((el) => !erasedSet.has(el.id)) }
+              : p
+          ),
+        };
+      })
+    );
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -781,10 +886,16 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       return;
     }
 
+    // If an inline text editor was open with text, commit it before starting a new action
+    if (editingText) {
+      handleCommitText();
+    }
+
     // Pan with hand tool, spacebar, or middle mouse button
     if (tool === 'hand' || isSpacePressed || e.button === 1) {
       const vp = viewportRef.current;
       if (!vp) return;
+      isPointerDownRef.current = true;
       panningRef.current = {
         active: true,
         startClientX: e.clientX,
@@ -792,20 +903,22 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
         scrollLeft: vp.scrollLeft,
         scrollTop: vp.scrollTop,
       };
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {}
       return;
     }
 
     if (e.button !== 0) return;
 
     const pt = getCanvasPoint(e);
+    if (!pt) return;
 
     // Text tool
     if (tool === 'text') {
-      // Check if clicking an existing text box to edit
       const hitText = [...activePage.elements]
         .reverse()
-        .find((el): el is InkTextItem => el.kind === 'text' && hitTestElement(el, pt.x, pt.y, 10));
+        .find((el): el is InkTextItem => el.kind === 'text' && hitTestElement(el, pt.x, pt.y, 12));
       if (hitText) {
         setEditingText({
           id: hitText.id,
@@ -828,7 +941,10 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       return;
     }
 
-    e.currentTarget.setPointerCapture(e.pointerId);
+    isPointerDownRef.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
 
     // Laser pointer
     if (tool === 'laser') {
@@ -841,20 +957,14 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     // Stroke eraser (erases strokes, shapes, text; protects background images)
     if (tool === 'eraser_stroke') {
       erasedThisGestureRef.current.clear();
-      const hit = [...activePage.elements]
-        .reverse()
-        .find((el) => el.kind !== 'image' && hitTestElement(el, pt.x, pt.y, 14));
-      if (hit) {
-        erasedThisGestureRef.current.add(hit.id);
-        commitPageElements(activePage.elements.filter((el) => el.id !== hit.id));
-      }
+      eraserHistoryPushedRef.current = false;
+      applyStrokeEraserAt(pt.x, pt.y);
       return;
     }
 
     // Select & Move
     if (tool === 'select') {
       const selSet = new Set(selectedIds);
-      // Check if clicking inside existing selection bounding box
       if (selectedIds.length > 0) {
         let minX = Infinity;
         let minY = Infinity;
@@ -883,7 +993,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
         }
       }
 
-      // Hit-test topmost element
       const hitEl = [...activePage.elements]
         .reverse()
         .find((el) => hitTestElement(el, pt.x, pt.y, 12));
@@ -949,6 +1058,8 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isPointerDownRef.current) return;
+
     if (panningRef.current?.active) {
       const vp = viewportRef.current;
       if (!vp) return;
@@ -958,6 +1069,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     }
 
     const pt = getCanvasPoint(e);
+    if (!pt) return;
 
     if (isDrawingLaserRef.current && laserStrokesRef.current.length > 0) {
       const currentLaser = laserStrokesRef.current[laserStrokesRef.current.length - 1];
@@ -966,18 +1078,8 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       return;
     }
 
-    if (tool === 'eraser_stroke' && e.buttons === 1) {
-      const hit = activePage.elements.filter(
-        (el) =>
-          el.kind !== 'image' &&
-          !erasedThisGestureRef.current.has(el.id) &&
-          hitTestElement(el, pt.x, pt.y, 14)
-      );
-      if (hit.length > 0) {
-        const hitIds = new Set(hit.map((h) => h.id));
-        hit.forEach((h) => erasedThisGestureRef.current.add(h.id));
-        commitPageElements(activePage.elements.filter((el) => !hitIds.has(el.id)));
-      }
+    if (tool === 'eraser_stroke') {
+      applyStrokeEraserAt(pt.x, pt.y);
       return;
     }
 
@@ -1030,6 +1132,10 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   };
 
   const handlePointerUp = () => {
+    isPointerDownRef.current = false;
+    eraserHistoryPushedRef.current = false;
+    erasedThisGestureRef.current.clear();
+
     if (panningRef.current?.active) {
       panningRef.current = null;
       return;
@@ -1038,8 +1144,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     if (isDrawingLaserRef.current) {
       isDrawingLaserRef.current = false;
     }
-
-    erasedThisGestureRef.current.clear();
 
     if (draggingSelectionRef.current?.active) {
       const drag = draggingSelectionRef.current;
@@ -1324,6 +1428,25 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     );
   };
 
+  const handleScaleSelectedImages = (factor: number) => {
+    if (selectedIds.length === 0) return;
+    const selSet = new Set(selectedIds);
+    commitPageElements(
+      activePage.elements.map((el) => {
+        if (!selSet.has(el.id) || el.kind !== 'image') return el;
+        const nextW = Math.max(80, Math.min(PAGE_WIDTH - 40, Math.round(el.width * factor)));
+        const nextH = Math.max(60, Math.min(PAGE_HEIGHT - 40, Math.round(el.height * factor)));
+        return { ...el, width: nextW, height: nextH };
+      })
+    );
+  };
+
+  const hasSelectedImage = useMemo(() => {
+    if (selectedIds.length === 0) return false;
+    const selSet = new Set(selectedIds);
+    return activePage.elements.some((el) => selSet.has(el.id) && el.kind === 'image');
+  }, [selectedIds, activePage.elements]);
+
   // ==========================================
   // EXPORT PNG & MULTI-PAGE PDF
   // ==========================================
@@ -1419,7 +1542,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     >
       <div
         className={`bg-white border border-slate-200 overflow-hidden flex flex-col shadow-sm ${
-          isFullscreen ? 'flex-1 rounded-none border-0' : 'rounded-2xl h-[calc(100vh-7.5rem)] min-h-[620px]'
+          isFullscreen ? 'flex-1 rounded-none border-0' : 'rounded-2xl h-[calc(100dvh-9.5rem)] min-h-[540px]'
         }`}
       >
         {/* ============================================================ */}
@@ -1968,9 +2091,18 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
         {/* MAIN BODY: COLLAPSIBLE NOTEBOOK SIDEBAR + INK CANVAS STAGE   */}
         {/* ============================================================ */}
         <div className="flex-1 flex min-h-0 relative">
+          {/* Mobile backdrop when notebook drawer is open */}
+          {sidebarOpen && (
+            <div
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 bg-slate-900/30 z-20 md:hidden"
+              aria-hidden="true"
+            />
+          )}
+
           {/* Collapsible Left Notebook Drawer */}
           {sidebarOpen && (
-            <aside className="w-64 sm:w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 z-20">
+            <aside className="absolute inset-y-0 left-0 md:static w-64 sm:w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 z-30 shadow-xl md:shadow-none">
               <div className="p-3 border-b border-slate-200 space-y-2.5">
                 <button
                   type="button"
@@ -2040,6 +2172,9 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                               setSelectedIds([]);
                               setEditingText(null);
                               setConfirmDeleteNoteId(null);
+                              if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                                setSidebarOpen(false);
+                              }
                             }}
                             className="flex-1 text-left min-w-0 cursor-pointer"
                           >
@@ -2124,6 +2259,29 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                   ))}
                 </div>
                 <div className="w-px h-4 bg-slate-200" />
+                {hasSelectedImage && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleScaleSelectedImages(0.85)}
+                      title="Thu nhỏ ảnh"
+                      className="px-2 py-1 rounded-md text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                    >
+                      <ZoomOut size={13} />
+                      <span>Nhỏ</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleScaleSelectedImages(1.18)}
+                      title="Phóng to ảnh"
+                      className="px-2 py-1 rounded-md text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                    >
+                      <ZoomIn size={13} />
+                      <span>Lớn</span>
+                    </button>
+                    <div className="w-px h-4 bg-slate-200" />
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={handleDuplicateSelected}
@@ -2151,13 +2309,20 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
               </div>
             )}
 
-            {/* Scrollable Desk Viewport */}
+            {/* Scrollable Desk Viewport (m-auto on child prevents flexbox left-edge overflow clipping) */}
             <div
               ref={viewportRef}
-              className="flex-1 overflow-auto p-4 sm:p-8 flex items-start justify-center"
+              onWheel={(e) => {
+                if (e.ctrlKey || e.metaKey) {
+                  e.preventDefault();
+                  const delta = e.deltaY < 0 ? 0.08 : -0.08;
+                  setZoom((z) => Math.max(0.4, Math.min(2.2, Number((z + delta).toFixed(2)))));
+                }
+              }}
+              className="flex-1 overflow-auto p-4 sm:p-8 flex"
             >
               <div
-                className="relative shadow-xl rounded-sm shrink-0 border border-slate-300/70"
+                className="relative shadow-xl rounded-sm shrink-0 border border-slate-300/70 m-auto"
                 style={{
                   width: Math.round(PAGE_WIDTH * zoom),
                   height: Math.round(PAGE_HEIGHT * zoom),
@@ -2180,6 +2345,30 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
+                  onDoubleClick={(e) => {
+                    const canvas = overlayCanvasRef.current;
+                    if (!canvas) return;
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) return;
+                    const x = ((e.clientX - rect.left) * PAGE_WIDTH) / rect.width;
+                    const y = ((e.clientY - rect.top) * PAGE_HEIGHT) / rect.height;
+                    const hitText = [...activePage.elements]
+                      .reverse()
+                      .find(
+                        (el): el is InkTextItem =>
+                          el.kind === 'text' && hitTestElement(el, x, y, 12)
+                      );
+                    if (hitText) {
+                      setEditingText({
+                        id: hitText.id,
+                        x: hitText.x,
+                        y: hitText.y,
+                        text: hitText.text,
+                        fontSize: hitText.fontSize || 24,
+                        color: hitText.color,
+                      });
+                    }
+                  }}
                   className={`absolute inset-0 block ${canvasCursorClass}`}
                   style={{
                     width: Math.round(PAGE_WIDTH * zoom),
@@ -2193,13 +2382,19 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                   <div
                     className="absolute z-30 bg-white border border-blue-500 rounded-xl shadow-xl p-2.5 space-y-2 w-72 sm:w-80"
                     style={{
-                      left: Math.min(
-                        Math.round(PAGE_WIDTH * zoom) - 290,
-                        Math.max(8, Math.round(editingText.x * zoom))
+                      left: Math.max(
+                        8,
+                        Math.min(
+                          Math.max(8, Math.round(PAGE_WIDTH * zoom) - 324),
+                          Math.round(editingText.x * zoom)
+                        )
                       ),
-                      top: Math.min(
-                        Math.round(PAGE_HEIGHT * zoom) - 180,
-                        Math.max(8, Math.round(editingText.y * zoom))
+                      top: Math.max(
+                        8,
+                        Math.min(
+                          Math.max(8, Math.round(PAGE_HEIGHT * zoom) - 190),
+                          Math.round(editingText.y * zoom)
+                        )
                       ),
                     }}
                   >
@@ -2208,6 +2403,15 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                       onChange={(e) =>
                         setEditingText((prev) => (prev ? { ...prev, text: e.target.value } : null))
                       }
+                      onKeyDown={(e) => {
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCommitText();
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setEditingText(null);
+                        }
+                      }}
                       placeholder="Nhập văn bản hoặc công thức..."
                       rows={3}
                       autoFocus

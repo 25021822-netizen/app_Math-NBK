@@ -2293,7 +2293,15 @@ export default function App() {
       )}
 
       {/* Main Content Area (Hoàn toàn tự nhiên, co giãn responsive mượt mà trên mọi thiết bị: PC, iPad, Điện thoại) */}
-      <main className={`flex-1 flex justify-center ${isExamMode ? 'w-full p-0' : 'py-3 sm:py-8 px-2 sm:px-4 pb-6 sm:pb-8'}`}>
+      <main
+        className={`flex-1 flex justify-center ${
+          isExamMode
+            ? 'w-full p-0'
+            : currentTab === 'notes'
+            ? 'py-2 sm:py-3 px-2 sm:px-4'
+            : 'py-3 sm:py-8 px-2 sm:px-4 pb-6 sm:pb-8'
+        }`}
+      >
         <div className="w-full">
           <Suspense
             fallback={
