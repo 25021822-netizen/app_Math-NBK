@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { jsPDF } from 'jspdf';
 import {
   ArrowUpRight,
   Check,
@@ -166,7 +165,16 @@ function sanitizeNotebooks(rawList: unknown): InkNoteBook[] {
         p?.paperTheme === 'chalkboard'
           ? p.paperTheme
           : 'white',
-      elements: Array.isArray(p?.elements) ? p.elements : [],
+      elements: Array.isArray(p?.elements)
+        ? p.elements.filter((el): el is InkElement => {
+            if (!el || typeof el !== 'object') return false;
+            const kind = (el as InkElement).kind;
+            if (kind === 'stroke') {
+              return Array.isArray((el as InkStroke).points) && (el as InkStroke).points.length > 0;
+            }
+            return kind === 'shape' || kind === 'text' || kind === 'image';
+          })
+        : [],
     }));
     const idx =
       typeof nb.activePageIndex === 'number' && Number.isFinite(nb.activePageIndex)
@@ -201,6 +209,20 @@ function loadNotebooksFromStorage(key: string): InkNoteBook[] {
   } catch {}
   return [createNewNotebook('Nháp giải bài tập #1', 'Toán Học', 'grid', 'white')];
 }
+
+const MoreDotsIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <circle cx="3.5" cy="3.5" r="1.3" />
+    <circle cx="8" cy="3.5" r="1.3" />
+    <circle cx="12.5" cy="3.5" r="1.3" />
+    <circle cx="3.5" cy="8" r="1.3" />
+    <circle cx="8" cy="8" r="1.3" />
+    <circle cx="12.5" cy="8" r="1.3" />
+    <circle cx="3.5" cy="12.5" r="1.3" />
+    <circle cx="8" cy="12.5" r="1.3" />
+    <circle cx="12.5" cy="12.5" r="1.3" />
+  </svg>
+);
 
 export const InkNotesView: React.FC<InkNotesViewProps> = ({
   currentUserId,
@@ -1455,13 +1477,34 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     setIsExporting(true);
     try {
       const canvas = await renderPageToCanvas(activePage, 1.5);
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
       const safeTitle = (activeNotebook.title || 'ghi-chu').replace(/[^a-zA-Z0-9\u00C0-\u1EF9_-]+/g, '_');
-      link.download = `${safeTitle}_trang_${activePageIndex + 1}.png`;
-      link.href = dataUrl;
+      const filename = `${safeTitle}_trang_${activePageIndex + 1}.png`;
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((result) => resolve(result), 'image/png');
+      });
+
+      const link = document.createElement('a');
+      let objectUrl: string | null = null;
+      if (blob) {
+        objectUrl = URL.createObjectURL(blob);
+        link.href = objectUrl;
+      } else {
+        link.href = canvas.toDataURL('image/png');
+      }
+
+      link.download = filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
       link.click();
-      showToast(`Đã tải xuống ảnh PNG Trang ${activePageIndex + 1}`);
+      document.body.removeChild(link);
+
+      if (objectUrl) {
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl!), 1500);
+      }
+      showToast(`Đã lưu hình ảnh PNG (Trang ${activePageIndex + 1})`);
+    } catch {
+      showToast('Không thể xuất hình ảnh, vui lòng thử lại');
     } finally {
       setIsExporting(false);
     }
@@ -1471,7 +1514,9 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     if (!activeNotebook) return;
     setIsExporting(true);
     try {
-      const pdf = new jsPDF({
+      const jspdfMod = await import('jspdf');
+      const JsPdfCtor = jspdfMod.jsPDF || jspdfMod.default;
+      const pdf = new JsPdfCtor({
         orientation: 'landscape',
         unit: 'px',
         format: [PAGE_WIDTH, PAGE_HEIGHT],
@@ -1486,6 +1531,8 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       const safeTitle = (activeNotebook.title || 'ghi-chu').replace(/[^a-zA-Z0-9\u00C0-\u1EF9_-]+/g, '_');
       pdf.save(`${safeTitle}.pdf`);
       showToast(`Đã xuất file PDF (${activeNotebook.pages.length} trang)`);
+    } catch {
+      showToast('Không thể xuất file PDF, vui lòng thử lại');
     } finally {
       setIsExporting(false);
     }
@@ -1685,10 +1732,12 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
               type="button"
               onClick={handleExportPng}
               disabled={isExporting}
+              title="Xuất hình ảnh (PNG)"
+              aria-label="Xuất hình ảnh (PNG)"
               className="h-9 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
             >
-              <Download size={14} className="text-blue-600" />
-              <span className="hidden sm:inline">Xuất PNG</span>
+              <Download size={14} className="text-blue-600 shrink-0" />
+              <span>Xuất hình ảnh</span>
             </button>
 
             <button
@@ -2604,17 +2653,3 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     </div>
   );
 };
-
-const MoreDotsIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <circle cx="3.5" cy="3.5" r="1.3" />
-    <circle cx="8" cy="3.5" r="1.3" />
-    <circle cx="12.5" cy="3.5" r="1.3" />
-    <circle cx="3.5" cy="8" r="1.3" />
-    <circle cx="8" cy="8" r="1.3" />
-    <circle cx="12.5" cy="8" r="1.3" />
-    <circle cx="3.5" cy="12.5" r="1.3" />
-    <circle cx="8" cy="12.5" r="1.3" />
-    <circle cx="12.5" cy="12.5" r="1.3" />
-  </svg>
-);

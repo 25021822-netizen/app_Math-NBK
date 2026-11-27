@@ -97,9 +97,7 @@ const PhysicsSimulationLabView = lazy(() =>
 const ChemistryExperimentLabView = lazy(() =>
   import('./components/chemistry/ChemistryExperimentLabView').then((m) => ({ default: m.ChemistryExperimentLabView }))
 );
-const InkNotesView = lazy(() =>
-  import('./components/notes/InkNotesView').then((m) => ({ default: m.InkNotesView }))
-);
+import { InkNotesView } from './components/notes/InkNotesView';
 const AdminDashboardView = lazy(() =>
   import('./components/admin/AdminDashboardView').then((m) => ({ default: m.AdminDashboardView }))
 );
@@ -212,6 +210,47 @@ function getRestoredAuthSession(): {
   } catch {
     clearStoredAuthSession();
     return { isAuth: false, user: INITIAL_USER_PROFILE, remembered: true, loginAt: null, expiredNotice: null };
+  }
+}
+
+interface TabErrorBoundaryState {
+  hasError: boolean;
+  errorMsg: string;
+}
+
+class TabErrorBoundary extends React.Component<
+  { resetKey: string; children: React.ReactNode },
+  TabErrorBoundaryState
+> {
+  state: TabErrorBoundaryState = { hasError: false, errorMsg: '' };
+
+  static getDerivedStateFromError(error: Error): TabErrorBoundaryState {
+    return { hasError: true, errorMsg: error?.message || 'Lỗi hiển thị giao diện' };
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, errorMsg: '' });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="max-w-lg mx-auto my-12 bg-white border border-rose-200 rounded-2xl p-6 text-center shadow-sm space-y-3">
+          <h3 className="text-base font-bold text-slate-900">Không thể tải mục này</h3>
+          <p className="text-xs text-slate-600">{this.state.errorMsg}</p>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false, errorMsg: '' })}
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer"
+          >
+            Thử tải lại
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
   }
 }
 
@@ -1983,8 +2022,8 @@ export default function App() {
       return <ChemistryExperimentLabView />;
     }
 
-    // 2c. Ghi Chú Bảng Vẽ (Scrble Ink style - dành cho Học sinh và Giáo viên)
-    if (currentTab === 'notes' && userRole !== 'admin') {
+    // 2c. Ghi Chú Bảng Vẽ (Scrble Ink style)
+    if (currentTab === 'notes') {
       return (
         <InkNotesView
           currentUserId={userProfile.id}
@@ -2303,17 +2342,19 @@ export default function App() {
         }`}
       >
         <div className="w-full">
-          <Suspense
-            fallback={
-              <div className="max-w-5xl mx-auto px-4 py-12 flex justify-center">
-                <div className="bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-semibold text-slate-600 shadow-xs">
-                  Đang tải phân hệ học tập...
+          <TabErrorBoundary resetKey={currentTab}>
+            <Suspense
+              fallback={
+                <div className="max-w-5xl mx-auto px-4 py-12 flex justify-center">
+                  <div className="bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-semibold text-slate-600 shadow-xs">
+                    Đang tải phân hệ học tập...
+                  </div>
                 </div>
-              </div>
-            }
-          >
-            {renderCurrentView()}
-          </Suspense>
+              }
+            >
+              {renderCurrentView()}
+            </Suspense>
+          </TabErrorBoundary>
         </div>
       </main>
 

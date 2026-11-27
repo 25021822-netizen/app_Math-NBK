@@ -127,7 +127,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* 1. TOP HEADER BAR (DESKTOP & MOBILE)                      */}
       {/* ========================================================= */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-6">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 min-h-16 py-1.5 flex items-center justify-between gap-2 sm:gap-4">
           {/* Zone 1: Brand Wordmark */}
           <div className="flex items-center gap-2.5 shrink-0">
             <button
@@ -152,8 +152,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Zone 2: Desktop Navigation Links (Single-line, whitespace-nowrap) */}
-          <nav className="hidden md:flex items-center gap-2.5 lg:gap-3.5 text-xs lg:text-[13px] font-medium text-slate-600 overflow-x-auto no-scrollbar">
+          {/* Zone 2: Desktop Navigation Links (Single-line items, wraps cleanly on narrow laptops so no tab is clipped) */}
+          <nav className="hidden md:flex flex-1 min-w-0 flex-wrap items-center justify-center gap-x-2.5 lg:gap-x-3.5 gap-y-1 text-xs lg:text-[13px] font-medium text-slate-600">
             {userRole === 'student' && (
               <>
                 <button
@@ -217,8 +217,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>Hóa Học</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => onSelectTab('notes')}
-                  className={`whitespace-nowrap shrink-0 transition-colors py-1 flex items-center gap-1 ${
+                  className={`whitespace-nowrap shrink-0 transition-colors py-1 flex items-center gap-1 cursor-pointer ${
                     currentTab === 'notes'
                       ? 'text-blue-600 font-bold border-b-2 border-blue-600'
                       : 'hover:text-slate-900'
@@ -331,8 +332,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => onSelectTab('notes')}
-                  className={`whitespace-nowrap shrink-0 transition-colors py-1 flex items-center gap-1 ${
+                  className={`whitespace-nowrap shrink-0 transition-colors py-1 flex items-center gap-1 cursor-pointer ${
                     currentTab === 'notes'
                       ? 'text-blue-600 font-bold border-b-2 border-blue-600'
                       : 'hover:text-slate-900'
@@ -382,6 +384,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                       ({adminBroadcastsCount})
                     </span>
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('notes')}
+                  className={`whitespace-nowrap shrink-0 transition-colors py-1 flex items-center gap-1 cursor-pointer ${
+                    currentTab === 'notes'
+                      ? 'text-blue-600 font-bold border-b-2 border-blue-600'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <NotebookPen size={14} className="text-blue-600" />
+                  <span>Ghi Chú</span>
                 </button>
                 <button
                   onClick={() => onSelectTab('profile')}
@@ -1156,6 +1170,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                           </div>
                           <div className={`text-[10px] ${currentTab === 'admin_broadcasts' ? 'text-blue-100' : 'text-slate-400'}`}>
                             Gửi thông báo tới mọi người, giáo viên hoặc học sinh
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="opacity-60" />
+                    </button>
+
+                    <button
+                      onClick={() => handleMobileTabSelect('notes')}
+                      className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition-all ${
+                        currentTab === 'notes'
+                          ? 'bg-blue-600 text-white font-bold shadow-md'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentTab === 'notes' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'
+                        }`}>
+                          <NotebookPen size={18} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold">Bảng Vẽ &amp; Ghi Chú</div>
+                          <div className={`text-[10px] ${currentTab === 'notes' ? 'text-blue-100' : 'text-slate-400'}`}>
+                            Viết tay nhiều trang, bút dạ quang, xuất hình ảnh &amp; PDF
                           </div>
                         </div>
                       </div>

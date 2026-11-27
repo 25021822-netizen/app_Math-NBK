@@ -377,6 +377,9 @@ function distToSegment(px: number, py: number, x1: number, y1: number, x2: numbe
 
 export function getElementBounds(el: InkElement): Bounds {
   if (el.kind === 'stroke') {
+    if (!Array.isArray(el.points) || el.points.length === 0) {
+      return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    }
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
