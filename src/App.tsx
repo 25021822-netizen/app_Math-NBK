@@ -97,6 +97,9 @@ const PhysicsSimulationLabView = lazy(() =>
 const ChemistryExperimentLabView = lazy(() =>
   import('./components/chemistry/ChemistryExperimentLabView').then((m) => ({ default: m.ChemistryExperimentLabView }))
 );
+const InkNotesView = lazy(() =>
+  import('./components/notes/InkNotesView').then((m) => ({ default: m.InkNotesView }))
+);
 const AdminDashboardView = lazy(() =>
   import('./components/admin/AdminDashboardView').then((m) => ({ default: m.AdminDashboardView }))
 );
@@ -1978,6 +1981,16 @@ export default function App() {
     }
     if (currentTab === 'chemistry_lab' && canAccessSubjectTab('chemistry_lab', userRole, userProfile.subject)) {
       return <ChemistryExperimentLabView />;
+    }
+
+    // 2c. Ghi Chú Bảng Vẽ (Scrble Ink style - dành cho Học sinh và Giáo viên)
+    if (currentTab === 'notes' && userRole !== 'admin') {
+      return (
+        <InkNotesView
+          currentUserId={userProfile.id}
+          currentUserName={userProfile.name}
+        />
+      );
     }
 
     // 3. Quản trị viên (Super Admin)

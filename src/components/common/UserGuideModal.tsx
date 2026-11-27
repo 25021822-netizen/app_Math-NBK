@@ -14,6 +14,7 @@ import {
   Users,
   BarChart3,
   HelpCircle,
+  NotebookPen,
 } from 'lucide-react';
 import { UserRole } from '../../types/math';
 
@@ -364,6 +365,16 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     Pin Galvani điện cực tan, tinh chế kim loại, sản xuất công nghiệp (nhôm, H₂SO₄, NH₃...), điều chế Ester, chuẩn độ pH và quan sát phân tử 3D xoay 360°.
                   </p>
                 </div>
+
+                <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-1.5 md:col-span-2">
+                  <div className="flex items-center gap-2 font-extrabold text-slate-900">
+                    <NotebookPen size={16} className="text-blue-600" />
+                    <span>Bảng Vẽ &amp; Ghi Chú Viết Tay</span>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Sổ tay viết vẽ tự do nhiều trang hỗ trợ bút mực cảm ứng lực, dạ quang, tẩy theo nét, kẻ trục Oxy, chèn ảnh đề bài, đèn chiếu laser và xuất PNG / PDF.
+                  </p>
+                </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
@@ -400,6 +411,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <h3 className="font-black text-slate-900 text-sm">3. Thực hành phòng thí nghiệm &amp; hồ sơ</h3>
                 <ul className="list-disc pl-5 space-y-1 text-xs text-slate-600">
                   <li>Học sinh được truy cập cả 3 phân hệ: <strong>Vẽ Hình 2D/3D</strong>, <strong>Vật Lý</strong> và <strong>Hóa Học</strong>.</li>
+                  <li>Dùng mục <strong>Ghi Chú</strong> để viết nháp giải bài, vẽ hình, dán ảnh đề bài và lưu lại thành nhiều trang hoặc xuất ra file PDF.</li>
                   <li>Trong phòng Hóa học, chuyển sang chế độ <strong>3D Phân Tử</strong> để xoay và phóng to/thu nhỏ mô hình phản ứng hóa học.</li>
                   <li>Vào mục <strong>Hồ Sơ</strong> để chọn ảnh đại diện, cập nhật thông tin cá nhân và đổi mật khẩu tài khoản.</li>
                 </ul>
