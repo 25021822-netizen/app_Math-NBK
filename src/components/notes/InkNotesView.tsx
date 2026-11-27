@@ -5,10 +5,8 @@ import {
   Download,
   Eraser,
   FileDown,
-  FilePlus2,
   FileUp,
   Grid3X3,
-  Hand,
   ImagePlus,
   Lasso,
   Loader2,
@@ -574,12 +572,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   const activeShapeBtnRef = useRef<HTMLButtonElement | null>(null);
   const shapePopoverRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-append page guards
-  const lastAutoAddAtRef = useRef<number>(0);
-  const touchStartYRef = useRef<number | null>(null);
-  const touchAtBottomRef = useRef<boolean>(false);
-  const hasWrittenNearBottomRef = useRef<boolean>(false);
-
   const showToast = useCallback((msg: string) => {
     setToastMsg(msg);
   }, []);
@@ -780,63 +772,44 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   }, [activeNotebook, activePage, activePageIndex]);
 
   // ==========================================
-  // AUTO-CREATE NEXT PAGE WHEN SWIPING / SCROLLING DOWN AT END
+  // APPEND PAGE (MANUAL BOTTOM BUTTON ONLY)
   // ==========================================
-  const appendPageAndScroll = useCallback(
-    (isAuto: boolean) => {
-      if (!activeNotebook) return;
-      const nowMs = Date.now();
-      if (isAuto && nowMs - lastAutoAddAtRef.current < 850) return;
-      lastAutoAddAtRef.current = nowMs;
-      hasWrittenNearBottomRef.current = false;
+  const appendPageAndScroll = useCallback(() => {
+    if (!activeNotebook) return;
 
-      const templatePage =
-        activeNotebook.pages[activeNotebook.pages.length - 1] || activePage;
-      const newPage = createBlankPage(templatePage.paperStyle, templatePage.paperTheme);
-      const nextPages = [...activeNotebook.pages, newPage];
-      const nextIndex = nextPages.length - 1;
+    const templatePage =
+      activeNotebook.pages[activeNotebook.pages.length - 1] || activePage;
+    const newPage = createBlankPage(templatePage.paperStyle, templatePage.paperTheme);
+    const nextPages = [...activeNotebook.pages, newPage];
+    const nextIndex = nextPages.length - 1;
 
-      setSelectedIds([]);
-      setNotebooks((prev) =>
-        prev.map((nb) =>
-          nb.id === activeNotebook.id
-            ? {
-                ...nb,
-                updatedAt: new Date().toISOString(),
-                pages: nextPages,
-                activePageIndex: nextIndex,
-              }
-            : nb
-        )
-      );
+    setSelectedIds([]);
+    setNotebooks((prev) =>
+      prev.map((nb) =>
+        nb.id === activeNotebook.id
+          ? {
+              ...nb,
+              updatedAt: new Date().toISOString(),
+              pages: nextPages,
+              activePageIndex: nextIndex,
+            }
+          : nb
+      )
+    );
 
-      showToast(
-        isAuto ? `Đã tự động thêm Trang ${nextPages.length}` : `Đã thêm Trang ${nextPages.length}`
-      );
+    showToast(`Đã thêm Trang ${nextPages.length}`);
 
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          const vp = viewportRef.current;
-          if (!vp) return;
-          const targetEl = vp.querySelector(`[data-page-index="${nextIndex}"]`) as HTMLElement | null;
-          if (targetEl) {
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }, 40);
-      });
-    },
-    [activeNotebook, activePage, showToast]
-  );
-
-  const handleNearBottomWrite = useCallback(
-    (pageIdx: number) => {
-      if (!activeNotebook) return;
-      if (pageIdx === activeNotebook.pages.length - 1) {
-        hasWrittenNearBottomRef.current = true;
-      }
-    },
-    [activeNotebook]
-  );
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const vp = viewportRef.current;
+        if (!vp) return;
+        const targetEl = vp.querySelector(`[data-page-index="${nextIndex}"]`) as HTMLElement | null;
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 40);
+    });
+  }, [activeNotebook, activePage, showToast]);
 
   const handleViewportScroll = useCallback(() => {
     const vp = viewportRef.current;
@@ -862,14 +835,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
         )
       );
     }
-
-    // Auto-create next page when user finishes writing near bottom and scrolls to bottom
-    const lastPage = activeNotebook.pages[activeNotebook.pages.length - 1];
-    const isAtBottom = vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 8;
-    if (isAtBottom && lastPage && lastPage.elements.length > 0 && hasWrittenNearBottomRef.current) {
-      appendPageAndScroll(true);
-    }
-  }, [activeNotebook, activePageIndex, appendPageAndScroll]);
+  }, [activeNotebook, activePageIndex]);
 
   const handleViewportWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (e.ctrlKey || e.metaKey) {
@@ -877,46 +843,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       const delta = e.deltaY < 0 ? 0.08 : -0.08;
       setIsFitMode(false);
       setZoom((z) => Math.max(0.4, Math.min(2.2, Number((z + delta).toFixed(2)))));
-      return;
     }
-
-    const vp = viewportRef.current;
-    if (!vp || !activeNotebook) return;
-    const isAtBottom = vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 16;
-    if (!isAtBottom || e.deltaY <= 0) return;
-
-    const lastPage = activeNotebook.pages[activeNotebook.pages.length - 1];
-    const hasContent = Boolean(lastPage && lastPage.elements.length > 0);
-    if ((hasContent && e.deltaY >= 14) || e.deltaY >= 45) {
-      appendPageAndScroll(true);
-    }
-  };
-
-  const handleViewportTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    const vp = viewportRef.current;
-    if (!vp || e.touches.length !== 1) return;
-    touchStartYRef.current = e.touches[0].clientY;
-    touchAtBottomRef.current = vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 20;
-  };
-
-  const handleViewportTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    const vp = viewportRef.current;
-    if (!vp || touchStartYRef.current === null || !activeNotebook) return;
-    const endY = e.changedTouches[0]?.clientY ?? touchStartYRef.current;
-    const swipeUpDelta = touchStartYRef.current - endY; // positive = user swiped upward to move down
-    touchStartYRef.current = null;
-
-    const nowAtBottom = vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 20;
-    const lastPage = activeNotebook.pages[activeNotebook.pages.length - 1];
-    const hasContent = Boolean(lastPage && lastPage.elements.length > 0);
-
-    if (
-      (touchAtBottomRef.current || nowAtBottom) &&
-      ((hasContent && swipeUpDelta > 28) || swipeUpDelta > 56)
-    ) {
-      appendPageAndScroll(true);
-    }
-    touchAtBottomRef.current = false;
   };
 
   // ==========================================
@@ -1599,15 +1526,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
 
             <button
               type="button"
-              onClick={() => appendPageAndScroll(false)}
-              title="Thêm trang mới"
-              className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <FilePlus2 size={16} />
-            </button>
-
-            <button
-              type="button"
               onClick={() => {
                 setShowSettingsMenu((v) => !v);
                 setShowShapeMenu(false);
@@ -1707,7 +1625,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                     type="button"
                     onClick={() => {
                       setPenColor(sw.color);
-                      if (tool === 'highlighter' || tool === 'eraser_stroke' || tool === 'hand') {
+                      if (tool === 'highlighter' || tool === 'eraser_stroke') {
                         setTool('pen');
                       }
                     }}
@@ -1735,7 +1653,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                     if (tool === 'highlighter') setHighlighterColor(e.target.value);
                     else {
                       setPenColor(e.target.value);
-                      if (tool === 'eraser_stroke' || tool === 'hand') setTool('pen');
+                      if (tool === 'eraser_stroke') setTool('pen');
                     }
                   }}
                   className="sr-only"
@@ -1918,19 +1836,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                 }`}
               >
                 <Sparkles size={15} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTool('hand')}
-                title="Kéo di chuyển trang (hoặc giữ phím Space)"
-                className={`w-8 h-8 rounded-full hidden sm:flex items-center justify-center transition-colors cursor-pointer ${
-                  tool === 'hand'
-                    ? 'bg-blue-700 text-white shadow-xs'
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <Hand size={15} />
               </button>
 
               <button
@@ -2439,8 +2344,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
               ref={viewportRef}
               onScroll={handleViewportScroll}
               onWheel={handleViewportWheel}
-              onTouchStart={handleViewportTouchStart}
-              onTouchEnd={handleViewportTouchEnd}
               className="flex-1 overflow-auto p-1.5 sm:p-2.5"
             >
               <div className="min-w-full w-max flex flex-col items-center">
@@ -2471,22 +2374,18 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                       setShowSettingsMenu(false);
                       setShowZoomMenu(false);
                     }}
-                    onNearBottomWrite={handleNearBottomWrite}
                   />
                 ))}
 
-                {/* Subtle Bottom Auto-Create Hint & Manual Add Trigger */}
-                <div className="py-4 flex items-center justify-center gap-3 shrink-0">
-                  <span className="text-xs text-slate-400">
-                    Viết gần hết trang rồi cuộn hoặc vuốt xuống để tự động tạo trang mới
-                  </span>
+                {/* Bottom Manual Add Page Button */}
+                <div className="py-5 flex items-center justify-center shrink-0">
                   <button
                     type="button"
-                    onClick={() => appendPageAndScroll(false)}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+                    onClick={appendPageAndScroll}
+                    className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 text-slate-700 text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <Plus size={13} className="text-blue-600" />
-                    <span>Thêm trang</span>
+                    <Plus size={14} className="text-blue-600" />
+                    <span>Thêm trang mới</span>
                   </button>
                 </div>
               </div>

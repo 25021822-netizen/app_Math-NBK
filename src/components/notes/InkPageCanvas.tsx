@@ -13,15 +13,15 @@ import {
   isShapeTool,
 } from './types';
 import {
-  Bounds,
-  boundsIntersect,
   drawElement,
   drawInkShape,
   drawInkStroke,
   drawPageBackgroundImage,
   drawPaperBackground,
+  drawYellowObjectBorder,
   getElementBounds,
   hitTestElement,
+  isElementInLasso,
   translateElement,
 } from './inkRenderer';
 
@@ -56,7 +56,6 @@ export interface InkPageCanvasProps {
   onEraseElements: (pageIndex: number, erasedIds: Set<string>, pushHistoryOnce: boolean) => void;
   onUpdatePageTitle: (pageIndex: number, title: string) => void;
   onDismissPopovers: () => void;
-  onNearBottomWrite?: (pageIndex: number) => void;
 }
 
 function createId(prefix: string): string {
@@ -84,7 +83,6 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
   onEraseElements,
   onUpdatePageTitle,
   onDismissPopovers,
-  onNearBottomWrite,
 }) => {
   const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -110,7 +108,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
   // Live drawing refs
   const activeStrokeRef = useRef<InkStroke | null>(null);
   const activeShapeRef = useRef<InkShape | null>(null);
-  const marqueeBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const lassoPointsRef = useRef<Array<{ x: number; y: number }> | null>(null);
   const draggingSelectionRef = useRef<{
     active: boolean;
     startX: number;
@@ -224,7 +222,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       drawInkShape(ctx, activeShapeRef.current);
     }
 
-    // 4. Selection bounding box
+    // 4. Selection yellow object borders & group bounding box
     if (pageSelectedIds.length > 0) {
       const selSet = new Set(pageSelectedIds);
       let minX = Infinity;
@@ -237,6 +235,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
 
       for (const el of page.elements) {
         if (!selSet.has(el.id)) continue;
+        drawYellowObjectBorder(ctx, el, dx, dy);
         const b = getElementBounds(el);
         minX = Math.min(minX, b.minX + dx);
         minY = Math.min(minY, b.minY + dy);
@@ -248,12 +247,13 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       if (found) {
         const pad = 8;
         ctx.save();
-        ctx.strokeStyle = '#2563eb';
-        ctx.lineWidth = 1.75;
+        ctx.strokeStyle = '#ca8a04';
+        ctx.lineWidth = 1.6;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2);
         ctx.setLineDash([]);
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#fef08a';
+        ctx.strokeStyle = '#ca8a04';
         const corners = [
           [minX - pad, minY - pad],
           [maxX + pad, minY - pad],
@@ -268,20 +268,33 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       }
     }
 
-    // 5. Marquee selection box
-    if (marqueeBoxRef.current) {
-      const m = marqueeBoxRef.current;
-      const rx = Math.min(m.x1, m.x2);
-      const ry = Math.min(m.y1, m.y2);
-      const rw = Math.abs(m.x2 - m.x1);
-      const rh = Math.abs(m.y2 - m.y1);
+    // 5. Freeform Lasso loop + live yellow border preview on enclosed objects
+    if (lassoPointsRef.current && lassoPointsRef.current.length >= 2) {
+      const pts = lassoPointsRef.current;
+
+      // Highlight every object currently inside the lasso with a yellow border
+      for (const el of page.elements) {
+        if (isElementInLasso(el, pts)) {
+          drawYellowObjectBorder(ctx, el);
+        }
+      }
+
       ctx.save();
-      ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(250, 204, 21, 0.08)';
+      ctx.fill();
+
       ctx.strokeStyle = '#2563eb';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
-      ctx.fillRect(rx, ry, rw, rh);
-      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([6, 5]);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -436,8 +449,8 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       handleCommitText();
     }
 
-    // Pan with hand tool, spacebar, or middle mouse button
-    if (tool === 'hand' || isSpacePressed || e.button === 1) {
+    // Pan with spacebar or middle mouse button
+    if (isSpacePressed || e.button === 1) {
       const vp = viewportRef.current;
       if (!vp) return;
       isPointerDownRef.current = true;
@@ -554,7 +567,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
         scheduleOverlayRedraw();
       } else {
         onSelectIds([]);
-        marqueeBoxRef.current = { x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y };
+        lassoPointsRef.current = [{ x: pt.x, y: pt.y }];
         scheduleOverlayRedraw();
       }
       return;
@@ -626,10 +639,13 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       return;
     }
 
-    if (marqueeBoxRef.current) {
-      marqueeBoxRef.current.x2 = pt.x;
-      marqueeBoxRef.current.y2 = pt.y;
-      scheduleOverlayRedraw();
+    if (lassoPointsRef.current) {
+      const pts = lassoPointsRef.current;
+      const last = pts[pts.length - 1];
+      if (!last || Math.hypot(pt.x - last.x, pt.y - last.y) >= 3) {
+        pts.push({ x: pt.x, y: pt.y });
+        scheduleOverlayRedraw();
+      }
       return;
     }
 
@@ -703,18 +719,22 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       return;
     }
 
-    if (marqueeBoxRef.current) {
-      const m = marqueeBoxRef.current;
-      marqueeBoxRef.current = null;
-      const box: Bounds = {
-        minX: Math.min(m.x1, m.x2),
-        minY: Math.min(m.y1, m.y2),
-        maxX: Math.max(m.x1, m.x2),
-        maxY: Math.max(m.y1, m.y2),
-      };
-      if (box.maxX - box.minX > 6 || box.maxY - box.minY > 6) {
+    if (lassoPointsRef.current) {
+      const pts = lassoPointsRef.current;
+      lassoPointsRef.current = null;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      if (pts.length >= 2 && (maxX - minX > 6 || maxY - minY > 6)) {
         const hitIds = page.elements
-          .filter((el) => boundsIntersect(getElementBounds(el), box))
+          .filter((el) => isElementInLasso(el, pts))
           .map((el) => el.id);
         onSelectIds(hitIds);
       }
@@ -727,9 +747,6 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       activeShapeRef.current = null;
       if (Math.hypot(shp.x2 - shp.x1, shp.y2 - shp.y1) > 4) {
         onCommitElements(pageIndex, [...page.elements, shp]);
-        if (Math.max(shp.y1, shp.y2) > pageHeight - 120) {
-          onNearBottomWrite?.(pageIndex);
-        }
       }
       scheduleOverlayRedraw();
       return;
@@ -740,10 +757,6 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       activeStrokeRef.current = null;
       if (str.points.length > 0) {
         onCommitElements(pageIndex, [...page.elements, str]);
-        const maxY = str.points.reduce((m, p) => Math.max(m, p.y), 0);
-        if (maxY > pageHeight - 120) {
-          onNearBottomWrite?.(pageIndex);
-        }
       }
       scheduleOverlayRedraw();
     }
@@ -751,7 +764,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
 
   // Standard pointer arrow cursor when writing/drawing (never crosshair '+')
   const canvasCursorClass =
-    tool === 'hand' || isSpacePressed
+    isSpacePressed
       ? 'cursor-grab active:cursor-grabbing'
       : tool === 'text'
       ? 'cursor-text'

@@ -61,8 +61,7 @@ export type InkTool =
   | 'select'
   | InkShapeKind
   | 'text'
-  | 'laser'
-  | 'hand';
+  | 'laser';
 
 export type PaperStyle = 'blank' | 'lined' | 'grid' | 'dots';
 export type PaperTheme = 'white' | 'cream' | 'slate' | 'chalkboard';

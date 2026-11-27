@@ -743,6 +743,176 @@ export function boundsIntersect(a: Bounds, b: Bounds): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }
 
+export function pointInPolygon(
+  px: number,
+  py: number,
+  poly: ReadonlyArray<{ x: number; y: number }>
+): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x;
+    const yi = poly[i].y;
+    const xj = poly[j].x;
+    const yj = poly[j].y;
+    const intersect =
+      yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi || 1e-9) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function segmentsIntersect(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number
+): boolean {
+  const ccw = (p1x: number, p1y: number, p2x: number, p2y: number, p3x: number, p3y: number) =>
+    (p3y - p1y) * (p2x - p1x) > (p2y - p1y) * (p3x - p1x);
+  return (
+    ccw(ax, ay, cx, cy, dx, dy) !== ccw(bx, by, cx, cy, dx, dy) &&
+    ccw(ax, ay, bx, by, cx, cy) !== ccw(ax, ay, bx, by, dx, dy)
+  );
+}
+
+function segmentIntersectsPolygon(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  poly: ReadonlyArray<{ x: number; y: number }>
+): boolean {
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    if (segmentsIntersect(x1, y1, x2, y2, a.x, a.y, b.x, b.y)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isElementInLasso(
+  el: InkElement,
+  poly: ReadonlyArray<{ x: number; y: number }>
+): boolean {
+  if (poly.length < 2) return false;
+
+  let pMinX = Infinity;
+  let pMinY = Infinity;
+  let pMaxX = -Infinity;
+  let pMaxY = -Infinity;
+  for (const p of poly) {
+    if (p.x < pMinX) pMinX = p.x;
+    if (p.y < pMinY) pMinY = p.y;
+    if (p.x > pMaxX) pMaxX = p.x;
+    if (p.y > pMaxY) pMaxY = p.y;
+  }
+
+  const b = getElementBounds(el);
+  if (!boundsIntersect(b, { minX: pMinX, minY: pMinY, maxX: pMaxX, maxY: pMaxY })) {
+    return false;
+  }
+
+  if (poly.length < 3) {
+    return true;
+  }
+
+  if (el.kind === 'stroke') {
+    const pts = el.points;
+    for (let i = 0; i < pts.length; i++) {
+      if (pointInPolygon(pts[i].x, pts[i].y, poly)) return true;
+      if (i > 0 && segmentIntersectsPolygon(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, poly)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (
+    el.kind === 'shape' &&
+    (el.shape === 'line' ||
+      el.shape === 'dashed_line' ||
+      el.shape === 'dashdot_line' ||
+      el.shape === 'arrow' ||
+      el.shape === 'double_arrow' ||
+      el.shape === 'ray')
+  ) {
+    for (let k = 0; k <= 4; k++) {
+      const t = k / 4;
+      const sx = el.x1 + (el.x2 - el.x1) * t;
+      const sy = el.y1 + (el.y2 - el.y1) * t;
+      if (pointInPolygon(sx, sy, poly)) return true;
+    }
+    if (segmentIntersectsPolygon(el.x1, el.y1, el.x2, el.y2, poly)) return true;
+    return false;
+  }
+
+  // For shapes, text, and images: sample a 5x5 grid across element bounds and check edge intersections
+  for (let ix = 0; ix <= 4; ix++) {
+    const sx = b.minX + ((b.maxX - b.minX) * ix) / 4;
+    for (let iy = 0; iy <= 4; iy++) {
+      const sy = b.minY + ((b.maxY - b.minY) * iy) / 4;
+      if (pointInPolygon(sx, sy, poly)) return true;
+    }
+  }
+
+  // Check if any lasso vertex falls inside the element bounds
+  for (const p of poly) {
+    if (p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY) {
+      return true;
+    }
+  }
+
+  // Check if any edge of element bounds crosses the lasso polygon
+  return (
+    segmentIntersectsPolygon(b.minX, b.minY, b.maxX, b.minY, poly) ||
+    segmentIntersectsPolygon(b.maxX, b.minY, b.maxX, b.maxY, poly) ||
+    segmentIntersectsPolygon(b.maxX, b.maxY, b.minX, b.maxY, poly) ||
+    segmentIntersectsPolygon(b.minX, b.maxY, b.minX, b.minY, poly)
+  );
+}
+
+export function drawYellowObjectBorder(
+  ctx: CanvasRenderingContext2D,
+  el: InkElement,
+  dx: number = 0,
+  dy: number = 0
+) {
+  const b = getElementBounds(el);
+  const pad = 4;
+  const x = b.minX + dx - pad;
+  const y = b.minY + dy - pad;
+  const w = Math.max(8, b.maxX - b.minX + pad * 2);
+  const h = Math.max(8, b.maxY - b.minY + pad * 2);
+  const r = 6;
+
+  ctx.save();
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  ctx.fillStyle = 'rgba(250, 204, 21, 0.13)';
+  ctx.fill();
+
+  // Outer soft yellow glow
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.5)';
+  ctx.lineWidth = 4.5;
+  ctx.stroke();
+
+  // Crisp bright yellow border
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 2.25;
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function translateElement(el: InkElement, dx: number, dy: number): InkElement {
   if (el.kind === 'stroke') {
     return {
