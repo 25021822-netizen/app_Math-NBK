@@ -1206,11 +1206,16 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     if (userRole === 'admin') {
-      if (currentTab !== 'admin_dashboard' && currentTab !== 'admin_broadcasts' && currentTab !== 'profile') {
+      if (
+        currentTab !== 'admin_dashboard' &&
+        currentTab !== 'admin_broadcasts' &&
+        currentTab !== 'notes' &&
+        currentTab !== 'profile'
+      ) {
         setCurrentTab('admin_dashboard');
       }
     } else if (userRole === 'teacher') {
-      const baseTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'profile', 'exam'];
+      const baseTeacherTabs = ['classroom', 'teacher_gradebook', 'teacher_portal', 'exam_repository', 'notes', 'profile', 'exam'];
       const isAllowedBase = baseTeacherTabs.includes(currentTab);
       const isAllowedSubject =
         ['geometry', 'physics_sim', 'chemistry_lab'].includes(currentTab) &&
@@ -1219,7 +1224,7 @@ export default function App() {
         setCurrentTab('classroom');
       }
     } else if (userRole === 'student') {
-      const allowedStudentTabs = ['classroom', 'student_history', 'geometry', 'physics_sim', 'chemistry_lab', 'profile', 'exam'];
+      const allowedStudentTabs = ['classroom', 'student_history', 'geometry', 'physics_sim', 'chemistry_lab', 'notes', 'profile', 'exam'];
       if (!allowedStudentTabs.includes(currentTab)) {
         setCurrentTab('classroom');
       }
