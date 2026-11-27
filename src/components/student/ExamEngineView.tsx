@@ -3,6 +3,7 @@ import { Exam, Question, CheatLog, StudentExamSubmission, canStudentViewExamScor
 import { gradePart2TrueFalse, validatePart3ShortAnswerFormat, isAnswerEquivalent } from '../../lib/scoringEngine';
 import { MathView } from '../MathView';
 import { ExamImage } from '../common/ExamImage';
+import { ConfettiCelebration } from '../common/ConfettiCelebration';
 import {
   Clock,
   ShieldAlert,
@@ -93,6 +94,8 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
   const [isPaletteExpandedMobile, setIsPaletteExpandedMobile] = useState<boolean>(true);
   // Highlight tạm thời câu hỏi vừa nhảy tới
   const [highlightedQuestionId, setHighlightedQuestionId] = useState<string | null>(null);
+  // Hiệu ứng pháo hoa chúc mừng khi học sinh hoàn thành nộp bài thi
+  const [showCelebrationConfetti, setShowCelebrationConfetti] = useState<boolean>(false);
 
   // Trạng thái chế độ toàn màn hình
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
@@ -509,6 +512,9 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
     }
 
     setIsSubmitted(true);
+    if (!disqualifyReason && !isTeacherPreview) {
+      setShowCelebrationConfetti(true);
+    }
     localStorage.removeItem(`math_draft_${studentId}_${exam.id}`);
     localStorage.removeItem(`math_flags_${studentId}_${exam.id}`);
     exitFullscreen();
@@ -752,6 +758,12 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
         </div>
       )}
 
+      {/* Hiệu ứng pháo hoa chúc mừng khi học sinh hoàn thành bài thi */}
+      <ConfettiCelebration
+        active={showCelebrationConfetti}
+        onComplete={() => setShowCelebrationConfetti(false)}
+      />
+
       {/* Score Report (When Submitted) */}
       {isSubmitted && scoreReport && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in zoom-in-95 duration-200">
@@ -764,8 +776,11 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
               {scoreReport.disqualifyReason ? (
                 <p className="text-xs text-red-600 font-bold mt-1">{scoreReport.disqualifyReason}</p>
               ) : (
-                <p className="text-xs text-emerald-600 font-bold mt-1">
-                  Đã nộp bài hợp lệ
+                <p className="text-xs text-emerald-600 font-bold mt-1 flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-amber-500 shrink-0" />
+                  <span>
+                    Chúc mừng bạn đã hoàn thành và nộp bài thi thành công!
+                  </span>
                 </p>
               )}
             </div>
@@ -891,6 +906,7 @@ export const ExamEngineView: React.FC<ExamEngineViewProps> = ({
                   answersRef.current = {};
                   setIsSubmitted(false);
                   setIsDisqualified(false);
+                  setShowCelebrationConfetti(false);
                   setInfractionCount(0);
                   setTimeLeft(nextDurationSec);
                   setAnswers({});

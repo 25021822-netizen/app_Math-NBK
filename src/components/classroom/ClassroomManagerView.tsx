@@ -17,6 +17,7 @@ import {
 import { dbFetchClassMessages, dbFetchLessons, dbUploadPdfFile, dbSaveExam, dbSaveClassrooms } from '../../services/dbSyncService';
 import { MathView } from '../MathView';
 import { DeleteConfirmationModal } from '../common/DeleteConfirmationModal';
+import { ClassroomLuckyWheelModal, ClassroomLuckyWheelLogo } from './ClassroomLuckyWheelModal';
 import { isNotificationsEnabled, setNotificationsEnabled } from '../../utils/notificationService';
 import { normalizeSafeHref, renderTextWithLinks } from '../../lib/linkify';
 import {
@@ -244,6 +245,7 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
     fileData?: string;
     fileUrl?: string;
   } | null>(null);
+  const [showLuckyWheelModal, setShowLuckyWheelModal] = useState<boolean>(false);
 
   // Tự động chọn lớp đầu tiên thuộc quyền truy cập của người dùng (trong danh sách được phép nhìn thấy)
   useEffect(() => {
@@ -2725,6 +2727,20 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     <span>+ Thêm Học Sinh</span>
                   </button>
                 )}
+
+                {/* Logo nhỏ Vòng Quay May Mắn riêng cho từng nhóm lớp */}
+                <button
+                  type="button"
+                  onClick={() => setShowLuckyWheelModal(true)}
+                  title={`Vòng quay may mắn — ${currentClass.name}`}
+                  aria-label="Mở vòng quay may mắn lớp học"
+                  className="w-8 h-8 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 flex items-center justify-center shadow-2xs transition-colors cursor-pointer group shrink-0"
+                >
+                  <ClassroomLuckyWheelLogo
+                    size={20}
+                    className="group-hover:rotate-45 transition-transform duration-500"
+                  />
+                </button>
               </div>
             </div>
 
@@ -5470,6 +5486,19 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Vòng Quay May Mắn riêng cho từng nhóm lớp */}
+      {currentClass && isCurrentClassMember && (
+        <ClassroomLuckyWheelModal
+          key={currentClass.id}
+          isOpen={showLuckyWheelModal}
+          onClose={() => setShowLuckyWheelModal(false)}
+          classId={currentClass.id}
+          className={currentClass.name}
+          enrolledStudents={enrolledStudents}
+          userRole={userRole}
+        />
       )}
     </div>
   );
