@@ -32,24 +32,27 @@ export function drawPaperBackground(
   ctx.fillRect(0, 0, width, height);
 
   if (paperStyle === 'lined') {
-    const step = 40;
+    const step = 44;
     ctx.strokeStyle = theme.line;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
-    for (let y = step * 2; y < height; y += step) {
+    for (let y = step; y < height; y += step) {
       ctx.moveTo(0, y + 0.5);
       ctx.lineTo(width, y + 0.5);
     }
     ctx.stroke();
 
-    // Subtle vertical margin rule
+    // Scrble Ink dual vertical left & right margin rules
     ctx.strokeStyle =
       paperTheme === 'slate' || paperTheme === 'chalkboard'
-        ? 'rgba(244, 63, 94, 0.25)'
-        : 'rgba(244, 63, 94, 0.28)';
+        ? 'rgba(244, 63, 94, 0.28)'
+        : 'rgba(225, 29, 72, 0.34)';
+    ctx.lineWidth = 1.25;
     ctx.beginPath();
-    ctx.moveTo(116.5, 0);
-    ctx.lineTo(116.5, height);
+    ctx.moveTo(76.5, 0);
+    ctx.lineTo(76.5, height);
+    ctx.moveTo(width - 76.5, 0);
+    ctx.lineTo(width - 76.5, height);
     ctx.stroke();
   } else if (paperStyle === 'grid') {
     const minor = 28;
@@ -543,6 +546,16 @@ export async function renderPageToCanvas(
         })
     )
   );
+
+  if (page.pageTitle && page.pageTitle.trim()) {
+    ctx.save();
+    ctx.fillStyle =
+      page.paperTheme === 'slate' || page.paperTheme === 'chalkboard' ? '#f8fafc' : '#0f172a';
+    ctx.font = '700 32px "Plus Jakarta Sans", system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(page.pageTitle.trim(), 96, 66);
+    ctx.restore();
+  }
 
   // Render images first, then shapes/strokes/text in natural order
   for (const el of page.elements) {

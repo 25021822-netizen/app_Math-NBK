@@ -72,6 +72,7 @@ export interface NotePage {
   id: string;
   paperStyle: PaperStyle;
   paperTheme: PaperTheme;
+  pageTitle?: string;
   elements: InkElement[];
 }
 
@@ -102,7 +103,7 @@ export const PAPER_THEME_META: Record<
   white: {
     label: 'Giấy trắng',
     bg: '#ffffff',
-    line: 'rgba(148, 163, 184, 0.28)',
+    line: 'rgba(59, 130, 246, 0.28)',
     dot: 'rgba(100, 116, 139, 0.32)',
     defaultInk: '#0f172a',
     swatchClass: 'bg-white border-slate-300 text-slate-800',
