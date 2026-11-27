@@ -13,7 +13,9 @@ import {
   Flag,
   Trophy,
   Sparkles,
+  Fish,
 } from 'lucide-react';
+import { LuckyFishingStage, FishingStudentEntry } from './LuckyFishingStage';
 
 interface ClassroomLuckyWheelModalProps {
   isOpen: boolean;
@@ -24,7 +26,7 @@ interface ClassroomLuckyWheelModalProps {
   userRole: string;
 }
 
-type LuckyGameMode = 'wheel' | 'duck_race';
+type LuckyGameMode = 'wheel' | 'duck_race' | 'fishing';
 
 interface SpinRecord {
   id: string;
@@ -177,7 +179,10 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<StoredLuckyState>;
         return {
-          gameMode: parsed.gameMode === 'duck_race' ? 'duck_race' : 'wheel',
+          gameMode:
+            parsed.gameMode === 'duck_race' || parsed.gameMode === 'fishing'
+              ? parsed.gameMode
+              : 'wheel',
           excludedStudentIds: Array.isArray(parsed.excludedStudentIds) ? parsed.excludedStudentIds : [],
           removeAfterWin: Boolean(parsed.removeAfterWin),
           soundEnabled: parsed.soundEnabled !== false,
@@ -212,12 +217,16 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
   const [isRacing, setIsRacing] = useState(false);
   const [racePodium, setRacePodium] = useState<{ id: string; name: string; rank: number }[]>([]);
 
+  // Fishing state
+  const [isFishing, setIsFishing] = useState(false);
+  const [fishingCastNonce, setFishingCastNonce] = useState(0);
+
   const spinTimeoutRef = useRef<number | null>(null);
   const tickIntervalRef = useRef<number | null>(null);
   const raceRafRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  const isBusy = isSpinning || isRacing;
+  const isBusy = isSpinning || isRacing || isFishing;
 
   // Sync state when switching classroom
   useEffect(() => {
@@ -230,6 +239,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
     setWinner(null);
     setIsSpinning(false);
     setIsRacing(false);
+    setIsFishing(false);
     setRacePodium([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId]);
@@ -364,6 +374,57 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
       });
     } catch {
       // ignore audio context errors
+    }
+  };
+
+  const playSplashSound = () => {
+    if (!soundEnabled || typeof window === 'undefined') return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(480, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(190, ctx.currentTime + 0.14);
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.16);
+    } catch {
+      // ignore audio context errors
+    }
+  };
+
+  const handleRequestFishingCast = () => {
+    if (isBusy || activeStudents.length === 0) return;
+    setWinner(null);
+    setFishingCastNonce((n) => n + 1);
+  };
+
+  const handleFishingCatchComplete = (caught: FishingStudentEntry) => {
+    setWinner({ id: caught.id, label: caught.label, game: 'fishing' });
+    playWinSound();
+    setHistory((prev) => [
+      {
+        id: `fish_${Date.now()}`,
+        label: caught.label,
+        game: 'fishing',
+        spunAt: new Date().toISOString(),
+      },
+      ...prev.slice(0, 14),
+    ]);
+    if (removeAfterWin) {
+      setExcludedStudentIds((prev) =>
+        prev.includes(caught.id) ? prev : [...prev, caught.id]
+      );
     }
   };
 
@@ -571,8 +632,12 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                 Lucky · {className}
               </h3>
               <p className="text-[11px] text-slate-500">
-                {gameMode === 'wheel' ? 'Vòng quay may mắn' : 'Đua vịt gọi tên'} ·{' '}
-                {activeStudents.length}/{enrolledStudents.length} học sinh tham gia
+                {gameMode === 'wheel'
+                  ? 'Vòng quay may mắn'
+                  : gameMode === 'duck_race'
+                  ? 'Đua vịt gọi tên'
+                  : 'Câu cá gọi tên'}{' '}
+                · {activeStudents.length}/{enrolledStudents.length} học sinh tham gia
               </p>
             </div>
           </div>
@@ -601,7 +666,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
         <div className="p-5 sm:p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left: Game Stage */}
           <div className="lg:col-span-7 flex flex-col items-center space-y-4">
-            {/* Game Mode Switcher: Vòng quay & Đua vịt */}
+            {/* Game Mode Switcher: Vòng quay, Đua vịt & Câu cá */}
             <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
               <button
                 type="button"
@@ -636,6 +701,23 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
               >
                 <Flag size={14} />
                 <span>Đua Vịt</span>
+              </button>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => {
+                  setGameMode('fishing');
+                  setWinner(null);
+                  setRacePodium([]);
+                }}
+                className={`px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  gameMode === 'fishing'
+                    ? 'bg-white text-sky-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Fish size={14} />
+                <span>Câu Cá</span>
               </button>
             </div>
 
@@ -757,7 +839,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                   </button>
                 )}
               </>
-            ) : (
+            ) : gameMode === 'duck_race' ? (
               /* DUCK RACE STAGE */
               <div className="w-full space-y-3">
                 <div className="rounded-2xl border border-sky-300 bg-gradient-to-b from-sky-500 to-cyan-600 p-3 shadow-inner overflow-hidden">
@@ -878,9 +960,22 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                   </button>
                 )}
               </div>
+            ) : (
+              /* FISHING POND STAGE */
+              <LuckyFishingStage
+                students={activeStudents}
+                isBusy={isBusy}
+                hasWinner={Boolean(winner)}
+                castNonce={fishingCastNonce}
+                onRequestCast={handleRequestFishingCast}
+                onFishingStateChange={setIsFishing}
+                onSplashSound={playSplashSound}
+                onBiteSound={() => playTickSound(880)}
+                onCatchComplete={handleFishingCatchComplete}
+              />
             )}
 
-            {/* Winner Banner (Shared for both Wheel & Duck Race) */}
+            {/* Winner Banner (Shared for Wheel, Duck Race & Fishing) */}
             {winner && (
               <div className="w-full p-4 rounded-2xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in zoom-in-95">
                 <div className="flex items-center gap-3 min-w-0">
@@ -889,7 +984,11 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                   </div>
                   <div className="min-w-0">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 block">
-                      {winner.game === 'duck_race' ? 'Vịt Về Đích Đầu Tiên' : 'Người Được Chọn'}
+                      {winner.game === 'duck_race'
+                        ? 'Vịt Về Đích Đầu Tiên'
+                        : winner.game === 'fishing'
+                        ? 'Cá Cắn Câu'
+                        : 'Người Được Chọn'}
                     </span>
                     <span className="text-base font-extrabold text-slate-900 block truncate">
                       {winner.label}
@@ -898,11 +997,21 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                 </div>
                 <button
                   type="button"
-                  onClick={gameMode === 'wheel' ? handleSpin : handleStartDuckRace}
+                  onClick={
+                    gameMode === 'wheel'
+                      ? handleSpin
+                      : gameMode === 'duck_race'
+                      ? handleStartDuckRace
+                      : handleRequestFishingCast
+                  }
                   disabled={activeStudents.length === 0}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 text-white font-bold text-xs whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  {gameMode === 'wheel' ? 'Quay tiếp' : 'Đua ván mới'}
+                  {gameMode === 'wheel'
+                    ? 'Quay tiếp'
+                    : gameMode === 'duck_race'
+                    ? 'Đua ván mới'
+                    : 'Thả câu tiếp'}
                 </button>
               </div>
             )}
@@ -949,7 +1058,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                   <p className="font-semibold text-slate-700">Lớp chưa có học sinh nào.</p>
                   <p className="text-[11px]">
                     {userRole === 'teacher'
-                      ? 'Hãy thêm học sinh vào nhóm lớp để sử dụng Vòng quay và Đua vịt.'
+                      ? 'Hãy thêm học sinh vào nhóm lớp để sử dụng Vòng quay, Đua vịt và Câu cá.'
                       : 'Khi lớp có thành viên tham gia, danh sách sẽ hiển thị tại đây.'}
                   </p>
                 </div>
@@ -1016,10 +1125,16 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
                           className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
                             rec.game === 'duck_race'
                               ? 'bg-amber-100 text-amber-800'
+                              : rec.game === 'fishing'
+                              ? 'bg-sky-100 text-sky-800'
                               : 'bg-blue-50 text-blue-700'
                           }`}
                         >
-                          {rec.game === 'duck_race' ? 'Đua vịt' : 'Vòng quay'}
+                          {rec.game === 'duck_race'
+                            ? 'Đua vịt'
+                            : rec.game === 'fishing'
+                            ? 'Câu cá'
+                            : 'Vòng quay'}
                         </span>
                       </div>
                       <span className="font-mono text-slate-400 tabular-nums shrink-0">
