@@ -6,10 +6,12 @@ import {
   Eraser,
   FileDown,
   FilePlus2,
+  FileUp,
   Grid3X3,
   Hand,
   ImagePlus,
   Lasso,
+  Loader2,
   Maximize2,
   Menu,
   Minimize2,
@@ -27,6 +29,7 @@ import {
   Trash2,
   Type,
   Undo2,
+  Wand2,
   ZoomIn,
   ZoomOut,
   AlignJustify,
@@ -54,6 +57,7 @@ import {
   renderPageToCanvas,
   translateElement,
 } from './inkRenderer';
+import { beautifyHandwrittenText } from './handwritingBeautify';
 import { InkPageCanvas } from './InkPageCanvas';
 
 interface InkNotesViewProps {
@@ -150,6 +154,14 @@ function sanitizeNotebooks(rawList: unknown): InkNoteBook[] {
           ? p.paperTheme
           : 'white',
       pageTitle: typeof p?.pageTitle === 'string' ? p.pageTitle : undefined,
+      height:
+        typeof p?.height === 'number' && Number.isFinite(p.height) && p.height >= 400
+          ? p.height
+          : undefined,
+      backgroundDataUrl:
+        typeof p?.backgroundDataUrl === 'string' && p.backgroundDataUrl.startsWith('data:image/')
+          ? p.backgroundDataUrl
+          : undefined,
       elements: Array.isArray(p?.elements)
         ? p.elements.filter((el): el is InkElement => {
             if (!el || typeof el !== 'object') return false;
@@ -247,6 +259,7 @@ const RULER_GRID_ITEMS: ReadonlyArray<{ id: RulerGridItemId; label: string }> = 
   { id: 'nonagon', label: 'Cửu giác đều (9 cạnh)' },
   { id: 'star', label: 'Ngôi sao 5 cánh' },
   { id: 'axes', label: 'Hệ trục tọa độ Oxy' },
+  { id: 'axes3d', label: 'Hệ trục tọa độ Oxyz' },
 ];
 
 function buildRegularPolygonSvgPoints(sides: number, startAngle: number = -Math.PI / 2, r: number = 7.4): string {
@@ -339,6 +352,36 @@ const ShapeGlyph: React.FC<{ shape: RulerGridItemId; size?: number }> = ({ shape
           <polyline points="9.2,7.2 12,4.2 14.8,7.2" />
           <line x1="4" y1="12" x2="19.5" y2="12" />
           <polyline points="16.8,9.2 19.8,12 16.8,14.8" />
+          <text
+            x="14.2"
+            y="19.2"
+            fontSize="5.8"
+            fontWeight="700"
+            fill="currentColor"
+            stroke="none"
+          >
+            xy
+          </text>
+        </>
+      )}
+      {shape === 'axes3d' && (
+        <>
+          <line x1="10" y1="14" x2="10" y2="4.2" />
+          <polyline points="7.6,6.8 10,4 12.4,6.8" />
+          <line x1="10" y1="14" x2="20" y2="14" />
+          <polyline points="17.4,11.6 20.2,14 17.4,16.4" />
+          <line x1="10" y1="14" x2="4.2" y2="19.8" />
+          <polyline points="4.2,16.4 4,20 7.6,19.8" />
+          <text
+            x="12.5"
+            y="9.2"
+            fontSize="5.4"
+            fontWeight="700"
+            fill="currentColor"
+            stroke="none"
+          >
+            xyz
+          </text>
         </>
       )}
     </svg>
@@ -437,6 +480,8 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   const [isSpacePressed, setIsSpacePressed] = useState<boolean>(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isImportingPdf, setIsImportingPdf] = useState<boolean>(false);
+  const [isBeautifying, setIsBeautifying] = useState<boolean>(false);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -446,6 +491,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pdfInputRef = useRef<HTMLInputElement | null>(null);
   const rulerBtnRef = useRef<HTMLButtonElement | null>(null);
   const activeShapeBtnRef = useRef<HTMLButtonElement | null>(null);
   const shapePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1201,17 +1247,21 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     try {
       const jspdfMod = await import('jspdf');
       const JsPdfCtor = jspdfMod.jsPDF || jspdfMod.default;
+      const firstPg = activeNotebook.pages[0];
+      const firstH = firstPg?.height || PAGE_HEIGHT;
       const pdf = new JsPdfCtor({
-        orientation: 'landscape',
+        orientation: firstH > PAGE_WIDTH ? 'portrait' : 'landscape',
         unit: 'px',
-        format: [PAGE_WIDTH, PAGE_HEIGHT],
+        format: [PAGE_WIDTH, firstH],
         hotfixes: ['px_scaling'],
       });
       for (let i = 0; i < activeNotebook.pages.length; i++) {
-        if (i > 0) pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT], 'landscape');
-        const pageCanvas = await renderPageToCanvas(activeNotebook.pages[i], 1.25);
+        const pg = activeNotebook.pages[i];
+        const pgH = pg.height || PAGE_HEIGHT;
+        if (i > 0) pdf.addPage([PAGE_WIDTH, pgH], pgH > PAGE_WIDTH ? 'portrait' : 'landscape');
+        const pageCanvas = await renderPageToCanvas(pg, 1.25);
         const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
-        pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
+        pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_WIDTH, pgH);
       }
       const safeTitle = (activeNotebook.title || 'ghi-chu').replace(/[^a-zA-Z0-9\u00C0-\u1EF9_-]+/g, '_');
       pdf.save(`${safeTitle}.pdf`);
@@ -1235,6 +1285,129 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     reader.readAsDataURL(file);
     e.target.value = '';
   };
+
+  const handlePdfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setIsImportingPdf(true);
+    showToast('Đang tải và xử lý các trang PDF...');
+
+    try {
+      let pdfjs = (window as any).pdfjsLib;
+      if (!pdfjs) {
+        let attempts = 0;
+        while (!pdfjs && attempts < 25) {
+          await new Promise((r) => setTimeout(r, 100));
+          pdfjs = (window as any).pdfjsLib;
+          attempts++;
+        }
+      }
+      if (!pdfjs) {
+        throw new Error('Trình đọc PDF chưa sẵn sàng, vui lòng tải lại trang.');
+      }
+
+      const arrayBuf = await file.arrayBuffer();
+      const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(arrayBuf) }).promise;
+      const maxPagesToImport = Math.min(pdfDoc.numPages, 25);
+      const importedPages: NotePage[] = [];
+
+      for (let pageNum = 1; pageNum <= maxPagesToImport; pageNum++) {
+        const pdfPage = await pdfDoc.getPage(pageNum);
+        const vp1 = pdfPage.getViewport({ scale: 1 });
+        const targetScale = PAGE_WIDTH / Math.max(1, vp1.width);
+        const viewport = pdfPage.getViewport({ scale: targetScale });
+        const pageH = Math.max(720, Math.min(2800, Math.round(viewport.height)));
+
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = PAGE_WIDTH;
+        offCanvas.height = pageH;
+        const offCtx = offCanvas.getContext('2d');
+        if (!offCtx) continue;
+
+        offCtx.fillStyle = '#ffffff';
+        offCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+
+        await pdfPage.render({
+          canvasContext: offCtx,
+          viewport,
+        }).promise;
+
+        const dataUrl = offCanvas.toDataURL('image/jpeg', 0.85);
+        importedPages.push({
+          id: createId('page'),
+          paperStyle: 'blank',
+          paperTheme: 'white',
+          height: pageH,
+          backgroundDataUrl: dataUrl,
+          elements: [],
+        });
+      }
+
+      if (importedPages.length === 0) {
+        throw new Error('Không đọc được trang nào từ tệp PDF này.');
+      }
+
+      const cleanTitle = file.name.replace(/\.pdf$/i, '').trim() || 'Tài liệu PDF';
+      const now = new Date().toISOString();
+      const newNb: InkNoteBook = {
+        id: createId('nb'),
+        title: cleanTitle,
+        subject: activeNotebook?.subject || 'Toán Học',
+        createdAt: now,
+        updatedAt: now,
+        activePageIndex: 0,
+        pages: importedPages,
+      };
+
+      setNotebooks((prev) => [newNb, ...prev]);
+      setActiveNotebookId(newNb.id);
+      setSelectedIds([]);
+
+      requestAnimationFrame(() => {
+        viewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+        fitToViewportWidth();
+      });
+
+      const suffix =
+        pdfDoc.numPages > maxPagesToImport
+          ? ` (đã nhập ${maxPagesToImport}/${pdfDoc.numPages} trang đầu)`
+          : ` (${importedPages.length} trang)`;
+      showToast(`Đã mở file PDF${suffix} — Bạn có thể viết trực tiếp lên trang!`);
+    } catch (err: any) {
+      showToast(err?.message || 'Không thể mở tệp PDF, vui lòng kiểm tra lại file.');
+    } finally {
+      setIsImportingPdf(false);
+    }
+  };
+
+  const handleBeautifyHandwriting = async () => {
+    if (!activeNotebook || isBeautifying) return;
+    setIsBeautifying(true);
+    try {
+      const result = await beautifyHandwrittenText(activePage.elements, selectedIds);
+      if (result.convertedCount > 0) {
+        handleCommitElementsForPage(activePageIndex, result.nextElements, true);
+        setSelectedIds([]);
+        showToast(`Đã làm đẹp ${result.convertedCount} đoạn chữ viết tay (giữ nguyên hình vẽ)`);
+      } else {
+        showToast('Không nhận diện thấy chữ viết tay (các hình vẽ được giữ nguyên)');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Không thể nhận diện chữ viết tay lúc này.');
+    } finally {
+      setIsBeautifying(false);
+    }
+  };
+
+  const hasSelectedStroke = useMemo(() => {
+    if (selectedIds.length === 0) return false;
+    const selSet = new Set(selectedIds);
+    return activePage.elements.some(
+      (el) => selSet.has(el.id) && el.kind === 'stroke' && (el.tool === 'pen' || el.tool === 'pencil')
+    );
+  }, [selectedIds, activePage.elements]);
 
   const filteredNotebooks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1332,6 +1505,29 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
             >
               <Redo2 size={16} />
             </button>
+
+            <button
+              type="button"
+              onClick={() => pdfInputRef.current?.click()}
+              disabled={isImportingPdf}
+              title="Tải file PDF lên để viết bài trực tiếp lên từng trang"
+              aria-label="Mở file PDF để viết"
+              className="h-8 px-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              {isImportingPdf ? (
+                <Loader2 size={14} className="text-emerald-600 animate-spin shrink-0" />
+              ) : (
+                <FileUp size={14} className="text-emerald-600 shrink-0" />
+              )}
+              <span className="hidden sm:inline">Mở PDF</span>
+            </button>
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={handlePdfFileChange}
+              className="hidden"
+            />
 
             <button
               type="button"
@@ -1631,6 +1827,28 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                 }`}
               >
                 <Type size={16} />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBeautifyHandwriting}
+                disabled={isBeautifying}
+                title="Nhận diện & chỉnh chữ viết tay thành chữ đẹp (chỉ chỉnh chữ, giữ nguyên hình vẽ)"
+                aria-label="Làm đẹp chữ viết tay"
+                className={`h-8 px-2.5 rounded-full flex items-center gap-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 ${
+                  isBeautifying
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/80'
+                }`}
+              >
+                {isBeautifying ? (
+                  <Loader2 size={14} className="animate-spin shrink-0" />
+                ) : (
+                  <Wand2 size={14} className="shrink-0" />
+                )}
+                <span className="hidden lg:inline">
+                  {isBeautifying ? 'Đang nhận diện...' : 'Chỉnh chữ đẹp'}
+                </span>
               </button>
 
               <button
@@ -2128,6 +2346,25 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                   ))}
                 </div>
                 <div className="w-px h-4 bg-slate-200" />
+                {hasSelectedStroke && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleBeautifyHandwriting}
+                      disabled={isBeautifying}
+                      title="Nhận diện & chuyển chữ viết tay đã chọn thành chữ đẹp (giữ nguyên hình vẽ)"
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
+                    >
+                      {isBeautifying ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Wand2 size={13} />
+                      )}
+                      <span>{isBeautifying ? 'Đang chỉnh...' : 'Làm đẹp chữ'}</span>
+                    </button>
+                    <div className="w-px h-4 bg-slate-200" />
+                  </>
+                )}
                 {hasSelectedImage && (
                   <>
                     <button

@@ -431,6 +431,47 @@ export function drawInkShape(ctx: CanvasRenderingContext2D, shape: InkShape) {
     ctx.fillText('O', cx - 20, cy + 20);
     ctx.fillText('x', minX + w - 14, cy + 22);
     ctx.fillText('y', cx + 12, minY + 16);
+  } else if (shape.shape === 'axes3d') {
+    const ox = minX + w * 0.36;
+    const oy = minY + h * 0.60;
+    const headLen = Math.max(10, shape.width * 3.4);
+
+    // Subtle dashed negative extensions
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox, minY + h * 0.92);
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(minX + w * 0.08, oy);
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox + (ox - minX) * 0.55, oy - (minY + h - oy) * 0.55);
+    ctx.stroke();
+    ctx.restore();
+
+    // Positive Oz (up), Oy (right), Ox (down-left)
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox, minY);
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(minX + w, oy);
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(minX, minY + h);
+    ctx.stroke();
+
+    if (h > 24) drawArrowHead(ctx, ox, oy, ox, minY, headLen);
+    if (w > 24) drawArrowHead(ctx, ox, oy, minX + w, oy, headLen);
+    if (Math.hypot(ox - minX, minY + h - oy) > 24) {
+      drawArrowHead(ctx, ox, oy, minX, minY + h, headLen);
+    }
+
+    // Labels O, x, y, z
+    ctx.font = 'italic 600 18px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('O', ox - 20, oy - 8);
+    ctx.fillText('z', ox + 12, minY + 18);
+    ctx.fillText('y', minX + w - 14, oy + 22);
+    ctx.fillText('x', minX + 18, minY + h - 8);
   } else {
     const verts = getShapePolygonVertices(shape);
     if (verts && verts.length > 0) {
@@ -645,6 +686,16 @@ export function hitTestElement(el: InkElement, x: number, y: number, radius: num
       );
     }
 
+    if (el.shape === 'axes3d') {
+      const ox = minX + (maxX - minX) * 0.36;
+      const oy = minY + (maxY - minY) * 0.60;
+      return (
+        distToSegment(x, y, ox, oy, ox, minY) <= threshold ||
+        distToSegment(x, y, ox, oy, maxX, oy) <= threshold ||
+        distToSegment(x, y, ox, oy, minX, maxY) <= threshold
+      );
+    }
+
     if (el.shape === 'circle') {
       const w = maxX - minX;
       const h = maxY - minY;
@@ -720,20 +771,68 @@ export function recolorElement(el: InkElement, color: string): InkElement {
   return { ...el, color };
 }
 
+export function drawPageBackgroundImage(
+  ctx: CanvasRenderingContext2D,
+  page: NotePage,
+  pageHeight: number,
+  imageCache: Map<string, HTMLImageElement>,
+  onImageLoad?: () => void
+) {
+  if (!page.backgroundDataUrl) return;
+  const cacheKey = `__bg_${page.id}`;
+  let img = imageCache.get(cacheKey);
+  if (!img || img.src !== page.backgroundDataUrl) {
+    img = new Image();
+    img.onload = () => {
+      onImageLoad?.();
+    };
+    img.onerror = () => {
+      onImageLoad?.();
+    };
+    img.src = page.backgroundDataUrl;
+    imageCache.set(cacheKey, img);
+  }
+  if (img.complete && img.naturalWidth > 0) {
+    ctx.save();
+    ctx.drawImage(img, 0, 0, PAGE_WIDTH, pageHeight);
+    ctx.restore();
+  }
+}
+
 export async function renderPageToCanvas(
   page: NotePage,
   scale: number = 1.5
 ): Promise<HTMLCanvasElement> {
+  const pageHeight = page.height || PAGE_HEIGHT;
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(PAGE_WIDTH * scale);
-  canvas.height = Math.round(PAGE_HEIGHT * scale);
+  canvas.height = Math.round(pageHeight * scale);
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
 
   ctx.scale(scale, scale);
-  drawPaperBackground(ctx, PAGE_WIDTH, PAGE_HEIGHT, page.paperStyle, page.paperTheme);
+  drawPaperBackground(
+    ctx,
+    PAGE_WIDTH,
+    pageHeight,
+    page.backgroundDataUrl ? 'blank' : page.paperStyle,
+    page.backgroundDataUrl ? 'white' : page.paperTheme
+  );
 
   const imgCache = new Map<string, HTMLImageElement>();
+
+  if (page.backgroundDataUrl) {
+    await new Promise<void>((resolve) => {
+      const bgImg = new Image();
+      bgImg.onload = () => {
+        ctx.drawImage(bgImg, 0, 0, PAGE_WIDTH, pageHeight);
+        resolve();
+      };
+      bgImg.onerror = () => resolve();
+      bgImg.src = page.backgroundDataUrl!;
+    });
+  }
+
   const imageElements = page.elements.filter((el): el is InkImageItem => el.kind === 'image');
   await Promise.all(
     imageElements.map(
@@ -750,7 +849,7 @@ export async function renderPageToCanvas(
     )
   );
 
-  if (page.pageTitle && page.pageTitle.trim()) {
+  if (!page.backgroundDataUrl && page.pageTitle && page.pageTitle.trim()) {
     ctx.save();
     ctx.fillStyle =
       page.paperTheme === 'slate' || page.paperTheme === 'chalkboard' ? '#f8fafc' : '#0f172a';

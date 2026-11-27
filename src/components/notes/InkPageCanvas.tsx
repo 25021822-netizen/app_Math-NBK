@@ -18,6 +18,7 @@ import {
   drawElement,
   drawInkShape,
   drawInkStroke,
+  drawPageBackgroundImage,
   drawPaperBackground,
   getElementBounds,
   hitTestElement,
@@ -133,13 +134,14 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
   const overlayRafRef = useRef<number | null>(null);
 
   const pageSelectedIds = isActive ? selectedIds : [];
+  const pageHeight = page.height || PAGE_HEIGHT;
 
   const redrawBaseCanvas = useCallback(() => {
     const canvas = baseCanvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const targetW = Math.round(PAGE_WIDTH * dpr);
-    const targetH = Math.round(PAGE_HEIGHT * dpr);
+    const targetH = Math.round(pageHeight * dpr);
     if (canvas.width !== targetW || canvas.height !== targetH) {
       canvas.width = targetW;
       canvas.height = targetH;
@@ -150,7 +152,19 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawPaperBackground(ctx, PAGE_WIDTH, PAGE_HEIGHT, page.paperStyle, page.paperTheme);
+    drawPaperBackground(
+      ctx,
+      PAGE_WIDTH,
+      pageHeight,
+      page.backgroundDataUrl ? 'blank' : page.paperStyle,
+      page.backgroundDataUrl ? 'white' : page.paperTheme
+    );
+
+    if (page.backgroundDataUrl) {
+      drawPageBackgroundImage(ctx, page, pageHeight, imageCacheRef.current, () =>
+        setImageLoadTick((n) => n + 1)
+      );
+    }
 
     const hiddenDuringDrag = draggingSelectionRef.current?.active
       ? draggingSelectionRef.current.ids
@@ -167,14 +181,14 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       }
     }
     ctx.restore();
-  }, [page, imageLoadTick]);
+  }, [page, pageHeight, imageLoadTick]);
 
   const redrawOverlayCanvas = useCallback(() => {
     const canvas = overlayCanvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const targetW = Math.round(PAGE_WIDTH * dpr);
-    const targetH = Math.round(PAGE_HEIGHT * dpr);
+    const targetH = Math.round(pageHeight * dpr);
     if (canvas.width !== targetW || canvas.height !== targetH) {
       canvas.width = targetW;
       canvas.height = targetH;
@@ -388,9 +402,9 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const scaleX = PAGE_WIDTH / rect.width;
-    const scaleY = PAGE_HEIGHT / rect.height;
+    const scaleY = pageHeight / rect.height;
     const x = Math.max(0, Math.min(PAGE_WIDTH, (e.clientX - rect.left) * scaleX));
-    const y = Math.max(0, Math.min(PAGE_HEIGHT, (e.clientY - rect.top) * scaleY));
+    const y = Math.max(0, Math.min(pageHeight, (e.clientY - rect.top) * scaleY));
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     const p = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5;
     return { x, y, p, t: performance.now() };
@@ -462,7 +476,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
         setEditingText({
           id: null,
           x: Math.min(PAGE_WIDTH - 240, Math.max(16, pt.x)),
-          y: Math.min(PAGE_HEIGHT - 90, Math.max(16, pt.y)),
+          y: Math.min(pageHeight - 90, Math.max(16, pt.y)),
           text: '',
           fontSize: 24,
           color: penColor,
@@ -713,7 +727,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       activeShapeRef.current = null;
       if (Math.hypot(shp.x2 - shp.x1, shp.y2 - shp.y1) > 4) {
         onCommitElements(pageIndex, [...page.elements, shp]);
-        if (Math.max(shp.y1, shp.y2) > PAGE_HEIGHT - 120) {
+        if (Math.max(shp.y1, shp.y2) > pageHeight - 120) {
           onNearBottomWrite?.(pageIndex);
         }
       }
@@ -727,7 +741,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       if (str.points.length > 0) {
         onCommitElements(pageIndex, [...page.elements, str]);
         const maxY = str.points.reduce((m, p) => Math.max(m, p.y), 0);
-        if (maxY > PAGE_HEIGHT - 120) {
+        if (maxY > pageHeight - 120) {
           onNearBottomWrite?.(pageIndex);
         }
       }
@@ -744,8 +758,8 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       : 'cursor-default';
 
   const scaledW = Math.round(PAGE_WIDTH * zoom);
-  const scaledH = Math.round(PAGE_HEIGHT * zoom);
-  const isDarkPaper = page.paperTheme === 'slate' || page.paperTheme === 'chalkboard';
+  const scaledH = Math.round(pageHeight * zoom);
+  const isDarkPaper = !page.backgroundDataUrl && (page.paperTheme === 'slate' || page.paperTheme === 'chalkboard');
 
   return (
     <div data-page-index={pageIndex} className="flex flex-col items-center shrink-0">
@@ -793,7 +807,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
             const rect = canvas.getBoundingClientRect();
             if (rect.width <= 0 || rect.height <= 0) return;
             const x = ((e.clientX - rect.left) * PAGE_WIDTH) / rect.width;
-            const y = ((e.clientY - rect.top) * PAGE_HEIGHT) / rect.height;
+            const y = ((e.clientY - rect.top) * pageHeight) / rect.height;
             const hitText = [...page.elements]
               .reverse()
               .find(
@@ -819,15 +833,15 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
           }}
         />
 
-        {/* Scrble Ink signature dashed TITLE box on top of Page 1 (pointer-events-none so pen writes seamlessly inside it, click TITLE label to type) */}
-        {pageIndex === 0 && (
+        {/* Scrble Ink signature dashed TITLE box on top of Page 1 (hidden for PDF pages) */}
+        {pageIndex === 0 && !page.backgroundDataUrl && (
           <div
             className="absolute pointer-events-none"
             style={{
               left: `${(76.5 / PAGE_WIDTH) * 100}%`,
               right: `${(76.5 / PAGE_WIDTH) * 100}%`,
               top: 0,
-              height: `${(132 / PAGE_HEIGHT) * 100}%`,
+              height: `${(132 / pageHeight) * 100}%`,
               border: `1.5px dashed ${isDarkPaper ? 'rgba(148, 163, 184, 0.45)' : 'rgba(100, 116, 139, 0.55)'}`,
               borderTop: 'none',
             }}

@@ -19,7 +19,8 @@ export type InkShapeKind =
   | 'octagon'
   | 'nonagon'
   | 'star'
-  | 'axes';
+  | 'axes'
+  | 'axes3d';
 
 export const SHAPE_TOOL_LIST: readonly InkShapeKind[] = [
   'line',
@@ -43,6 +44,7 @@ export const SHAPE_TOOL_LIST: readonly InkShapeKind[] = [
   'nonagon',
   'star',
   'axes',
+  'axes3d',
 ];
 
 const SHAPE_TOOL_SET = new Set<string>(SHAPE_TOOL_LIST);
@@ -122,6 +124,8 @@ export interface NotePage {
   paperStyle: PaperStyle;
   paperTheme: PaperTheme;
   pageTitle?: string;
+  height?: number;
+  backgroundDataUrl?: string;
   elements: InkElement[];
 }
 
