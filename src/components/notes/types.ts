@@ -1,14 +1,63 @@
+export type InkShapeKind =
+  | 'line'
+  | 'dashed_line'
+  | 'dashdot_line'
+  | 'arrow'
+  | 'double_arrow'
+  | 'ray'
+  | 'circle'
+  | 'ellipse'
+  | 'capsule'
+  | 'rect'
+  | 'triangle_right'
+  | 'triangle'
+  | 'right_triangle'
+  | 'diamond'
+  | 'pentagon'
+  | 'hexagon'
+  | 'heptagon'
+  | 'octagon'
+  | 'nonagon'
+  | 'star'
+  | 'axes';
+
+export const SHAPE_TOOL_LIST: readonly InkShapeKind[] = [
+  'line',
+  'dashed_line',
+  'dashdot_line',
+  'arrow',
+  'double_arrow',
+  'ray',
+  'circle',
+  'ellipse',
+  'capsule',
+  'rect',
+  'triangle_right',
+  'triangle',
+  'right_triangle',
+  'diamond',
+  'pentagon',
+  'hexagon',
+  'heptagon',
+  'octagon',
+  'nonagon',
+  'star',
+  'axes',
+];
+
+const SHAPE_TOOL_SET = new Set<string>(SHAPE_TOOL_LIST);
+
+export function isShapeTool(tool: string): tool is InkShapeKind {
+  return SHAPE_TOOL_SET.has(tool);
+}
+
 export type InkTool =
   | 'pen'
   | 'pencil'
   | 'highlighter'
   | 'eraser_stroke'
   | 'select'
-  | 'line'
-  | 'arrow'
-  | 'rect'
-  | 'ellipse'
-  | 'axes'
+  | InkShapeKind
   | 'text'
   | 'laser'
   | 'hand';
@@ -37,7 +86,7 @@ export interface InkStroke {
 export interface InkShape {
   id: string;
   kind: 'shape';
-  shape: 'line' | 'arrow' | 'rect' | 'ellipse' | 'axes';
+  shape: InkShapeKind;
   color: string;
   width: number;
   x1: number;

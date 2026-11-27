@@ -224,6 +224,99 @@ function drawArrowHead(
   ctx.stroke();
 }
 
+function getRegularPolygonVertices(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  sides: number,
+  startAngle: number = -Math.PI / 2
+): Array<{ x: number; y: number }> {
+  const pts: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i < sides; i++) {
+    const a = startAngle + (i * 2 * Math.PI) / sides;
+    pts.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) });
+  }
+  return pts;
+}
+
+function getStarVertices(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  points: number = 5
+): Array<{ x: number; y: number }> {
+  const pts: Array<{ x: number; y: number }> = [];
+  const total = points * 2;
+  for (let i = 0; i < total; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / points;
+    const ratio = i % 2 === 0 ? 1 : 0.42;
+    pts.push({ x: cx + rx * ratio * Math.cos(a), y: cy + ry * ratio * Math.sin(a) });
+  }
+  return pts;
+}
+
+function getShapePolygonVertices(shape: InkShape): Array<{ x: number; y: number }> | null {
+  const minX = Math.min(shape.x1, shape.x2);
+  const minY = Math.min(shape.y1, shape.y2);
+  const maxX = Math.max(shape.x1, shape.x2);
+  const maxY = Math.max(shape.y1, shape.y2);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const rx = Math.max(1, (maxX - minX) / 2);
+  const ry = Math.max(1, (maxY - minY) / 2);
+
+  switch (shape.shape) {
+    case 'rect':
+      return [
+        { x: minX, y: minY },
+        { x: maxX, y: minY },
+        { x: maxX, y: maxY },
+        { x: minX, y: maxY },
+      ];
+    case 'triangle':
+      return [
+        { x: cx, y: minY },
+        { x: maxX, y: maxY },
+        { x: minX, y: maxY },
+      ];
+    case 'triangle_right':
+      return [
+        { x: minX, y: minY },
+        { x: maxX, y: cy },
+        { x: minX, y: maxY },
+      ];
+    case 'right_triangle':
+      return [
+        { x: minX, y: minY },
+        { x: minX, y: maxY },
+        { x: maxX, y: maxY },
+      ];
+    case 'diamond':
+      return [
+        { x: cx, y: minY },
+        { x: maxX, y: cy },
+        { x: cx, y: maxY },
+        { x: minX, y: cy },
+      ];
+    case 'pentagon':
+      return getRegularPolygonVertices(cx, cy, rx, ry, 5);
+    case 'hexagon':
+      return getRegularPolygonVertices(cx, cy, rx, ry, 6, 0);
+    case 'heptagon':
+      return getRegularPolygonVertices(cx, cy, rx, ry, 7);
+    case 'octagon':
+      return getRegularPolygonVertices(cx, cy, rx, ry, 8, Math.PI / 8);
+    case 'nonagon':
+      return getRegularPolygonVertices(cx, cy, rx, ry, 9);
+    case 'star':
+      return getStarVertices(cx, cy, rx, ry, 5);
+    default:
+      return null;
+  }
+}
+
 export function drawInkShape(ctx: CanvasRenderingContext2D, shape: InkShape) {
   ctx.save();
   ctx.strokeStyle = shape.color;
@@ -238,23 +331,59 @@ export function drawInkShape(ctx: CanvasRenderingContext2D, shape: InkShape) {
   const w = Math.abs(x2 - x1);
   const h = Math.abs(y2 - y1);
 
-  if (shape.shape === 'line') {
+  if (shape.shape === 'line' || shape.shape === 'dashed_line' || shape.shape === 'dashdot_line') {
+    if (shape.shape === 'dashed_line') {
+      ctx.setLineDash([Math.max(10, shape.width * 3.5), Math.max(8, shape.width * 2.8)]);
+    } else if (shape.shape === 'dashdot_line') {
+      const dash = Math.max(12, shape.width * 4);
+      const gap = Math.max(6, shape.width * 2.2);
+      ctx.setLineDash([dash, gap, Math.max(2, shape.width * 0.8), gap]);
+    }
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
-  } else if (shape.shape === 'arrow') {
+  } else if (shape.shape === 'arrow' || shape.shape === 'double_arrow') {
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
     const headLen = Math.max(12, shape.width * 4);
     drawArrowHead(ctx, x1, y1, x2, y2, headLen);
-  } else if (shape.shape === 'rect') {
-    ctx.strokeRect(minX, minY, w, h);
+    if (shape.shape === 'double_arrow') {
+      drawArrowHead(ctx, x2, y2, x1, y1, headLen);
+    }
+  } else if (shape.shape === 'ray') {
+    const r = Math.max(7, shape.width * 2.2);
+    ctx.beginPath();
+    ctx.arc(x1, y1, r, 0, Math.PI * 2);
+    ctx.stroke();
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    if (dist > r) {
+      const ux = (x2 - x1) / dist;
+      const uy = (y2 - y1) / dist;
+      ctx.beginPath();
+      ctx.moveTo(x1 + ux * r, y1 + uy * r);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+  } else if (shape.shape === 'circle') {
+    const r = Math.max(2, Math.max(w, h) / 2);
+    ctx.beginPath();
+    ctx.arc(minX + w / 2, minY + h / 2, r, 0, Math.PI * 2);
+    ctx.stroke();
   } else if (shape.shape === 'ellipse') {
     ctx.beginPath();
     ctx.ellipse(minX + w / 2, minY + h / 2, Math.max(1, w / 2), Math.max(1, h / 2), 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (shape.shape === 'capsule') {
+    const r = Math.min(w, h) / 2;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(minX, minY, w, h, r);
+    } else {
+      ctx.rect(minX, minY, w, h);
+    }
     ctx.stroke();
   } else if (shape.shape === 'axes') {
     const cx = minX + w / 2;
@@ -302,6 +431,17 @@ export function drawInkShape(ctx: CanvasRenderingContext2D, shape: InkShape) {
     ctx.fillText('O', cx - 20, cy + 20);
     ctx.fillText('x', minX + w - 14, cy + 22);
     ctx.fillText('y', cx + 12, minY + 16);
+  } else {
+    const verts = getShapePolygonVertices(shape);
+    if (verts && verts.length > 0) {
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < verts.length; i++) {
+        ctx.lineTo(verts[i].x, verts[i].y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 
   ctx.restore();
@@ -402,7 +542,31 @@ export function getElementBounds(el: InkElement): Bounds {
     };
   }
   if (el.kind === 'shape') {
-    const pad = Math.max(4, el.width / 2);
+    const pad = Math.max(6, el.width / 2);
+    if (el.shape === 'circle') {
+      const minX = Math.min(el.x1, el.x2);
+      const minY = Math.min(el.y1, el.y2);
+      const w = Math.abs(el.x2 - el.x1);
+      const h = Math.abs(el.y2 - el.y1);
+      const r = Math.max(2, Math.max(w, h) / 2);
+      const cx = minX + w / 2;
+      const cy = minY + h / 2;
+      return {
+        minX: cx - r - pad,
+        minY: cy - r - pad,
+        maxX: cx + r + pad,
+        maxY: cy + r + pad,
+      };
+    }
+    if (el.shape === 'ray') {
+      const r = Math.max(7, el.width * 2.2);
+      return {
+        minX: Math.min(el.x1 - r, el.x2) - pad,
+        minY: Math.min(el.y1 - r, el.y2) - pad,
+        maxX: Math.max(el.x1 + r, el.x2) + pad,
+        maxY: Math.max(el.y1 + r, el.y2) + pad,
+      };
+    }
     return {
       minX: Math.min(el.x1, el.x2) - pad,
       minY: Math.min(el.y1, el.y2) - pad,
@@ -449,21 +613,29 @@ export function hitTestElement(el: InkElement, x: number, y: number, radius: num
 
   if (el.kind === 'shape') {
     const threshold = radius + el.width * 0.5;
-    if (el.shape === 'line' || el.shape === 'arrow') {
+    if (
+      el.shape === 'line' ||
+      el.shape === 'dashed_line' ||
+      el.shape === 'dashdot_line' ||
+      el.shape === 'arrow' ||
+      el.shape === 'double_arrow'
+    ) {
       return distToSegment(x, y, el.x1, el.y1, el.x2, el.y2) <= threshold;
     }
+    if (el.shape === 'ray') {
+      const r = Math.max(7, el.width * 2.2);
+      const distStart = Math.hypot(x - el.x1, y - el.y1);
+      return (
+        Math.abs(distStart - r) <= threshold ||
+        distToSegment(x, y, el.x1, el.y1, el.x2, el.y2) <= threshold
+      );
+    }
+
     const minX = Math.min(el.x1, el.x2);
     const maxX = Math.max(el.x1, el.x2);
     const minY = Math.min(el.y1, el.y2);
     const maxY = Math.max(el.y1, el.y2);
-    if (el.shape === 'rect') {
-      return (
-        distToSegment(x, y, minX, minY, maxX, minY) <= threshold ||
-        distToSegment(x, y, maxX, minY, maxX, maxY) <= threshold ||
-        distToSegment(x, y, maxX, maxY, minX, maxY) <= threshold ||
-        distToSegment(x, y, minX, maxY, minX, minY) <= threshold
-      );
-    }
+
     if (el.shape === 'axes') {
       const cx = (minX + maxX) / 2;
       const cy = (minY + maxY) / 2;
@@ -472,6 +644,37 @@ export function hitTestElement(el: InkElement, x: number, y: number, radius: num
         distToSegment(x, y, cx, minY, cx, maxY) <= threshold
       );
     }
+
+    if (el.shape === 'circle') {
+      const w = maxX - minX;
+      const h = maxY - minY;
+      const r = Math.max(2, Math.max(w, h) / 2);
+      const cx = minX + w / 2;
+      const cy = minY + h / 2;
+      return Math.abs(Math.hypot(x - cx, y - cy) - r) <= threshold + 4;
+    }
+
+    if (el.shape === 'capsule') {
+      return (
+        distToSegment(x, y, minX, minY, maxX, minY) <= threshold + 4 ||
+        distToSegment(x, y, maxX, minY, maxX, maxY) <= threshold + 4 ||
+        distToSegment(x, y, maxX, maxY, minX, maxY) <= threshold + 4 ||
+        distToSegment(x, y, minX, maxY, minX, minY) <= threshold + 4
+      );
+    }
+
+    const verts = getShapePolygonVertices(el);
+    if (verts && verts.length > 1) {
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i];
+        const b = verts[(i + 1) % verts.length];
+        if (distToSegment(x, y, a.x, a.y, b.x, b.y) <= threshold) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     // Ellipse boundary approximation
     const rx = Math.max(1, (maxX - minX) / 2);
     const ry = Math.max(1, (maxY - minY) / 2);

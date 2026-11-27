@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowUpRight,
   Check,
-  Circle,
   Copy,
   Download,
   Eraser,
@@ -15,7 +13,6 @@ import {
   Maximize2,
   Menu,
   Minimize2,
-  Minus,
   Palette,
   PenLine,
   PenTool,
@@ -32,7 +29,6 @@ import {
   Undo2,
   ZoomIn,
   ZoomOut,
-  Axis3D,
   AlignJustify,
 } from 'lucide-react';
 import {
@@ -41,6 +37,7 @@ import {
   InkElement,
   InkImageItem,
   InkNoteBook,
+  InkShapeKind,
   InkStroke,
   InkTool,
   NotePage,
@@ -50,6 +47,7 @@ import {
   PAPER_THEME_META,
   PaperStyle,
   PaperTheme,
+  isShapeTool,
 } from './types';
 import {
   recolorElement,
@@ -220,6 +218,133 @@ const PenNibIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
   </svg>
 );
 
+type RulerGridItemId = 'text' | InkShapeKind;
+
+const RULER_GRID_ITEMS: ReadonlyArray<{ id: RulerGridItemId; label: string }> = [
+  // Row 1
+  { id: 'text', label: 'Chữ & Ký hiệu Toán (T)' },
+  { id: 'line', label: 'Đoạn thẳng' },
+  { id: 'dashed_line', label: 'Đoạn thẳng nét đứt' },
+  { id: 'dashdot_line', label: 'Đường nét gạch chấm' },
+  { id: 'arrow', label: 'Mũi tên / Vectơ' },
+  { id: 'double_arrow', label: 'Mũi tên hai chiều' },
+  // Row 2
+  { id: 'ray', label: 'Tia / Đường tròn tiếp tuyến' },
+  { id: 'circle', label: 'Hình tròn' },
+  { id: 'ellipse', label: 'Hình Elip / Bầu dục' },
+  { id: 'capsule', label: 'Hình viên nang (Bo tròn)' },
+  { id: 'rect', label: 'Hình chữ nhật / Hình vuông' },
+  { id: 'triangle_right', label: 'Tam giác hướng phải' },
+  // Row 3
+  { id: 'triangle', label: 'Tam giác cân / đều' },
+  { id: 'right_triangle', label: 'Tam giác vuông' },
+  { id: 'diamond', label: 'Hình thoi' },
+  { id: 'pentagon', label: 'Ngũ giác đều (5 cạnh)' },
+  { id: 'hexagon', label: 'Lục giác đều (6 cạnh)' },
+  { id: 'heptagon', label: 'Thất giác đều (7 cạnh)' },
+  // Row 4
+  { id: 'octagon', label: 'Bát giác đều (8 cạnh)' },
+  { id: 'nonagon', label: 'Cửu giác đều (9 cạnh)' },
+  { id: 'star', label: 'Ngôi sao 5 cánh' },
+  { id: 'axes', label: 'Hệ trục tọa độ Oxy' },
+];
+
+function buildRegularPolygonSvgPoints(sides: number, startAngle: number = -Math.PI / 2, r: number = 7.4): string {
+  const pts: string[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = startAngle + (i * 2 * Math.PI) / sides;
+    pts.push(`${(12 + r * Math.cos(a)).toFixed(2)},${(12 + r * Math.sin(a)).toFixed(2)}`);
+  }
+  return pts.join(' ');
+}
+
+function buildStarSvgPoints(): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const r = i % 2 === 0 ? 7.8 : 3.3;
+    pts.push(`${(12 + r * Math.cos(a)).toFixed(2)},${(12 + r * Math.sin(a)).toFixed(2)}`);
+  }
+  return pts.join(' ');
+}
+
+const ShapeGlyph: React.FC<{ shape: RulerGridItemId; size?: number }> = ({ shape, size = 20 }) => {
+  if (shape === 'text') {
+    return (
+      <span
+        aria-hidden="true"
+        className="font-serif font-normal leading-none select-none"
+        style={{ fontSize: Math.round(size * 1.05) }}
+      >
+        T
+      </span>
+    );
+  }
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {shape === 'line' && <line x1="5.5" y1="18.5" x2="18.5" y2="5.5" />}
+      {shape === 'dashed_line' && (
+        <line x1="5.5" y1="18.5" x2="18.5" y2="5.5" strokeDasharray="3.1 2.8" />
+      )}
+      {shape === 'dashdot_line' && (
+        <line x1="5" y1="19" x2="19" y2="5" strokeDasharray="3.8 2.2 0.8 2.2" />
+      )}
+      {shape === 'arrow' && (
+        <>
+          <line x1="18.5" y1="5.5" x2="6" y2="18" />
+          <polygon points="5.5,18.5 5.5,12.5 11.5,18.5" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {shape === 'double_arrow' && (
+        <>
+          <line x1="6.5" y1="17.5" x2="17.5" y2="6.5" />
+          <polygon points="5.2,18.8 5.2,12.8 11.2,18.8" fill="currentColor" stroke="none" />
+          <polygon points="18.8,5.2 12.8,5.2 18.8,11.2" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {shape === 'ray' && (
+        <>
+          <circle cx="9.2" cy="14.8" r="4.2" />
+          <line x1="12.1" y1="11.9" x2="18.8" y2="5.2" />
+        </>
+      )}
+      {shape === 'circle' && <circle cx="12" cy="12" r="7" />}
+      {shape === 'ellipse' && <ellipse cx="12" cy="12" rx="7.6" ry="5.1" />}
+      {shape === 'capsule' && <rect x="4.5" y="7.5" width="15" height="9" rx="4.5" />}
+      {shape === 'rect' && <rect x="5.2" y="5.2" width="13.6" height="13.6" />}
+      {shape === 'triangle_right' && <polygon points="6.5,5.2 18.5,12 6.5,18.8" />}
+      {shape === 'triangle' && <polygon points="12,5.2 18.8,18.2 5.2,18.2" />}
+      {shape === 'right_triangle' && <polygon points="6,5.2 6,18.5 18.5,18.5" />}
+      {shape === 'diamond' && <polygon points="12,4.6 19.4,12 12,19.4 4.6,12" />}
+      {shape === 'pentagon' && <polygon points={buildRegularPolygonSvgPoints(5)} />}
+      {shape === 'hexagon' && <polygon points={buildRegularPolygonSvgPoints(6, 0)} />}
+      {shape === 'heptagon' && <polygon points={buildRegularPolygonSvgPoints(7)} />}
+      {shape === 'octagon' && <polygon points={buildRegularPolygonSvgPoints(8, Math.PI / 8)} />}
+      {shape === 'nonagon' && <polygon points={buildRegularPolygonSvgPoints(9)} />}
+      {shape === 'star' && <polygon points={buildStarSvgPoints()} />}
+      {shape === 'axes' && (
+        <>
+          <line x1="12" y1="20" x2="12" y2="4.5" />
+          <polyline points="9.2,7.2 12,4.2 14.8,7.2" />
+          <line x1="4" y1="12" x2="19.5" y2="12" />
+          <polyline points="16.8,9.2 19.8,12 16.8,14.8" />
+        </>
+      )}
+    </svg>
+  );
+};
+
 export const InkNotesView: React.FC<InkNotesViewProps> = ({
   currentUserId,
   currentUserName,
@@ -293,7 +418,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   const [titleDraft, setTitleDraft] = useState<string>('');
 
   const [tool, setTool] = useState<InkTool>('pen');
-  const [lastShapeTool, setLastShapeTool] = useState<'line' | 'arrow' | 'rect' | 'ellipse' | 'axes'>('line');
+  const [lastShapeTool, setLastShapeTool] = useState<InkShapeKind>('line');
   const [showShapeMenu, setShowShapeMenu] = useState<boolean>(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState<boolean>(false);
   const [showZoomMenu, setShowZoomMenu] = useState<boolean>(false);
@@ -321,6 +446,9 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const rulerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const activeShapeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const shapePopoverRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-append page guards
   const lastAutoAddAtRef = useRef<number>(0);
@@ -700,9 +828,15 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
         return;
       }
 
-      if (e.key === 'Escape' && isFullscreen) {
-        setIsFullscreen(false);
-        return;
+      if (e.key === 'Escape') {
+        if (showShapeMenu) {
+          setShowShapeMenu(false);
+          return;
+        }
+        if (isFullscreen) {
+          setIsFullscreen(false);
+          return;
+        }
       }
 
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
@@ -736,7 +870,26 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     activePageIndex,
     handleCommitElementsForPage,
     isFullscreen,
+    showShapeMenu,
   ]);
+
+  useEffect(() => {
+    if (!showShapeMenu) return;
+    const onPointerDownOutside = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (
+        shapePopoverRef.current?.contains(target) ||
+        rulerBtnRef.current?.contains(target) ||
+        activeShapeBtnRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setShowShapeMenu(false);
+    };
+    window.addEventListener('pointerdown', onPointerDownOutside);
+    return () => window.removeEventListener('pointerdown', onPointerDownOutside);
+  }, [showShapeMenu]);
 
   const insertImageDataUrl = useCallback(
     (rawDataUrl: string) => {
@@ -1094,8 +1247,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     });
   }, [notebooks, searchQuery, filterSubject]);
 
-  const isShapeActive =
-    tool === 'line' || tool === 'arrow' || tool === 'rect' || tool === 'ellipse' || tool === 'axes';
+  const isShapeActive = isShapeTool(tool);
 
   const activeColor = tool === 'highlighter' ? highlighterColor : penColor;
   const activeWidth = tool === 'highlighter' ? highlighterWidth : penWidth;
@@ -1109,7 +1261,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       }`}
     >
       <div
-        className={`bg-white border border-slate-200 overflow-hidden flex flex-col shadow-sm ${
+        className={`relative bg-white border border-slate-200 overflow-hidden flex flex-col shadow-sm ${
           isFullscreen
             ? 'flex-1 rounded-none border-0'
             : 'rounded-xl h-[calc(100dvh-8.75rem)] min-h-[540px]'
@@ -1427,24 +1579,45 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
               </button>
 
               <button
+                ref={rulerBtnRef}
+                type="button"
+                onClick={() => {
+                  setShowShapeMenu((v) => !v);
+                  setShowSettingsMenu(false);
+                  setShowZoomMenu(false);
+                }}
+                title="Thước kẻ & Bảng hình học"
+                aria-expanded={showShapeMenu}
+                aria-haspopup="true"
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                  showShapeMenu
+                    ? 'bg-slate-200 text-slate-900'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Ruler size={16} />
+              </button>
+
+              <button
+                ref={activeShapeBtnRef}
                 type="button"
                 onClick={() => {
                   if (!isShapeActive) {
                     setTool(lastShapeTool);
-                    setShowShapeMenu(true);
                   } else {
                     setShowShapeMenu((v) => !v);
                   }
                   setShowSettingsMenu(false);
+                  setShowZoomMenu(false);
                 }}
-                title="Thước kẻ, hình học & Hệ trục Oxy"
+                title="Hình học đang chọn (nhấn để vẽ hoặc mở bảng chọn)"
                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
                   isShapeActive
                     ? 'bg-blue-700 text-white shadow-xs'
                     : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <Ruler size={16} />
+                <ShapeGlyph shape={lastShapeTool} size={17} />
               </button>
 
               <button
@@ -1524,46 +1697,48 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
           </div>
         </div>
 
-        {/* Shape Sub-toolbar when shape tool active or Ruler clicked */}
-        {(isShapeActive || showShapeMenu) && (
-          <div className="bg-blue-50/70 border-b border-blue-200/80 px-3 sm:px-4 py-1.5 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
-            <span className="text-[11px] font-semibold text-blue-900 whitespace-nowrap shrink-0">
-              Chọn hình:
-            </span>
-            {(
-              [
-                { id: 'line', label: 'Đoạn thẳng', icon: Minus },
-                { id: 'arrow', label: 'Mũi tên / Vectơ', icon: ArrowUpRight },
-                { id: 'rect', label: 'Hình chữ nhật', icon: Square },
-                { id: 'ellipse', label: 'Hình tròn / Elip', icon: Circle },
-                { id: 'axes', label: 'Hệ trục Oxy', icon: Axis3D },
-              ] as const
-            ).map((shp) => {
-              const Icon = shp.icon;
-              const active = tool === shp.id;
-              return (
-                <button
-                  key={shp.id}
-                  type="button"
-                  onClick={() => {
-                    setTool(shp.id);
-                    setLastShapeTool(shp.id);
-                    setShowShapeMenu(false);
-                  }}
-                  className={`h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    active
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-blue-50'
-                  }`}
-                >
-                  <Icon size={13} />
-                  <span>{shp.label}</span>
-                </button>
-              );
-            })}
-            <span className="text-[11px] text-blue-700 whitespace-nowrap ml-auto hidden md:inline">
-              Giữ Shift khi kéo để căn thẳng/vuông
-            </span>
+        {/* Floating 6-Column Scrble Ink Ruler Shape & Text Popover */}
+        {showShapeMenu && (
+          <div
+            ref={shapePopoverRef}
+            role="dialog"
+            aria-label="Bảng chọn hình học và văn bản"
+            className="absolute top-[50px] right-2 sm:right-14 z-40 w-[278px] bg-white border border-slate-200/95 rounded-lg shadow-2xl p-2.5 animate-in fade-in zoom-in-95 duration-100"
+          >
+            <div className="grid grid-cols-6 gap-1">
+              {RULER_GRID_ITEMS.map((item) => {
+                const isActive = tool === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      if (item.id === 'text') {
+                        setTool('text');
+                      } else {
+                        setTool(item.id);
+                        setLastShapeTool(item.id);
+                      }
+                      setShowShapeMenu(false);
+                    }}
+                    title={item.label}
+                    aria-label={item.label}
+                    aria-pressed={isActive}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-blue-700 text-white shadow-xs'
+                        : 'text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <ShapeGlyph shape={item.id} size={20} />
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between px-1 text-[11px] text-slate-400">
+              <span>Chọn công cụ để vẽ hoặc nhập chữ</span>
+              <span>Shift: căn đều</span>
+            </div>
           </div>
         )}
 

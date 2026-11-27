@@ -10,6 +10,7 @@ import {
   NotePage,
   PAGE_HEIGHT,
   PAGE_WIDTH,
+  isShapeTool,
 } from './types';
 import {
   Bounds,
@@ -545,7 +546,7 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       return;
     }
 
-    if (tool === 'line' || tool === 'arrow' || tool === 'rect' || tool === 'ellipse' || tool === 'axes') {
+    if (isShapeTool(tool)) {
       onSelectIds([]);
       activeShapeRef.current = {
         id: createId('shp'),
@@ -624,7 +625,14 @@ export const InkPageCanvas: React.FC<InkPageCanvasProps> = ({
       if (e.shiftKey) {
         const dx = x2 - activeShapeRef.current.x1;
         const dy = y2 - activeShapeRef.current.y1;
-        if (activeShapeRef.current.shape === 'line' || activeShapeRef.current.shape === 'arrow') {
+        if (
+          activeShapeRef.current.shape === 'line' ||
+          activeShapeRef.current.shape === 'dashed_line' ||
+          activeShapeRef.current.shape === 'dashdot_line' ||
+          activeShapeRef.current.shape === 'arrow' ||
+          activeShapeRef.current.shape === 'double_arrow' ||
+          activeShapeRef.current.shape === 'ray'
+        ) {
           const angle = Math.atan2(dy, dx);
           const snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
           const dist = Math.hypot(dx, dy);
