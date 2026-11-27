@@ -29,7 +29,6 @@ import {
   Trash2,
   Type,
   Undo2,
-  Wand2,
   ZoomIn,
   ZoomOut,
   AlignJustify,
@@ -57,7 +56,6 @@ import {
   renderPageToCanvas,
   translateElement,
 } from './inkRenderer';
-import { beautifyHandwrittenText } from './handwritingBeautify';
 import { InkPageCanvas } from './InkPageCanvas';
 
 interface InkNotesViewProps {
@@ -205,6 +203,62 @@ function loadNotebooksFromStorage(key: string): InkNoteBook[] {
     }
   } catch {}
   return [createNewNotebook('Nháp giải bài tập #1', 'Toán Học', 'lined', 'white')];
+}
+
+const IDB_NAME = 'MathLikiInkNotesDB';
+const IDB_STORE = 'notebooks';
+
+function openNotesIdb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function readNotebooksFromIdb(key: string): Promise<InkNoteBook[] | null> {
+  const db = await openNotesIdb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => {
+        const val = req.result;
+        const sanitized = sanitizeNotebooks(val);
+        resolve(sanitized.length > 0 ? sanitized : null);
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function writeNotebooksToIdb(key: string, data: InkNoteBook[]): Promise<boolean> {
+  const db = await openNotesIdb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(data, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
 const MoreDotsIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
@@ -436,17 +490,42 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
     [activeNotebook, activePageIndex]
   );
 
-  // Debounced localStorage save
+  // Hydrate newer copy from IndexedDB if localStorage was full on previous session
+  useEffect(() => {
+    let cancelled = false;
+    readNotebooksFromIdb(storageKey).then((idbList) => {
+      if (cancelled || !idbList || idbList.length === 0) return;
+      setNotebooks((prev) => {
+        const prevNewest = prev.reduce((m, n) => Math.max(m, Date.parse(n.updatedAt || '') || 0), 0);
+        const idbNewest = idbList.reduce((m, n) => Math.max(m, Date.parse(n.updatedAt || '') || 0), 0);
+        if (idbNewest > prevNewest || idbList.length > prev.length) {
+          return idbList;
+        }
+        return prev;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey]);
+
+  // Debounced localStorage + IndexedDB local save (zero Firebase quota usage)
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
+      let savedLocal = false;
       try {
         localStorage.setItem(storageKey, JSON.stringify(notebooks));
+        savedLocal = true;
+      } catch {}
+
+      const savedIdb = await writeNotebooksToIdb(storageKey, notebooks);
+      if (savedLocal || savedIdb) {
         setSaveWarning(null);
-      } catch {
-        setSaveWarning('Bộ nhớ trình duyệt gần đầy, hãy xuất hình ảnh/PDF để lưu trữ bản sao.');
+      } else {
+        setSaveWarning('Bộ nhớ trình duyệt gần đầy, hãy xuất hình ảnh/PDF để lưu bản sao.');
       }
-    }, 280);
+    }, 320);
     return () => clearTimeout(timer);
   }, [notebooks, storageKey]);
 
@@ -481,7 +560,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isImportingPdf, setIsImportingPdf] = useState<boolean>(false);
-  const [isBeautifying, setIsBeautifying] = useState<boolean>(false);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -1316,13 +1394,14 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       for (let pageNum = 1; pageNum <= maxPagesToImport; pageNum++) {
         const pdfPage = await pdfDoc.getPage(pageNum);
         const vp1 = pdfPage.getViewport({ scale: 1 });
-        const targetScale = PAGE_WIDTH / Math.max(1, vp1.width);
-        const viewport = pdfPage.getViewport({ scale: targetScale });
-        const pageH = Math.max(720, Math.min(2800, Math.round(viewport.height)));
+        const renderWidth = 1400;
+        const renderScale = renderWidth / Math.max(1, vp1.width);
+        const viewport = pdfPage.getViewport({ scale: renderScale });
+        const pageH = Math.max(720, Math.min(2800, Math.round(PAGE_WIDTH * (vp1.height / Math.max(1, vp1.width)))));
 
         const offCanvas = document.createElement('canvas');
-        offCanvas.width = PAGE_WIDTH;
-        offCanvas.height = pageH;
+        offCanvas.width = renderWidth;
+        offCanvas.height = Math.max(1, Math.round(viewport.height));
         const offCtx = offCanvas.getContext('2d');
         if (!offCtx) continue;
 
@@ -1334,7 +1413,7 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
           viewport,
         }).promise;
 
-        const dataUrl = offCanvas.toDataURL('image/jpeg', 0.85);
+        const dataUrl = offCanvas.toDataURL('image/jpeg', 0.8);
         importedPages.push({
           id: createId('page'),
           paperStyle: 'blank',
@@ -1381,33 +1460,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
       setIsImportingPdf(false);
     }
   };
-
-  const handleBeautifyHandwriting = async () => {
-    if (!activeNotebook || isBeautifying) return;
-    setIsBeautifying(true);
-    try {
-      const result = await beautifyHandwrittenText(activePage.elements, selectedIds);
-      if (result.convertedCount > 0) {
-        handleCommitElementsForPage(activePageIndex, result.nextElements, true);
-        setSelectedIds([]);
-        showToast(`Đã làm đẹp ${result.convertedCount} đoạn chữ viết tay (giữ nguyên hình vẽ)`);
-      } else {
-        showToast('Không nhận diện thấy chữ viết tay (các hình vẽ được giữ nguyên)');
-      }
-    } catch (err: any) {
-      showToast(err?.message || 'Không thể nhận diện chữ viết tay lúc này.');
-    } finally {
-      setIsBeautifying(false);
-    }
-  };
-
-  const hasSelectedStroke = useMemo(() => {
-    if (selectedIds.length === 0) return false;
-    const selSet = new Set(selectedIds);
-    return activePage.elements.some(
-      (el) => selSet.has(el.id) && el.kind === 'stroke' && (el.tool === 'pen' || el.tool === 'pencil')
-    );
-  }, [selectedIds, activePage.elements]);
 
   const filteredNotebooks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1476,12 +1528,12 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
               type="button"
               onClick={handleExportPdf}
               disabled={isExporting}
-              title="Xuất nhiều trang thành tệp PDF"
+              title="Xuất toàn bộ sổ ghi chú thành tệp PDF"
               aria-label="Xuất PDF"
-              className="h-8 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+              className="h-8 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
             >
               <FileDown size={13} />
-              <span className="hidden xl:inline">PDF</span>
+              <span className="hidden xl:inline">Xuất PDF</span>
             </button>
 
             <div className="w-px h-5 bg-slate-200 mx-0.5 shrink-0" />
@@ -1831,28 +1883,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
 
               <button
                 type="button"
-                onClick={handleBeautifyHandwriting}
-                disabled={isBeautifying}
-                title="Nhận diện & chỉnh chữ viết tay thành chữ đẹp (chỉ chỉnh chữ, giữ nguyên hình vẽ)"
-                aria-label="Làm đẹp chữ viết tay"
-                className={`h-8 px-2.5 rounded-full flex items-center gap-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 ${
-                  isBeautifying
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/80'
-                }`}
-              >
-                {isBeautifying ? (
-                  <Loader2 size={14} className="animate-spin shrink-0" />
-                ) : (
-                  <Wand2 size={14} className="shrink-0" />
-                )}
-                <span className="hidden lg:inline">
-                  {isBeautifying ? 'Đang nhận diện...' : 'Chỉnh chữ đẹp'}
-                </span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setTool('eraser_stroke')}
                 title="Tẩy nét (chạm hoặc quét qua nét cần xóa)"
                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
@@ -2012,56 +2042,64 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
         {/* Paper Style, Theme, Stylus-Only & Page Actions Panel (SlidersHorizontal) */}
         {showSettingsMenu && (
           <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-slate-600">Dòng kẻ:</span>
-              {(
-                [
-                  { id: 'lined', label: 'Kẻ ngang Scrble', icon: AlignJustify },
-                  { id: 'grid', label: 'Ô ly vuông', icon: Grid3X3 },
-                  { id: 'dots', label: 'Chấm bi', icon: MoreDotsIcon },
-                  { id: 'blank', label: 'Giấy trơn', icon: Square },
-                ] as const
-              ).map((ps) => {
-                const Icon = ps.icon;
-                const active = activePage.paperStyle === ps.id;
-                return (
-                  <button
-                    key={ps.id}
-                    type="button"
-                    onClick={() => handleUpdatePaper(ps.id, activePage.paperTheme)}
-                    className={`h-8 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-blue-600 border-blue-600 text-white'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Icon size={13} />
-                    <span>{ps.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {activePage.backgroundDataUrl ? (
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+                <span>Đang ghi chú trực tiếp trên trang PDF (dữ liệu lưu cục bộ trên máy)</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-slate-600">Dòng kẻ:</span>
+                  {(
+                    [
+                      { id: 'lined', label: 'Kẻ ngang Scrble', icon: AlignJustify },
+                      { id: 'grid', label: 'Ô ly vuông', icon: Grid3X3 },
+                      { id: 'dots', label: 'Chấm bi', icon: MoreDotsIcon },
+                      { id: 'blank', label: 'Giấy trơn', icon: Square },
+                    ] as const
+                  ).map((ps) => {
+                    const Icon = ps.icon;
+                    const active = activePage.paperStyle === ps.id;
+                    return (
+                      <button
+                        key={ps.id}
+                        type="button"
+                        onClick={() => handleUpdatePaper(ps.id, activePage.paperTheme)}
+                        className={`h-8 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Icon size={13} />
+                        <span>{ps.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-slate-600">Nền giấy:</span>
-              {(Object.keys(PAPER_THEME_META) as PaperTheme[]).map((themeKey) => {
-                const meta = PAPER_THEME_META[themeKey];
-                const active = activePage.paperTheme === themeKey;
-                return (
-                  <button
-                    key={themeKey}
-                    type="button"
-                    onClick={() => handleUpdatePaper(activePage.paperStyle, themeKey)}
-                    className={`h-8 px-2.5 rounded-lg text-xs font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
-                      meta.swatchClass
-                    } ${active ? 'ring-2 ring-blue-500 ring-offset-1' : 'opacity-85 hover:opacity-100'}`}
-                  >
-                    {active && <Check size={12} />}
-                    <span>{meta.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-slate-600">Nền giấy:</span>
+                  {(Object.keys(PAPER_THEME_META) as PaperTheme[]).map((themeKey) => {
+                    const meta = PAPER_THEME_META[themeKey];
+                    const active = activePage.paperTheme === themeKey;
+                    return (
+                      <button
+                        key={themeKey}
+                        type="button"
+                        onClick={() => handleUpdatePaper(activePage.paperStyle, themeKey)}
+                        className={`h-8 px-2.5 rounded-lg text-xs font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
+                          meta.swatchClass
+                        } ${active ? 'ring-2 ring-blue-500 ring-offset-1' : 'opacity-85 hover:opacity-100'}`}
+                      >
+                        {active && <Check size={12} />}
+                        <span>{meta.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
             <div className="flex items-center gap-2 flex-wrap">
               <button
@@ -2346,25 +2384,6 @@ export const InkNotesView: React.FC<InkNotesViewProps> = ({
                   ))}
                 </div>
                 <div className="w-px h-4 bg-slate-200" />
-                {hasSelectedStroke && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleBeautifyHandwriting}
-                      disabled={isBeautifying}
-                      title="Nhận diện & chuyển chữ viết tay đã chọn thành chữ đẹp (giữ nguyên hình vẽ)"
-                      className="px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
-                    >
-                      {isBeautifying ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <Wand2 size={13} />
-                      )}
-                      <span>{isBeautifying ? 'Đang chỉnh...' : 'Làm đẹp chữ'}</span>
-                    </button>
-                    <div className="w-px h-4 bg-slate-200" />
-                  </>
-                )}
                 {hasSelectedImage && (
                   <>
                     <button
