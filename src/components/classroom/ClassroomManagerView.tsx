@@ -2102,8 +2102,24 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
           </h1>
         </div>
 
-        {/* Action button based on role */}
-        <div className="flex items-center gap-2">
+        {/* Action button based on role + Vòng quay Lucky của lớp đang chọn */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {currentClass && isCurrentClassMember && (
+            <button
+              type="button"
+              onClick={() => setShowLuckyWheelModal(true)}
+              title={`Vòng quay Lucky — ${currentClass.name}`}
+              aria-label={`Mở vòng quay Lucky lớp ${currentClass.name}`}
+              className="h-10 px-3.5 rounded-full border border-amber-300 bg-amber-50/80 hover:bg-amber-100 text-slate-900 font-extrabold text-xs shadow-2xs inline-flex items-center gap-2 transition-all cursor-pointer group shrink-0 whitespace-nowrap"
+            >
+              <ClassroomLuckyWheelLogo
+                size={22}
+                className="group-hover:rotate-45 transition-transform duration-500 shrink-0"
+              />
+              <span className="tracking-tight">Lucky</span>
+            </button>
+          )}
+
           {userRole === 'teacher' ? (
             <button
               onClick={() => setShowCreateClassModal(true)}
@@ -2727,20 +2743,6 @@ export const ClassroomManagerView: React.FC<ClassroomManagerViewProps> = ({
                     <span>+ Thêm Học Sinh</span>
                   </button>
                 )}
-
-                {/* Logo nhỏ Vòng Quay May Mắn riêng cho từng nhóm lớp */}
-                <button
-                  type="button"
-                  onClick={() => setShowLuckyWheelModal(true)}
-                  title={`Vòng quay may mắn — ${currentClass.name}`}
-                  aria-label="Mở vòng quay may mắn lớp học"
-                  className="w-8 h-8 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 flex items-center justify-center shadow-2xs transition-colors cursor-pointer group shrink-0"
-                >
-                  <ClassroomLuckyWheelLogo
-                    size={20}
-                    className="group-hover:rotate-45 transition-transform duration-500"
-                  />
-                </button>
               </div>
             </div>
 

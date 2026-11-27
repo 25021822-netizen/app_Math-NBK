@@ -377,7 +377,7 @@ export const ClassroomLuckyWheelModal: React.FC<ClassroomLuckyWheelModalProps> =
             </div>
             <div className="min-w-0">
               <h3 className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
-                Vòng Quay May Mắn · {className}
+                Lucky · {className}
               </h3>
               <p className="text-[11px] text-slate-500">
                 {mode === 'students'
